@@ -1,0 +1,33 @@
+-- divine: inline pattern matching as an expression
+
+rite fizzbuzz
+  given {| n |} =>
+    let by3 = n - (n / 3) * 3
+    let by5 = n - (n / 5) * 5
+    divine {| a: by3, b: by5 |}
+      given {| a: 0, b: 0 |} => "fizzbuzz"
+      given {| a: 0 |}       => "fizz"
+      given {| b: 0 |}       => "buzz"
+      given {| a, b |}       => ""
+    seal
+seal
+
+rite range_inner
+  given {| i, n, acc |} =>
+    divine i == n
+      given 1 => acc
+      given 0 =>
+        invoke range_inner {|
+          i: i + 1,
+          n: n,
+          acc: acc + (invoke fizzbuzz {| n: i |})
+        |}
+    seal
+seal
+
+ritual main
+  utter invoke fizzbuzz {| n: 3 |}
+  utter invoke fizzbuzz {| n: 5 |}
+  utter invoke fizzbuzz {| n: 15 |}
+  utter invoke fizzbuzz {| n: 7 |}
+seal

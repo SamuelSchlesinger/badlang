@@ -1,0 +1,19 @@
+dist-newstyle/
+*.o
+*.hi
+*.dyn_o
+*.dyn_hi
+*.c
+!src/**/*.c
+*.exe
+.claude/
+
+# Generated binaries in examples/
+examples/hello
+examples/subtyping
+examples/divine
+examples/mutual
+examples/io
+
+# Runtime artifacts
+io_test.txt

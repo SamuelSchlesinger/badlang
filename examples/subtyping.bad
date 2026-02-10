@@ -1,0 +1,50 @@
+-- Structural subtyping: rites accept any record with the required fields.
+-- Extra fields are silently permitted (width subtyping).
+
+altar Vec2
+  x : Int
+  y : Int
+seal
+
+altar Vec3
+  x : Int
+  y : Int
+  z : Int
+seal
+
+-- This rite requires only {| x, y |} — any wider record works.
+rite magnitude_sq
+  given {| x, y |} => x * x + y * y
+seal
+
+-- This rite requires {| x, y, z |} — a narrower contract.
+rite magnitude_sq_3d
+  given {| x, y, z |} => x * x + y * y + z * z
+seal
+
+-- Pattern matching with literal fields
+rite classify
+  given {| x: 0, y: 0 |} => 0
+  given {| x: 0 |}       => 1
+  given {| y: 0 |}       => 2
+  given {| x, y |}       => 3
+seal
+
+ritual main
+  let flat = summon Vec2 {| x: 3, y: 4 |}
+  let deep = summon Vec3 {| x: 1, y: 2, z: 3 |}
+
+  -- Width subtyping: Vec3 has x and y, so it works with magnitude_sq
+  utter invoke magnitude_sq flat
+  utter invoke magnitude_sq deep
+  utter invoke magnitude_sq_3d deep
+
+  -- Pattern dispatch
+  utter invoke classify {| x: 0, y: 0 |}
+  utter invoke classify {| x: 0, y: 5 |}
+  utter invoke classify {| x: 7, y: 0 |}
+  utter invoke classify {| x: 3, y: 4 |}
+
+  -- Anonymous records work too — no altar needed
+  utter invoke magnitude_sq {| x: 10, y: 10, extra: 999 |}
+seal

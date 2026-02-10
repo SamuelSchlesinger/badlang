@@ -1,0 +1,29 @@
+ritual main
+  utter "=== badlang IO demo ==="
+
+  utter "What is your name?"
+  whisper "> "
+  let name = hearken
+  whisper "Hello, "
+  whisper name
+  utter "!"
+
+  utter "Pick a number:"
+  whisper "> "
+  let n = scry
+  utter "You chose:"
+  utter n
+
+  utter "Number of CLI args:"
+  utter invoke argc {| |}
+
+  utter "Program name:"
+  utter invoke argv {| n: 0 |}
+
+  invoke inscribe {| path: "io_test.txt", content: "Written by badlang!" |}
+  utter "Wrote io_test.txt"
+
+  let contents = invoke unearth {| path: "io_test.txt" |}
+  utter "Read back:"
+  utter contents
+seal

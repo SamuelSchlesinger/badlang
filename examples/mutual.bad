@@ -1,0 +1,116 @@
+-- Mutual recursion: Collatz conjecture meets the Hofstadter sequence
+-- with structural records threading state between entangled rites.
+
+-- Hofstadter's Female and Male sequences:
+--   F(0) = 1, M(0) = 0
+--   F(n) = n - M(F(n-1))
+--   M(n) = n - F(M(n-1))
+
+rite female
+  given {| n: 0 |} => 1
+  given {| n |} =>
+    n - (invoke male {|
+      n: invoke female {| n: n - 1 |}
+    |})
+seal
+
+rite male
+  given {| n: 0 |} => 0
+  given {| n |} =>
+    n - (invoke female {|
+      n: invoke male {| n: n - 1 |}
+    |})
+seal
+
+-- Collatz sequence: count steps to reach 1
+-- Uses even/odd helper rites for dispatch
+
+rite is_even
+  given {| n |} =>
+    let half = n / 2
+    divine half * 2 == n
+      given 1 => 1
+      given 0 => 0
+    seal
+seal
+
+rite collatz_step
+  given {| n |} =>
+    divine invoke is_even {| n: n |}
+      given 1 => n / 2
+      given 0 => n * 3 + 1
+    seal
+seal
+
+rite collatz_count
+  given {| n: 1, steps |} => steps
+  given {| n, steps |} =>
+    invoke collatz_count {|
+      n: invoke collatz_step {| n: n |},
+      steps: steps + 1
+    |}
+seal
+
+-- Ackermann function: the classic recursion stress test
+--   A(0, n) = n + 1
+--   A(m, 0) = A(m-1, 1)
+--   A(m, n) = A(m-1, A(m, n-1))
+
+rite ackermann
+  given {| m: 0, n |} => n + 1
+  given {| m, n: 0 |} =>
+    invoke ackermann {| m: m - 1, n: 1 |}
+  given {| m, n |} =>
+    invoke ackermann {|
+      m: m - 1,
+      n: invoke ackermann {| m: m, n: n - 1 |}
+    |}
+seal
+
+-- GCD via the Euclidean algorithm with structural dispatch
+
+rite gcd
+  given {| a, b: 0 |} => a
+  given {| a: 0, b |} => b
+  given {| a, b |} =>
+    divine a > b
+      given 1 => invoke gcd {| a: a - b, b: b |}
+      given 0 => invoke gcd {| a: a, b: b - a |}
+    seal
+seal
+
+-- Fibonacci with accumulator (tail-recursive style)
+
+rite fib_acc
+  given {| n: 0, a, b |} => a
+  given {| n, a, b |} =>
+    invoke fib_acc {| n: n - 1, a: b, b: a + b |}
+seal
+
+rite fib
+  given {| n |} => invoke fib_acc {| n: n, a: 0, b: 1 |}
+seal
+
+ritual main
+  -- Hofstadter sequences
+  utter invoke female {| n: 10 |}
+  utter invoke male {| n: 10 |}
+
+  -- Collatz conjecture
+  utter invoke collatz_count {| n: 27, steps: 0 |}
+  utter invoke collatz_count {| n: 7, steps: 0 |}
+
+  -- Ackermann (small values — this grows FAST)
+  utter invoke ackermann {| m: 0, n: 5 |}
+  utter invoke ackermann {| m: 1, n: 5 |}
+  utter invoke ackermann {| m: 2, n: 4 |}
+  utter invoke ackermann {| m: 3, n: 3 |}
+
+  -- GCD
+  utter invoke gcd {| a: 252, b: 105 |}
+  utter invoke gcd {| a: 1071, b: 462 |}
+
+  -- Fibonacci
+  utter invoke fib {| n: 20 |}
+  utter invoke fib {| n: 30 |}
+seal
