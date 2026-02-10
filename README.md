@@ -186,10 +186,12 @@ whatever `r` unifies with.
 ### C Code Generation
 
 The emitter produces self-contained C with an embedded runtime. All
-values are tagged unions allocated from a fixed arena. Pattern matching
+values are reference-counted tagged unions allocated with `malloc`.
+Because badlang values are immutable and there are no closures, cycles
+are impossible and reference counting is sufficient. Pattern matching
 compiles to cascading if-chains. The generated code is readable and
-can be compiled with any C compiler (GCC extensions are used for
-let-bindings and divine expressions).
+can be compiled with any C compiler that supports `__builtin_va_arg`
+(GCC and Clang).
 
 ## Examples
 
