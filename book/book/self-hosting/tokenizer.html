@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-d4d4b451.js";
+            window.path_to_searchindex_js = "../searchindex-7ed70138.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-daf9c5e4.js"></script>
@@ -208,8 +208,10 @@ character:</p>
 sequence, extract with <code>substr</code>.</p>
 </li>
 <li>
-<p><strong><code>"</code></strong> → <code>lex_string</code>: Scan forward to the closing <code>"</code>, extract the
-contents (without quotes).</p>
+<p><strong><code>"</code></strong> → <code>lex_string</code>: Scan forward to the closing <code>"</code> (respecting
+backslash escapes), extract the contents (without quotes), and process
+escape sequences (<code>\n</code>, <code>\t</code>, <code>\r</code>, <code>\\</code>, <code>\"</code>) into their actual
+characters.</p>
 </li>
 <li>
 <p><strong>Letters or <code>_</code></strong> → <code>lex_word</code>: Scan to the end of the alphanumeric

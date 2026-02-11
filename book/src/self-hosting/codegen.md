@@ -166,3 +166,53 @@ The top-level `emit_c` rite assembles the complete C file by concatenating:
 2. Forward declarations for all non-builtin rites
 3. Rite definitions
 4. The `main()` function (from the `ritual main` declaration)
+
+## The AArch64 Code Generator
+
+The self-hosting compiler also includes an AArch64 native code generator,
+activated by passing `asm` as the third command-line argument:
+
+```
+compiler source.bad output.s asm
+```
+
+### Emitter State
+
+Where the C emitter threads a simple `counter` through each call, the AArch64
+emitter threads a richer state record:
+
+```
+{| counter, slot_counter, slots, strs |}
+```
+
+- **`counter`** — for generating fresh labels
+- **`slot_counter`** — tracks the next available stack slot
+- **`slots`** — a linked list mapping variable names to stack slot numbers
+- **`strs`** — a linked list of string literals with deduplicated labels
+
+### Stack-based Variables
+
+All variables live on the stack. The `alloc_slot` rite allocates a slot and
+the `lookup_slot` rite finds one by name. Stack offsets are computed as
+`-(16 + (slot+1)*8)` relative to the frame pointer (x29), with
+`emit_load_slot` and `emit_store_slot` generating the appropriate `ldur`/`stur`
+instructions (falling back to register-indirect addressing for large offsets).
+
+### Expression Emission
+
+Each expression emitter follows the same convention as the C side — it takes
+an AST node and state, and returns `{| code, var, state |}`. The `code` is
+assembly text, `var` names the stack slot holding the result, and `state`
+carries the updated counters, slots, and string table.
+
+### String Table
+
+String literals and field names are collected into a deduplicated string
+table during emission. The `emit_string_table` rite emits them as `.asciz`
+directives in a `.section __TEXT,__cstring` data section at the end of the
+file.
+
+### Mode Selection
+
+The `get_mode` rite checks `argv[3]` for the string `"asm"`. The main ritual
+uses a `divine` on the mode to select between `emit_c` and `emit_asm`.

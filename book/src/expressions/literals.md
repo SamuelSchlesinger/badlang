@@ -27,8 +27,17 @@ String literals are enclosed in double quotes:
 ""
 ```
 
-String literals currently do not support escape sequences. What you write
-between the quotes is exactly what you get — there is no `\n`, `\t`, or `\\`.
+String literals support the following escape sequences:
+
+| Escape | Character |
+|--------|-----------|
+| `\n` | Newline |
+| `\t` | Tab |
+| `\r` | Carriage return |
+| `\\` | Backslash |
+| `\"` | Double quote |
+
+For example, `"line1\nline2"` contains an actual newline between the two words.
 
 ## Variables
 

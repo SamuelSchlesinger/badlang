@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-d4d4b451.js";
+            window.path_to_searchindex_js = "../searchindex-7ed70138.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-daf9c5e4.js"></script>
@@ -303,6 +303,41 @@ time.</p>
 <li>Rite definitions</li>
 <li>The <code>main()</code> function (from the <code>ritual main</code> declaration)</li>
 </ol>
+<h2 id="the-aarch64-code-generator"><a class="header" href="#the-aarch64-code-generator">The AArch64 Code Generator</a></h2>
+<p>The self-hosting compiler also includes an AArch64 native code generator,
+activated by passing <code>asm</code> as the third command-line argument:</p>
+<pre><code>compiler source.bad output.s asm
+</code></pre>
+<h3 id="emitter-state"><a class="header" href="#emitter-state">Emitter State</a></h3>
+<p>Where the C emitter threads a simple <code>counter</code> through each call, the AArch64
+emitter threads a richer state record:</p>
+<pre><code>{| counter, slot_counter, slots, strs |}
+</code></pre>
+<ul>
+<li><strong><code>counter</code></strong> — for generating fresh labels</li>
+<li><strong><code>slot_counter</code></strong> — tracks the next available stack slot</li>
+<li><strong><code>slots</code></strong> — a linked list mapping variable names to stack slot numbers</li>
+<li><strong><code>strs</code></strong> — a linked list of string literals with deduplicated labels</li>
+</ul>
+<h3 id="stack-based-variables"><a class="header" href="#stack-based-variables">Stack-based Variables</a></h3>
+<p>All variables live on the stack. The <code>alloc_slot</code> rite allocates a slot and
+the <code>lookup_slot</code> rite finds one by name. Stack offsets are computed as
+<code>-(16 + (slot+1)*8)</code> relative to the frame pointer (x29), with
+<code>emit_load_slot</code> and <code>emit_store_slot</code> generating the appropriate <code>ldur</code>/<code>stur</code>
+instructions (falling back to register-indirect addressing for large offsets).</p>
+<h3 id="expression-emission-1"><a class="header" href="#expression-emission-1">Expression Emission</a></h3>
+<p>Each expression emitter follows the same convention as the C side — it takes
+an AST node and state, and returns <code>{| code, var, state |}</code>. The <code>code</code> is
+assembly text, <code>var</code> names the stack slot holding the result, and <code>state</code>
+carries the updated counters, slots, and string table.</p>
+<h3 id="string-table"><a class="header" href="#string-table">String Table</a></h3>
+<p>String literals and field names are collected into a deduplicated string
+table during emission. The <code>emit_string_table</code> rite emits them as <code>.asciz</code>
+directives in a <code>.section __TEXT,__cstring</code> data section at the end of the
+file.</p>
+<h3 id="mode-selection"><a class="header" href="#mode-selection">Mode Selection</a></h3>
+<p>The <code>get_mode</code> rite checks <code>argv[3]</code> for the string <code>"asm"</code>. The main ritual
+uses a <code>divine</code> on the mode to select between <code>emit_c</code> and <code>emit_asm</code>.</p>
 
                     </main>
 

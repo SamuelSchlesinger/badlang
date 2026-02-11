@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-d4d4b451.js";
+            window.path_to_searchindex_js = "searchindex-7ed70138.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-daf9c5e4.js"></script>
@@ -177,8 +177,8 @@
                         <h1 id="the-self-hosting-compiler"><a class="header" href="#the-self-hosting-compiler">The Self-Hosting Compiler</a></h1>
 <p>badlang is <strong>self-hosting</strong>: the file <code>examples/compiler/compiler.bad</code> is a
 complete badlang compiler written in badlang itself. It implements the full
-compilation pipeline — tokenizer, parser, and C code emitter — and can
-compile itself.</p>
+compilation pipeline — tokenizer, parser, C code emitter, and AArch64 native
+code generator — and can compile itself.</p>
 <h2 id="why-self-hosting"><a class="header" href="#why-self-hosting">Why Self-Hosting?</a></h2>
 <p>A self-hosting compiler is the ultimate test of a language’s expressiveness. If
 a language can implement its own compiler, it demonstrates that the language is
@@ -190,18 +190,24 @@ recursion, structural subtyping, and I/O all get a serious workout.</li>
 <li><strong>A correctness proof</strong> via bootstrapping: when the compiler compiles itself
 and produces identical output across generations, we know it faithfully
 implements its own semantics.</li>
-<li><strong>The largest badlang program</strong>, exercising the compiler at scale (~2000
+<li><strong>The largest badlang program</strong>, exercising the compiler at scale (~3000
 lines).</li>
 </ul>
 <h2 id="architecture-at-a-glance"><a class="header" href="#architecture-at-a-glance">Architecture at a Glance</a></h2>
 <p>The self-hosting compiler follows the same pipeline as the Haskell reference
 compiler, minus the type checker:</p>
-<pre><code>Source (.bad) → Tokenize → Parse → Emit C → Write File
+<pre><code>Source (.bad) → Tokenize → Parse → Emit C or AArch64 → Write File
 </code></pre>
 <p>The compiler reads a source file, tokenizes it, parses the token stream into
-an AST, generates C code, and writes the result to a file. It relies on a
-shared <code>runtime.c</code> that provides the value representation, reference counting,
-and built-in rites for file I/O and string manipulation.</p>
+an AST, and generates either C code or AArch64 assembly depending on the mode.
+It relies on a shared <code>runtime.c</code> (or <code>runtime_aarch64.c</code> for native mode)
+that provides the value representation, reference counting, and built-in rites
+for file I/O and string manipulation.</p>
+<p>The compiler selects its output mode via command-line arguments:</p>
+<ul>
+<li><code>compiler source.bad output.c</code> — emit C (default)</li>
+<li><code>compiler source.bad output.s asm</code> — emit AArch64 assembly</li>
+</ul>
 <p>The entire compiler is a single file organized into clear sections:</p>
 <div class="table-wrapper">
 <table>
@@ -212,8 +218,9 @@ and built-in rites for file I/O and string manipulation.</p>
 <tr><td>Utility library</td><td>Character classification, string helpers, linked lists</td></tr>
 <tr><td>Tokenizer</td><td>Lexical analysis into tokens</td></tr>
 <tr><td>Parser</td><td>Recursive descent into AST nodes</td></tr>
-<tr><td>Code emitter</td><td>AST to C translation</td></tr>
-<tr><td>Driver</td><td>Main ritual tying it all together</td></tr>
+<tr><td>C code emitter</td><td>AST to C translation</td></tr>
+<tr><td>AArch64 code emitter</td><td>AST to native assembly translation</td></tr>
+<tr><td>Driver</td><td>Main ritual selecting mode and tying it all together</td></tr>
 </tbody>
 </table>
 </div>

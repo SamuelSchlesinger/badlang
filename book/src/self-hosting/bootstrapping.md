@@ -44,24 +44,31 @@ faithfully implements the language semantics that it itself is written in.
 
 ## Running the Bootstrap Test
 
-The `bootstrap.sh` script automates the full bootstrap chain:
+The `bootstrap.sh` script automates the full bootstrap chain. It supports two
+modes: **C** (default) and **ASM** (AArch64 native).
 
 ```bash
 cd examples/compiler
-./bootstrap.sh 3
+./bootstrap.sh 3        # C mode (default)
+./bootstrap.sh 3 asm    # AArch64 native mode
 ```
 
 This compiles through three generations and verifies:
 
 - Each generation compiles successfully
-- gen1.c through gen3.c are all identical
+- gen1 through gen3 output files are all identical
 - The final generation can compile `hello.bad` and produce correct output
 
-A successful run looks like:
+In C mode, gen0 is always built using the Haskell reference compiler. In ASM
+mode, gen0 is still built via C (since the Haskell compiler is the seed), but
+subsequent generations emit `.s` files and link against `runtime_aarch64.c`.
+
+A successful C-mode run looks like:
 
 ```
 === Badlang Bootstrap Test ===
 Generations: 3
+Mode: c
 
 [gen0] Compiling compiler.bad with Haskell compiler...
 [gen0] OK
@@ -81,7 +88,7 @@ Output matches expected: OK
 
 === BOOTSTRAP SUCCESS ===
 The compiler reaches a fixed point at gen1.
-All 3 generations produce identical C output.
+All 3 generations produce identical c output.
 ```
 
 ## What the Bootstrap Proves

@@ -210,9 +210,13 @@ badlangGrammar = Map.fromList
 
   , ("str_lit", seq_
       [ lit "\""
-      , label "value" (many (satisfy "string-char" (\c -> c /= '"' && c /= '\\')))
+      , label "value" (many (rule "str_char"))
       , lit "\""
       ])
+
+  , ("str_char",
+      (seq_ [lit "\\", satisfy "escape-char" (\c -> c `elem` "ntr\\\"")])
+      </> satisfy "string-char" (\c -> c /= '"' && c /= '\\'))
 
   , ("paren_expr", seq_ [lit "(", ws, rule "expr", ws, lit ")"])
 
@@ -448,7 +452,7 @@ treeToExpr (PTNode "int_lit" children) = do
 treeToExpr (PTNode "str_lit" children) = do
   valNode <- find1 "value" children
   txt <- getText valNode
-  return (StrLit txt)
+  return (StrLit (processEscapes txt))
 treeToExpr (PTNode "invoke_expr" children) = do
   riteName <- getText =<< find1 "rite" children
   argNode  <- find1 "arg" children
@@ -654,6 +658,21 @@ treeToPatField (PTNode "pat_field" children) = do
     Just p  -> Just <$> treeToPattern p
   return (PatField name pat)
 treeToPatField t = Left $ "Expected pattern field, got: " ++ take 100 (show t)
+
+-- ---------------------------------------------------------------------------
+-- String escape processing
+-- ---------------------------------------------------------------------------
+
+-- | Convert escape sequences in a parsed string literal to their
+-- actual characters: @\\n@ → newline, @\\t@ → tab, etc.
+processEscapes :: String -> String
+processEscapes [] = []
+processEscapes ('\\':'n':rest)  = '\n' : processEscapes rest
+processEscapes ('\\':'t':rest)  = '\t' : processEscapes rest
+processEscapes ('\\':'r':rest)  = '\r' : processEscapes rest
+processEscapes ('\\':'\\':rest) = '\\' : processEscapes rest
+processEscapes ('\\':'"':rest)  = '"'  : processEscapes rest
+processEscapes (c:rest)         = c    : processEscapes rest
 
 -- ---------------------------------------------------------------------------
 -- Parse tree utilities

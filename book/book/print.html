@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-d4d4b451.js";
+            window.path_to_searchindex_js = "searchindex-7ed70138.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-daf9c5e4.js"></script>
@@ -202,8 +202,9 @@ destructuring mechanism.</p>
 what other fields are present. Types are inferred, not declared.</p>
 </li>
 <li>
-<p><strong>Compilation to C.</strong> badlang compiles to readable, self-contained C99 that
-can be inspected, debugged, and compiled with any C compiler.</p>
+<p><strong>Compilation to C and native code.</strong> badlang compiles to readable,
+self-contained C99 or directly to AArch64 assembly (Apple Silicon). The
+generated code can be inspected, debugged, and compiled with any C compiler.</p>
 </li>
 </ul>
 <h2 id="a-taste"><a class="header" href="#a-taste">A Taste</a></h2>
@@ -670,8 +671,22 @@ calls, pattern matching, and I/O reads.</p>
 "Hello, world!"
 ""
 </code></pre>
-<p>String literals currently do not support escape sequences. What you write
-between the quotes is exactly what you get — there is no <code>\n</code>, <code>\t</code>, or <code>\\</code>.</p>
+<p>String literals support the following escape sequences:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Escape</th><th>Character</th></tr>
+</thead>
+<tbody>
+<tr><td><code>\n</code></td><td>Newline</td></tr>
+<tr><td><code>\t</code></td><td>Tab</td></tr>
+<tr><td><code>\r</code></td><td>Carriage return</td></tr>
+<tr><td><code>\\</code></td><td>Backslash</td></tr>
+<tr><td><code>\"</code></td><td>Double quote</td></tr>
+</tbody>
+</table>
+</div>
+<p>For example, <code>"line1\nline2"</code> contains an actual newline between the two words.</p>
 <h2 id="variables"><a class="header" href="#variables">Variables</a></h2>
 <p>A variable is an identifier that refers to a previously bound value. Identifiers
 start with a letter and continue with letters or digits:</p>
@@ -1846,9 +1861,13 @@ seal
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="the-compilation-pipeline"><a class="header" href="#the-compilation-pipeline">The Compilation Pipeline</a></h1>
-<p>badlang compiles source code to standalone executables via C. The pipeline
-has five stages:</p>
-<pre><code>Source (.bad) → PEG Parse → AST → Type Check → C Codegen → cc → Binary
+<p>badlang compiles source code to standalone executables through two backends:
+a portable <strong>C backend</strong> and a native <strong>AArch64 backend</strong> (Apple Silicon).
+Both share a common front end and intermediate representation.</p>
+<pre><code>Source (.bad) → PEG Parse → AST → Type Check → IR → Backend → cc → Binary
+                                                      │
+                                                      ├─ C Backend     → .c file
+                                                      └─ AArch64 Backend → .s file + runtime
 </code></pre>
 <p>Each stage is implemented as a separate Haskell module.</p>
 <h2 id="stage-1-peg-parsing"><a class="header" href="#stage-1-peg-parsing">Stage 1: PEG Parsing</a></h2>
@@ -1906,14 +1925,45 @@ pairwise</li>
 <li>This enables width subtyping automatically</li>
 </ul>
 <p>Type errors are reported with the expression that caused the mismatch.</p>
-<h2 id="stage-4-c-code-generation"><a class="header" href="#stage-4-c-code-generation">Stage 4: C Code Generation</a></h2>
-<p><strong>Module:</strong> <code>Badlang.Emit</code></p>
-<p>The emitter produces a single, self-contained C file with an embedded runtime.
-See the <a href="#c-code-generation">C Code Generation</a> chapter for details.</p>
-<h2 id="stage-5-c-compilation"><a class="header" href="#stage-5-c-compilation">Stage 5: C Compilation</a></h2>
+<h2 id="stage-4-lowering-to-ir"><a class="header" href="#stage-4-lowering-to-ir">Stage 4: Lowering to IR</a></h2>
+<p><strong>Module:</strong> <code>Badlang.IR</code> + <code>Badlang.Lower</code></p>
+<p>The lowering pass transforms the typed AST into an explicit intermediate
+representation with basic blocks, named temporaries, and flat instructions.
+Pattern matching, divine expressions, and let-in chains are all resolved at
+this stage so that backends are purely mechanical translations.</p>
+<p>Key properties of the IR:</p>
+<ul>
+<li><strong>Flat instructions</strong> — no nested expressions; every subexpression is
+named as a <code>Var</code>.</li>
+<li><strong>Explicit reference counting</strong> — <code>IRetain</code> and <code>IRelease</code> are first-class
+instructions.</li>
+<li><strong>Pattern matching decomposed into primitives</strong> — <code>ITagCheck</code>, <code>INullCheck</code>,
+<code>IIntEq</code>, <code>IStrEq</code> plus <code>TBranch</code> terminators create explicit control flow.</li>
+<li><strong>No SSA phi nodes</strong> — join points (divine results) use a pre-declared
+result variable written by whichever branch succeeds.</li>
+</ul>
+<h2 id="stage-5-code-generation"><a class="header" href="#stage-5-code-generation">Stage 5: Code Generation</a></h2>
+<h3 id="c-backend"><a class="header" href="#c-backend">C Backend</a></h3>
+<p><strong>Module:</strong> <code>Badlang.EmitC</code></p>
+<p>The C backend translates the IR into a single, self-contained C99 source file
+with an embedded runtime. Each IR instruction maps to one or two lines of C,
+and basic blocks become labeled sections with <code>goto</code>. See the
+<a href="#c-code-generation">C Code Generation</a> chapter for details.</p>
+<h3 id="aarch64-backend"><a class="header" href="#aarch64-backend">AArch64 Backend</a></h3>
+<p><strong>Module:</strong> <code>Badlang.EmitAArch64</code></p>
+<p>The AArch64 backend emits Apple Silicon assembly (<code>.s</code> files). All IR
+variables are stored on the stack using a fixed-size frame per function.
+The generated assembly links against a separate C runtime
+(<code>runtime_aarch64.c</code>) that provides the same value representation and
+reference counting as the embedded C runtime.</p>
+<h2 id="stage-6-assembling-and-linking"><a class="header" href="#stage-6-assembling-and-linking">Stage 6: Assembling and Linking</a></h2>
 <p>The badlang CLI invokes the system C compiler (<code>cc</code>) to compile the generated
-C code into a binary. With <code>--run</code>, it also executes the resulting binary
-immediately.</p>
+output into a binary:</p>
+<ul>
+<li><strong>C mode</strong> (default): <code>cc -o prog prog.c</code></li>
+<li><strong>Native mode</strong> (<code>--native</code>): <code>cc -o prog prog.s prog_rt.c</code></li>
+</ul>
+<p>With <code>--run</code>, the resulting binary is executed immediately.</p>
 <h2 id="module-summary"><a class="header" href="#module-summary">Module Summary</a></h2>
 <div class="table-wrapper">
 <table>
@@ -1925,7 +1975,11 @@ immediately.</p>
 <tr><td><code>Badlang.AST</code></td><td>Abstract syntax tree data types</td></tr>
 <tr><td><code>Badlang.Grammar</code></td><td>Grammar definition + parse tree → AST</td></tr>
 <tr><td><code>Badlang.Types</code></td><td>Type inference with row polymorphism</td></tr>
-<tr><td><code>Badlang.Emit</code></td><td>C code generation with embedded runtime</td></tr>
+<tr><td><code>Badlang.IR</code></td><td>Intermediate representation (basic blocks + flat instructions)</td></tr>
+<tr><td><code>Badlang.Lower</code></td><td>AST → IR lowering pass</td></tr>
+<tr><td><code>Badlang.EmitC</code></td><td>C code generation from IR</td></tr>
+<tr><td><code>Badlang.EmitAArch64</code></td><td>AArch64 assembly generation from IR</td></tr>
+<tr><td><code>Badlang.Runtime</code></td><td>C runtime source for the native backend</td></tr>
 </tbody>
 </table>
 </div>
@@ -2090,10 +2144,30 @@ unit.</p>
 <p>The generated code uses <code>__builtin_va_list</code> / <code>__builtin_va_start</code> /
 <code>__builtin_va_arg</code> for <code>make_record</code>’s variadic interface. These are supported
 by both GCC and Clang. No statement expressions (<code>({ ... })</code>) are used.</p>
+<h2 id="the-aarch64-backend"><a class="header" href="#the-aarch64-backend">The AArch64 Backend</a></h2>
+<p>In addition to C, badlang can compile directly to AArch64 (Apple Silicon)
+assembly. The native backend (<code>Badlang.EmitAArch64</code>) consumes the same IR as
+the C backend but emits <code>.s</code> files linked against a separate C runtime.</p>
+<pre><code class="language-bash">cabal run badlang -- --native examples/hello.bad
+# =&gt; Writes examples/hello.s + examples/hello_rt.c, links to examples/hello
+
+cabal run badlang -- --native --run examples/hello.bad
+# =&gt; Compiles and runs immediately
+</code></pre>
+<p>The strategy is straightforward: all IR variables are stored on the stack in
+a fixed-size frame. String literals are collected into a <code>.section __TEXT,__cstring</code> data section. Function calls use the standard Apple AArch64
+calling convention (x0 for first argument / return value, x29/x30 for frame
+and link registers).</p>
+<p>The self-hosting compiler in <code>examples/compiler/compiler.bad</code> also has its own
+AArch64 backend and can emit assembly when invoked with the <code>asm</code> flag.</p>
 <h2 id="inspecting-generated-code"><a class="header" href="#inspecting-generated-code">Inspecting Generated Code</a></h2>
 <p>To see the generated C without running it:</p>
 <pre><code class="language-bash">cabal run badlang -- examples/hello.bad
 cat examples/hello.c
+</code></pre>
+<p>To see the generated assembly:</p>
+<pre><code class="language-bash">cabal run badlang -- --native examples/hello.bad
+cat examples/hello.s
 </code></pre>
 <p>The output is intentionally readable. It’s a useful learning tool for
 understanding how high-level constructs map to low-level code.</p>
@@ -2101,8 +2175,8 @@ understanding how high-level constructs map to low-level code.</p>
 <h1 id="the-self-hosting-compiler"><a class="header" href="#the-self-hosting-compiler">The Self-Hosting Compiler</a></h1>
 <p>badlang is <strong>self-hosting</strong>: the file <code>examples/compiler/compiler.bad</code> is a
 complete badlang compiler written in badlang itself. It implements the full
-compilation pipeline — tokenizer, parser, and C code emitter — and can
-compile itself.</p>
+compilation pipeline — tokenizer, parser, C code emitter, and AArch64 native
+code generator — and can compile itself.</p>
 <h2 id="why-self-hosting"><a class="header" href="#why-self-hosting">Why Self-Hosting?</a></h2>
 <p>A self-hosting compiler is the ultimate test of a language’s expressiveness. If
 a language can implement its own compiler, it demonstrates that the language is
@@ -2114,18 +2188,24 @@ recursion, structural subtyping, and I/O all get a serious workout.</li>
 <li><strong>A correctness proof</strong> via bootstrapping: when the compiler compiles itself
 and produces identical output across generations, we know it faithfully
 implements its own semantics.</li>
-<li><strong>The largest badlang program</strong>, exercising the compiler at scale (~2000
+<li><strong>The largest badlang program</strong>, exercising the compiler at scale (~3000
 lines).</li>
 </ul>
 <h2 id="architecture-at-a-glance"><a class="header" href="#architecture-at-a-glance">Architecture at a Glance</a></h2>
 <p>The self-hosting compiler follows the same pipeline as the Haskell reference
 compiler, minus the type checker:</p>
-<pre><code>Source (.bad) → Tokenize → Parse → Emit C → Write File
+<pre><code>Source (.bad) → Tokenize → Parse → Emit C or AArch64 → Write File
 </code></pre>
 <p>The compiler reads a source file, tokenizes it, parses the token stream into
-an AST, generates C code, and writes the result to a file. It relies on a
-shared <code>runtime.c</code> that provides the value representation, reference counting,
-and built-in rites for file I/O and string manipulation.</p>
+an AST, and generates either C code or AArch64 assembly depending on the mode.
+It relies on a shared <code>runtime.c</code> (or <code>runtime_aarch64.c</code> for native mode)
+that provides the value representation, reference counting, and built-in rites
+for file I/O and string manipulation.</p>
+<p>The compiler selects its output mode via command-line arguments:</p>
+<ul>
+<li><code>compiler source.bad output.c</code> — emit C (default)</li>
+<li><code>compiler source.bad output.s asm</code> — emit AArch64 assembly</li>
+</ul>
 <p>The entire compiler is a single file organized into clear sections:</p>
 <div class="table-wrapper">
 <table>
@@ -2136,8 +2216,9 @@ and built-in rites for file I/O and string manipulation.</p>
 <tr><td>Utility library</td><td>Character classification, string helpers, linked lists</td></tr>
 <tr><td>Tokenizer</td><td>Lexical analysis into tokens</td></tr>
 <tr><td>Parser</td><td>Recursive descent into AST nodes</td></tr>
-<tr><td>Code emitter</td><td>AST to C translation</td></tr>
-<tr><td>Driver</td><td>Main ritual tying it all together</td></tr>
+<tr><td>C code emitter</td><td>AST to C translation</td></tr>
+<tr><td>AArch64 code emitter</td><td>AST to native assembly translation</td></tr>
+<tr><td>Driver</td><td>Main ritual selecting mode and tying it all together</td></tr>
 </tbody>
 </table>
 </div>
@@ -2256,8 +2337,10 @@ character:</p>
 sequence, extract with <code>substr</code>.</p>
 </li>
 <li>
-<p><strong><code>"</code></strong> → <code>lex_string</code>: Scan forward to the closing <code>"</code>, extract the
-contents (without quotes).</p>
+<p><strong><code>"</code></strong> → <code>lex_string</code>: Scan forward to the closing <code>"</code> (respecting
+backslash escapes), extract the contents (without quotes), and process
+escape sequences (<code>\n</code>, <code>\t</code>, <code>\r</code>, <code>\\</code>, <code>\"</code>) into their actual
+characters.</p>
 </li>
 <li>
 <p><strong>Letters or <code>_</code></strong> → <code>lex_word</code>: Scan to the end of the alphanumeric
@@ -2530,6 +2613,41 @@ time.</p>
 <li>Rite definitions</li>
 <li>The <code>main()</code> function (from the <code>ritual main</code> declaration)</li>
 </ol>
+<h2 id="the-aarch64-code-generator"><a class="header" href="#the-aarch64-code-generator">The AArch64 Code Generator</a></h2>
+<p>The self-hosting compiler also includes an AArch64 native code generator,
+activated by passing <code>asm</code> as the third command-line argument:</p>
+<pre><code>compiler source.bad output.s asm
+</code></pre>
+<h3 id="emitter-state"><a class="header" href="#emitter-state">Emitter State</a></h3>
+<p>Where the C emitter threads a simple <code>counter</code> through each call, the AArch64
+emitter threads a richer state record:</p>
+<pre><code>{| counter, slot_counter, slots, strs |}
+</code></pre>
+<ul>
+<li><strong><code>counter</code></strong> — for generating fresh labels</li>
+<li><strong><code>slot_counter</code></strong> — tracks the next available stack slot</li>
+<li><strong><code>slots</code></strong> — a linked list mapping variable names to stack slot numbers</li>
+<li><strong><code>strs</code></strong> — a linked list of string literals with deduplicated labels</li>
+</ul>
+<h3 id="stack-based-variables"><a class="header" href="#stack-based-variables">Stack-based Variables</a></h3>
+<p>All variables live on the stack. The <code>alloc_slot</code> rite allocates a slot and
+the <code>lookup_slot</code> rite finds one by name. Stack offsets are computed as
+<code>-(16 + (slot+1)*8)</code> relative to the frame pointer (x29), with
+<code>emit_load_slot</code> and <code>emit_store_slot</code> generating the appropriate <code>ldur</code>/<code>stur</code>
+instructions (falling back to register-indirect addressing for large offsets).</p>
+<h3 id="expression-emission-1"><a class="header" href="#expression-emission-1">Expression Emission</a></h3>
+<p>Each expression emitter follows the same convention as the C side — it takes
+an AST node and state, and returns <code>{| code, var, state |}</code>. The <code>code</code> is
+assembly text, <code>var</code> names the stack slot holding the result, and <code>state</code>
+carries the updated counters, slots, and string table.</p>
+<h3 id="string-table"><a class="header" href="#string-table">String Table</a></h3>
+<p>String literals and field names are collected into a deduplicated string
+table during emission. The <code>emit_string_table</code> rite emits them as <code>.asciz</code>
+directives in a <code>.section __TEXT,__cstring</code> data section at the end of the
+file.</p>
+<h3 id="mode-selection"><a class="header" href="#mode-selection">Mode Selection</a></h3>
+<p>The <code>get_mode</code> rite checks <code>argv[3]</code> for the string <code>"asm"</code>. The main ritual
+uses a <code>divine</code> on the mode to select between <code>emit_c</code> and <code>emit_asm</code>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="bootstrapping"><a class="header" href="#bootstrapping">Bootstrapping</a></h1>
 <p>A self-hosting compiler faces a chicken-and-egg problem: to compile itself, it
@@ -2567,19 +2685,25 @@ identical output.</p>
 <p>This fixed-point property is a strong correctness argument: the compiler
 faithfully implements the language semantics that it itself is written in.</p>
 <h2 id="running-the-bootstrap-test"><a class="header" href="#running-the-bootstrap-test">Running the Bootstrap Test</a></h2>
-<p>The <code>bootstrap.sh</code> script automates the full bootstrap chain:</p>
+<p>The <code>bootstrap.sh</code> script automates the full bootstrap chain. It supports two
+modes: <strong>C</strong> (default) and <strong>ASM</strong> (AArch64 native).</p>
 <pre><code class="language-bash">cd examples/compiler
-./bootstrap.sh 3
+./bootstrap.sh 3        # C mode (default)
+./bootstrap.sh 3 asm    # AArch64 native mode
 </code></pre>
 <p>This compiles through three generations and verifies:</p>
 <ul>
 <li>Each generation compiles successfully</li>
-<li>gen1.c through gen3.c are all identical</li>
+<li>gen1 through gen3 output files are all identical</li>
 <li>The final generation can compile <code>hello.bad</code> and produce correct output</li>
 </ul>
-<p>A successful run looks like:</p>
+<p>In C mode, gen0 is always built using the Haskell reference compiler. In ASM
+mode, gen0 is still built via C (since the Haskell compiler is the seed), but
+subsequent generations emit <code>.s</code> files and link against <code>runtime_aarch64.c</code>.</p>
+<p>A successful C-mode run looks like:</p>
 <pre><code>=== Badlang Bootstrap Test ===
 Generations: 3
+Mode: c
 
 [gen0] Compiling compiler.bad with Haskell compiler...
 [gen0] OK
@@ -2599,7 +2723,7 @@ Output matches expected: OK
 
 === BOOTSTRAP SUCCESS ===
 The compiler reaches a fixed point at gen1.
-All 3 generations produce identical C output.
+All 3 generations produce identical c output.
 </code></pre>
 <h2 id="what-the-bootstrap-proves"><a class="header" href="#what-the-bootstrap-proves">What the Bootstrap Proves</a></h2>
 <p>The bootstrap test establishes several things:</p>

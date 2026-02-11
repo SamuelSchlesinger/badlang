@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-d4d4b451.js";
+            window.path_to_searchindex_js = "../searchindex-7ed70138.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-daf9c5e4.js"></script>
@@ -210,19 +210,25 @@ identical output.</p>
 <p>This fixed-point property is a strong correctness argument: the compiler
 faithfully implements the language semantics that it itself is written in.</p>
 <h2 id="running-the-bootstrap-test"><a class="header" href="#running-the-bootstrap-test">Running the Bootstrap Test</a></h2>
-<p>The <code>bootstrap.sh</code> script automates the full bootstrap chain:</p>
+<p>The <code>bootstrap.sh</code> script automates the full bootstrap chain. It supports two
+modes: <strong>C</strong> (default) and <strong>ASM</strong> (AArch64 native).</p>
 <pre><code class="language-bash">cd examples/compiler
-./bootstrap.sh 3
+./bootstrap.sh 3        # C mode (default)
+./bootstrap.sh 3 asm    # AArch64 native mode
 </code></pre>
 <p>This compiles through three generations and verifies:</p>
 <ul>
 <li>Each generation compiles successfully</li>
-<li>gen1.c through gen3.c are all identical</li>
+<li>gen1 through gen3 output files are all identical</li>
 <li>The final generation can compile <code>hello.bad</code> and produce correct output</li>
 </ul>
-<p>A successful run looks like:</p>
+<p>In C mode, gen0 is always built using the Haskell reference compiler. In ASM
+mode, gen0 is still built via C (since the Haskell compiler is the seed), but
+subsequent generations emit <code>.s</code> files and link against <code>runtime_aarch64.c</code>.</p>
+<p>A successful C-mode run looks like:</p>
 <pre><code>=== Badlang Bootstrap Test ===
 Generations: 3
+Mode: c
 
 [gen0] Compiling compiler.bad with Haskell compiler...
 [gen0] OK
@@ -242,7 +248,7 @@ Output matches expected: OK
 
 === BOOTSTRAP SUCCESS ===
 The compiler reaches a fixed point at gen1.
-All 3 generations produce identical C output.
+All 3 generations produce identical c output.
 </code></pre>
 <h2 id="what-the-bootstrap-proves"><a class="header" href="#what-the-bootstrap-proves">What the Bootstrap Proves</a></h2>
 <p>The bootstrap test establishes several things:</p>

@@ -196,6 +196,29 @@ The generated code uses `__builtin_va_list` / `__builtin_va_start` /
 `__builtin_va_arg` for `make_record`'s variadic interface. These are supported
 by both GCC and Clang. No statement expressions (`({ ... })`) are used.
 
+## The AArch64 Backend
+
+In addition to C, badlang can compile directly to AArch64 (Apple Silicon)
+assembly. The native backend (`Badlang.EmitAArch64`) consumes the same IR as
+the C backend but emits `.s` files linked against a separate C runtime.
+
+```bash
+cabal run badlang -- --native examples/hello.bad
+# => Writes examples/hello.s + examples/hello_rt.c, links to examples/hello
+
+cabal run badlang -- --native --run examples/hello.bad
+# => Compiles and runs immediately
+```
+
+The strategy is straightforward: all IR variables are stored on the stack in
+a fixed-size frame. String literals are collected into a `.section
+__TEXT,__cstring` data section. Function calls use the standard Apple AArch64
+calling convention (x0 for first argument / return value, x29/x30 for frame
+and link registers).
+
+The self-hosting compiler in `examples/compiler/compiler.bad` also has its own
+AArch64 backend and can emit assembly when invoked with the `asm` flag.
+
 ## Inspecting Generated Code
 
 To see the generated C without running it:
@@ -203,6 +226,13 @@ To see the generated C without running it:
 ```bash
 cabal run badlang -- examples/hello.bad
 cat examples/hello.c
+```
+
+To see the generated assembly:
+
+```bash
+cabal run badlang -- --native examples/hello.bad
+cat examples/hello.s
 ```
 
 The output is intentionally readable. It's a useful learning tool for

@@ -3,10 +3,11 @@
 A programming language of rites and glyphs.
 
 badlang is an experiment in the limits of agentic programming. The entire
-language — parser generator, grammar, type system, C code generation, and
-a self-hosting compiler — was built collaboratively with AI. We pushed the
-experiment as far as writing a complete badlang compiler *in badlang itself*,
-one that bootstraps and reaches a fixed point.
+language — parser generator, grammar, type system, C code generation, AArch64
+native code generation, and a self-hosting compiler — was built collaboratively
+with AI. We pushed the experiment as far as writing a complete badlang compiler
+*in badlang itself*, one that bootstraps and reaches a fixed point in both C
+and native assembly output.
 
 The language is built from first principles in Haskell. It draws from pattern
 calculus and structural subtyping to create a language where pattern matching
@@ -26,6 +27,13 @@ cabal run badlang -- examples/hello.bad
 cabal run badlang -- --run examples/hello.bad
 # => 25
 # => 3628800
+
+# Compile to native AArch64 assembly (Apple Silicon)
+cabal run badlang -- --native examples/hello.bad
+# => Compiled to examples/hello
+
+# Compile native and run
+cabal run badlang -- --native --run examples/hello.bad
 ```
 
 ## The Language
@@ -149,22 +157,29 @@ seal
 
 ## Architecture
 
-badlang is implemented as a five-module Haskell library plus a thin CLI
+badlang is implemented as a nine-module Haskell library plus a thin CLI
 driver. The compilation pipeline is:
 
 ```
-Source (.bad) → PEG Parse → AST → Type Check → C Codegen → cc → Binary
+Source (.bad) → PEG Parse → AST → Type Check → IR → Backend → cc → Binary
+                                                      │
+                                                      ├─ C Backend     → .c file
+                                                      └─ AArch64 Backend → .s file + runtime
 ```
 
 ### Modules
 
-| Module             | Purpose                                        |
-|--------------------|------------------------------------------------|
-| `Badlang.PEG`      | PEG parser generator, built from scratch       |
-| `Badlang.AST`      | Abstract syntax tree types                     |
-| `Badlang.Grammar`  | Grammar definition + parse tree to AST         |
-| `Badlang.Types`    | Type inference with row polymorphism           |
-| `Badlang.Emit`     | C code generation with embedded runtime        |
+| Module               | Purpose                                        |
+|----------------------|------------------------------------------------|
+| `Badlang.PEG`        | PEG parser generator, built from scratch       |
+| `Badlang.AST`        | Abstract syntax tree types                     |
+| `Badlang.Grammar`    | Grammar definition + parse tree to AST         |
+| `Badlang.Types`      | Type inference with row polymorphism           |
+| `Badlang.IR`         | Intermediate representation (basic blocks)     |
+| `Badlang.Lower`      | AST to IR lowering pass                        |
+| `Badlang.EmitC`      | C code generation from IR                      |
+| `Badlang.EmitAArch64`| AArch64 assembly generation from IR            |
+| `Badlang.Runtime`    | C runtime source for the native backend        |
 
 ### PEG Parser Generator
 
@@ -187,15 +202,25 @@ This row variable `r` is what enables structural subtyping — a function
 expecting `{| x, y |}` will accept any record with those fields plus
 whatever `r` unifies with.
 
-### C Code Generation
+### Intermediate Representation
 
-The emitter produces self-contained C with an embedded runtime. All
-values are reference-counted tagged unions allocated with `malloc`.
-Because badlang values are immutable and there are no closures, cycles
-are impossible and reference counting is sufficient. Pattern matching
-compiles to cascading if-chains. The generated code is readable and
-can be compiled with any C compiler that supports `__builtin_va_arg`
-(GCC and Clang).
+Between the type checker and the backends sits an explicit IR with basic
+blocks, named temporaries, and flat instructions. Pattern matching, divine
+expressions, and let-in chains are all resolved at this stage so that
+backends are purely mechanical translations.
+
+### Code Generation
+
+**C backend.** The C emitter produces self-contained C with an embedded
+runtime. All values are reference-counted tagged unions allocated with
+`malloc`. Because badlang values are immutable and there are no closures,
+cycles are impossible and reference counting is sufficient. The generated code
+is readable and can be compiled with any C compiler.
+
+**AArch64 backend.** The native emitter produces Apple Silicon assembly. All
+variables live on the stack in a fixed-size frame per function. The generated
+assembly links against a separate C runtime (`runtime_aarch64.c`) that
+provides the same value representation and reference counting.
 
 ## Examples
 
@@ -211,15 +236,17 @@ can be compiled with any C compiler that supports `__builtin_va_arg`
 
 badlang is self-hosting: `examples/compiler/compiler.bad` is a complete
 badlang compiler written in badlang itself. It implements the full pipeline
-— tokenizer, parser, type checker, and C code emitter — and can compile
-itself. A bootstrap test verifies that the compiler reaches a fixed point:
+— tokenizer, parser, C code emitter, and AArch64 native code generator — and
+can compile itself. A bootstrap test verifies that the compiler reaches a
+fixed point in both modes:
 
 ```bash
-examples/compiler/bootstrap.sh 3
+examples/compiler/bootstrap.sh 3        # C mode
+examples/compiler/bootstrap.sh 3 asm    # AArch64 native mode
 ```
 
 This compiles `compiler.bad` through three generations and confirms each
-produces identical C output.
+produces identical output.
 
 ## Building
 

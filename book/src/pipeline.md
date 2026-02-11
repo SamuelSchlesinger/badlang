@@ -1,10 +1,14 @@
 # The Compilation Pipeline
 
-badlang compiles source code to standalone executables via C. The pipeline
-has five stages:
+badlang compiles source code to standalone executables through two backends:
+a portable **C backend** and a native **AArch64 backend** (Apple Silicon).
+Both share a common front end and intermediate representation.
 
 ```
-Source (.bad) → PEG Parse → AST → Type Check → C Codegen → cc → Binary
+Source (.bad) → PEG Parse → AST → Type Check → IR → Backend → cc → Binary
+                                                      │
+                                                      ├─ C Backend     → .c file
+                                                      └─ AArch64 Backend → .s file + runtime
 ```
 
 Each stage is implemented as a separate Haskell module.
@@ -69,18 +73,56 @@ Row unification follows Remy's algorithm:
 
 Type errors are reported with the expression that caused the mismatch.
 
-## Stage 4: C Code Generation
+## Stage 4: Lowering to IR
 
-**Module:** `Badlang.Emit`
+**Module:** `Badlang.IR` + `Badlang.Lower`
 
-The emitter produces a single, self-contained C file with an embedded runtime.
-See the [C Code Generation](./codegen.md) chapter for details.
+The lowering pass transforms the typed AST into an explicit intermediate
+representation with basic blocks, named temporaries, and flat instructions.
+Pattern matching, divine expressions, and let-in chains are all resolved at
+this stage so that backends are purely mechanical translations.
 
-## Stage 5: C Compilation
+Key properties of the IR:
+
+- **Flat instructions** — no nested expressions; every subexpression is
+  named as a `Var`.
+- **Explicit reference counting** — `IRetain` and `IRelease` are first-class
+  instructions.
+- **Pattern matching decomposed into primitives** — `ITagCheck`, `INullCheck`,
+  `IIntEq`, `IStrEq` plus `TBranch` terminators create explicit control flow.
+- **No SSA phi nodes** — join points (divine results) use a pre-declared
+  result variable written by whichever branch succeeds.
+
+## Stage 5: Code Generation
+
+### C Backend
+
+**Module:** `Badlang.EmitC`
+
+The C backend translates the IR into a single, self-contained C99 source file
+with an embedded runtime. Each IR instruction maps to one or two lines of C,
+and basic blocks become labeled sections with `goto`. See the
+[C Code Generation](./codegen.md) chapter for details.
+
+### AArch64 Backend
+
+**Module:** `Badlang.EmitAArch64`
+
+The AArch64 backend emits Apple Silicon assembly (`.s` files). All IR
+variables are stored on the stack using a fixed-size frame per function.
+The generated assembly links against a separate C runtime
+(`runtime_aarch64.c`) that provides the same value representation and
+reference counting as the embedded C runtime.
+
+## Stage 6: Assembling and Linking
 
 The badlang CLI invokes the system C compiler (`cc`) to compile the generated
-C code into a binary. With `--run`, it also executes the resulting binary
-immediately.
+output into a binary:
+
+- **C mode** (default): `cc -o prog prog.c`
+- **Native mode** (`--native`): `cc -o prog prog.s prog_rt.c`
+
+With `--run`, the resulting binary is executed immediately.
 
 ## Module Summary
 
@@ -90,4 +132,8 @@ immediately.
 | `Badlang.AST` | Abstract syntax tree data types |
 | `Badlang.Grammar` | Grammar definition + parse tree → AST |
 | `Badlang.Types` | Type inference with row polymorphism |
-| `Badlang.Emit` | C code generation with embedded runtime |
+| `Badlang.IR` | Intermediate representation (basic blocks + flat instructions) |
+| `Badlang.Lower` | AST → IR lowering pass |
+| `Badlang.EmitC` | C code generation from IR |
+| `Badlang.EmitAArch64` | AArch64 assembly generation from IR |
+| `Badlang.Runtime` | C runtime source for the native backend |

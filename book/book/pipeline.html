@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-d4d4b451.js";
+            window.path_to_searchindex_js = "searchindex-7ed70138.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-daf9c5e4.js"></script>
@@ -175,9 +175,13 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="the-compilation-pipeline"><a class="header" href="#the-compilation-pipeline">The Compilation Pipeline</a></h1>
-<p>badlang compiles source code to standalone executables via C. The pipeline
-has five stages:</p>
-<pre><code>Source (.bad) → PEG Parse → AST → Type Check → C Codegen → cc → Binary
+<p>badlang compiles source code to standalone executables through two backends:
+a portable <strong>C backend</strong> and a native <strong>AArch64 backend</strong> (Apple Silicon).
+Both share a common front end and intermediate representation.</p>
+<pre><code>Source (.bad) → PEG Parse → AST → Type Check → IR → Backend → cc → Binary
+                                                      │
+                                                      ├─ C Backend     → .c file
+                                                      └─ AArch64 Backend → .s file + runtime
 </code></pre>
 <p>Each stage is implemented as a separate Haskell module.</p>
 <h2 id="stage-1-peg-parsing"><a class="header" href="#stage-1-peg-parsing">Stage 1: PEG Parsing</a></h2>
@@ -235,14 +239,45 @@ pairwise</li>
 <li>This enables width subtyping automatically</li>
 </ul>
 <p>Type errors are reported with the expression that caused the mismatch.</p>
-<h2 id="stage-4-c-code-generation"><a class="header" href="#stage-4-c-code-generation">Stage 4: C Code Generation</a></h2>
-<p><strong>Module:</strong> <code>Badlang.Emit</code></p>
-<p>The emitter produces a single, self-contained C file with an embedded runtime.
-See the <a href="./codegen.html">C Code Generation</a> chapter for details.</p>
-<h2 id="stage-5-c-compilation"><a class="header" href="#stage-5-c-compilation">Stage 5: C Compilation</a></h2>
+<h2 id="stage-4-lowering-to-ir"><a class="header" href="#stage-4-lowering-to-ir">Stage 4: Lowering to IR</a></h2>
+<p><strong>Module:</strong> <code>Badlang.IR</code> + <code>Badlang.Lower</code></p>
+<p>The lowering pass transforms the typed AST into an explicit intermediate
+representation with basic blocks, named temporaries, and flat instructions.
+Pattern matching, divine expressions, and let-in chains are all resolved at
+this stage so that backends are purely mechanical translations.</p>
+<p>Key properties of the IR:</p>
+<ul>
+<li><strong>Flat instructions</strong> — no nested expressions; every subexpression is
+named as a <code>Var</code>.</li>
+<li><strong>Explicit reference counting</strong> — <code>IRetain</code> and <code>IRelease</code> are first-class
+instructions.</li>
+<li><strong>Pattern matching decomposed into primitives</strong> — <code>ITagCheck</code>, <code>INullCheck</code>,
+<code>IIntEq</code>, <code>IStrEq</code> plus <code>TBranch</code> terminators create explicit control flow.</li>
+<li><strong>No SSA phi nodes</strong> — join points (divine results) use a pre-declared
+result variable written by whichever branch succeeds.</li>
+</ul>
+<h2 id="stage-5-code-generation"><a class="header" href="#stage-5-code-generation">Stage 5: Code Generation</a></h2>
+<h3 id="c-backend"><a class="header" href="#c-backend">C Backend</a></h3>
+<p><strong>Module:</strong> <code>Badlang.EmitC</code></p>
+<p>The C backend translates the IR into a single, self-contained C99 source file
+with an embedded runtime. Each IR instruction maps to one or two lines of C,
+and basic blocks become labeled sections with <code>goto</code>. See the
+<a href="./codegen.html">C Code Generation</a> chapter for details.</p>
+<h3 id="aarch64-backend"><a class="header" href="#aarch64-backend">AArch64 Backend</a></h3>
+<p><strong>Module:</strong> <code>Badlang.EmitAArch64</code></p>
+<p>The AArch64 backend emits Apple Silicon assembly (<code>.s</code> files). All IR
+variables are stored on the stack using a fixed-size frame per function.
+The generated assembly links against a separate C runtime
+(<code>runtime_aarch64.c</code>) that provides the same value representation and
+reference counting as the embedded C runtime.</p>
+<h2 id="stage-6-assembling-and-linking"><a class="header" href="#stage-6-assembling-and-linking">Stage 6: Assembling and Linking</a></h2>
 <p>The badlang CLI invokes the system C compiler (<code>cc</code>) to compile the generated
-C code into a binary. With <code>--run</code>, it also executes the resulting binary
-immediately.</p>
+output into a binary:</p>
+<ul>
+<li><strong>C mode</strong> (default): <code>cc -o prog prog.c</code></li>
+<li><strong>Native mode</strong> (<code>--native</code>): <code>cc -o prog prog.s prog_rt.c</code></li>
+</ul>
+<p>With <code>--run</code>, the resulting binary is executed immediately.</p>
 <h2 id="module-summary"><a class="header" href="#module-summary">Module Summary</a></h2>
 <div class="table-wrapper">
 <table>
@@ -254,7 +289,11 @@ immediately.</p>
 <tr><td><code>Badlang.AST</code></td><td>Abstract syntax tree data types</td></tr>
 <tr><td><code>Badlang.Grammar</code></td><td>Grammar definition + parse tree → AST</td></tr>
 <tr><td><code>Badlang.Types</code></td><td>Type inference with row polymorphism</td></tr>
-<tr><td><code>Badlang.Emit</code></td><td>C code generation with embedded runtime</td></tr>
+<tr><td><code>Badlang.IR</code></td><td>Intermediate representation (basic blocks + flat instructions)</td></tr>
+<tr><td><code>Badlang.Lower</code></td><td>AST → IR lowering pass</td></tr>
+<tr><td><code>Badlang.EmitC</code></td><td>C code generation from IR</td></tr>
+<tr><td><code>Badlang.EmitAArch64</code></td><td>AArch64 assembly generation from IR</td></tr>
+<tr><td><code>Badlang.Runtime</code></td><td>C runtime source for the native backend</td></tr>
 </tbody>
 </table>
 </div>

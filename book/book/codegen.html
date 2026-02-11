@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-d4d4b451.js";
+            window.path_to_searchindex_js = "searchindex-7ed70138.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-daf9c5e4.js"></script>
@@ -334,10 +334,30 @@ unit.</p>
 <p>The generated code uses <code>__builtin_va_list</code> / <code>__builtin_va_start</code> /
 <code>__builtin_va_arg</code> for <code>make_record</code>’s variadic interface. These are supported
 by both GCC and Clang. No statement expressions (<code>({ ... })</code>) are used.</p>
+<h2 id="the-aarch64-backend"><a class="header" href="#the-aarch64-backend">The AArch64 Backend</a></h2>
+<p>In addition to C, badlang can compile directly to AArch64 (Apple Silicon)
+assembly. The native backend (<code>Badlang.EmitAArch64</code>) consumes the same IR as
+the C backend but emits <code>.s</code> files linked against a separate C runtime.</p>
+<pre><code class="language-bash">cabal run badlang -- --native examples/hello.bad
+# =&gt; Writes examples/hello.s + examples/hello_rt.c, links to examples/hello
+
+cabal run badlang -- --native --run examples/hello.bad
+# =&gt; Compiles and runs immediately
+</code></pre>
+<p>The strategy is straightforward: all IR variables are stored on the stack in
+a fixed-size frame. String literals are collected into a <code>.section __TEXT,__cstring</code> data section. Function calls use the standard Apple AArch64
+calling convention (x0 for first argument / return value, x29/x30 for frame
+and link registers).</p>
+<p>The self-hosting compiler in <code>examples/compiler/compiler.bad</code> also has its own
+AArch64 backend and can emit assembly when invoked with the <code>asm</code> flag.</p>
 <h2 id="inspecting-generated-code"><a class="header" href="#inspecting-generated-code">Inspecting Generated Code</a></h2>
 <p>To see the generated C without running it:</p>
 <pre><code class="language-bash">cabal run badlang -- examples/hello.bad
 cat examples/hello.c
+</code></pre>
+<p>To see the generated assembly:</p>
+<pre><code class="language-bash">cabal run badlang -- --native examples/hello.bad
+cat examples/hello.s
 </code></pre>
 <p>The output is intentionally readable. It’s a useful learning tool for
 understanding how high-level constructs map to low-level code.</p>

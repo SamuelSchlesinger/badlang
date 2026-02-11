@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-d4d4b451.js";
+            window.path_to_searchindex_js = "../searchindex-7ed70138.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-daf9c5e4.js"></script>
@@ -191,8 +191,22 @@
 "Hello, world!"
 ""
 </code></pre>
-<p>String literals currently do not support escape sequences. What you write
-between the quotes is exactly what you get — there is no <code>\n</code>, <code>\t</code>, or <code>\\</code>.</p>
+<p>String literals support the following escape sequences:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Escape</th><th>Character</th></tr>
+</thead>
+<tbody>
+<tr><td><code>\n</code></td><td>Newline</td></tr>
+<tr><td><code>\t</code></td><td>Tab</td></tr>
+<tr><td><code>\r</code></td><td>Carriage return</td></tr>
+<tr><td><code>\\</code></td><td>Backslash</td></tr>
+<tr><td><code>\"</code></td><td>Double quote</td></tr>
+</tbody>
+</table>
+</div>
+<p>For example, <code>"line1\nline2"</code> contains an actual newline between the two words.</p>
 <h2 id="variables"><a class="header" href="#variables">Variables</a></h2>
 <p>A variable is an identifier that refers to a previously bound value. Identifiers
 start with a letter and continue with letters or digits:</p>

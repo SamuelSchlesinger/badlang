@@ -31,8 +31,10 @@ character:
 1. **Digits** → `lex_number`: Scan forward to find the end of the digit
    sequence, extract with `substr`.
 
-2. **`"`** → `lex_string`: Scan forward to the closing `"`, extract the
-   contents (without quotes).
+2. **`"`** → `lex_string`: Scan forward to the closing `"` (respecting
+   backslash escapes), extract the contents (without quotes), and process
+   escape sequences (`\n`, `\t`, `\r`, `\\`, `\"`) into their actual
+   characters.
 
 3. **Letters or `_`** → `lex_word`: Scan to the end of the alphanumeric
    sequence. Check against the keyword list with `is_keyword`. If it matches,

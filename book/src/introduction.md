@@ -25,8 +25,9 @@ badlang is designed around a few core ideas:
   `x` and `y` will accept *any* record that has those fields, regardless of
   what other fields are present. Types are inferred, not declared.
 
-- **Compilation to C.** badlang compiles to readable, self-contained C99 that
-  can be inspected, debugged, and compiled with any C compiler.
+- **Compilation to C and native code.** badlang compiles to readable,
+  self-contained C99 or directly to AArch64 assembly (Apple Silicon). The
+  generated code can be inspected, debugged, and compiled with any C compiler.
 
 ## A Taste
 

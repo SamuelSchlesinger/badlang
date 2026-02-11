@@ -263,7 +263,36 @@ rite find_str_end
         let ch = invoke char_at {| s: src, n: pos |}
         divine ch == 34
           given 1 => pos
-          given 0 => invoke find_str_end {| src: src, pos: pos + 1 |}
+          given 0 =>
+            divine ch == 92
+              given 1 => invoke find_str_end {| src: src, pos: pos + 2 |}
+              given 0 => invoke find_str_end {| src: src, pos: pos + 1 |}
+            seal
+        seal
+    seal
+seal
+
+rite process_escapes
+  given {| s, pos, acc |} =>
+    let slen = invoke strlen {| s: s |}
+    divine pos >= slen
+      given 1 => acc
+      given 0 =>
+        let ch = invoke char_at {| s: s, n: pos |}
+        divine ch == 92
+          given 1 =>
+            let next = invoke char_at {| s: s, n: pos + 1 |}
+            let esc = divine next
+              given 110 => invoke char_of_int {| n: 10 |}
+              given 116 => invoke char_of_int {| n: 9 |}
+              given 114 => invoke char_of_int {| n: 13 |}
+              given 92 => invoke char_of_int {| n: 92 |}
+              given 34 => invoke char_of_int {| n: 34 |}
+              given _ => invoke char_of_int {| n: next |}
+            seal
+            invoke process_escapes {| s: s, pos: pos + 2, acc: invoke concat {| a: acc, b: esc |} |}
+          given 0 =>
+            invoke process_escapes {| s: s, pos: pos + 1, acc: invoke concat {| a: acc, b: invoke char_of_int {| n: ch |} |} |}
         seal
     seal
 seal
@@ -309,7 +338,8 @@ seal
 rite lex_string
   given {| src, pos |} =>
     let end_pos = invoke find_str_end {| src: src, pos: pos + 1 |}
-    let value = invoke substr {| s: src, start: pos + 1, len: end_pos - pos - 1 |}
+    let raw = invoke substr {| s: src, start: pos + 1, len: end_pos - pos - 1 |}
+    let value = invoke process_escapes {| s: raw, pos: 0, acc: "" |}
     {| type: "str", value: value, pos: end_pos + 1 |}
 seal
 
@@ -1092,6 +1122,12 @@ rite c_escape_char
       given 10 =>
         let b = invoke bsl {| |}
         invoke concat {| a: b, b: "n" |}
+      given 9 =>
+        let b = invoke bsl {| |}
+        invoke concat {| a: b, b: "t" |}
+      given 13 =>
+        let b = invoke bsl {| |}
+        invoke concat {| a: b, b: "r" |}
       given _ => invoke char_of_int {| n: c |}
     seal
 seal
@@ -2049,6 +2085,1074 @@ rite emit_c
 seal
 
 -- ============================================================
+-- AArch64 Code Generation: Helpers
+-- ============================================================
+
+-- Allocate a stack slot for a named variable
+rite alloc_slot
+  given {| name, state |} =>
+    let slot = state.slot_counter
+    let new_slots = invoke cons {| head: {| name: name, slot: slot |}, tail: state.slots |}
+    {| slot: slot, state: {| counter: state.counter, slot_counter: slot + 1, slots: new_slots, strs: state.strs |} |}
+seal
+
+-- Look up a named variable's slot number
+rite lookup_slot
+  given {| name, slots |} =>
+    divine slots
+      given {| tag: "cons", head, tail |} =>
+        divine invoke str_eq {| a: head.name, b: name |}
+          given 1 => head.slot
+          given 0 => invoke lookup_slot {| name: name, slots: tail |}
+        seal
+    seal
+seal
+
+-- Stack offset for a slot: -(16 + (slot+1)*8)
+rite slot_offset
+  given {| slot |} => 0 - (16 + (slot + 1) * 8)
+seal
+
+-- Append newline to a string (assembly line terminator)
+rite asm_ln
+  given {| s |} => invoke concat {| a: s, b: invoke nl {| |} |}
+seal
+
+-- Generate load from stack slot into register
+rite emit_load_slot
+  given {| slot, reg |} =>
+    let off = invoke slot_offset {| slot: slot |}
+    let off_s = invoke int_to_str {| n: off |}
+    divine off >= (0 - 256)
+      given 1 =>
+        let s1 = invoke concat {| a: "  ldur ", b: reg |}
+        let s2 = invoke concat {| a: s1, b: ", [x29, #" |}
+        let s3 = invoke concat {| a: s2, b: off_s |}
+        invoke asm_ln {| s: invoke concat {| a: s3, b: "]" |} |}
+      given 0 =>
+        let mov = invoke emit_mov_imm {| reg: "x16", n: off |}
+        let s1 = invoke concat {| a: mov, b: "  ldr " |}
+        let s2 = invoke concat {| a: s1, b: reg |}
+        invoke asm_ln {| s: invoke concat {| a: s2, b: ", [x29, x16]" |} |}
+    seal
+seal
+
+-- Generate store register into stack slot
+rite emit_store_slot
+  given {| slot, reg |} =>
+    let off = invoke slot_offset {| slot: slot |}
+    let off_s = invoke int_to_str {| n: off |}
+    divine off >= (0 - 256)
+      given 1 =>
+        let s1 = invoke concat {| a: "  stur ", b: reg |}
+        let s2 = invoke concat {| a: s1, b: ", [x29, #" |}
+        let s3 = invoke concat {| a: s2, b: off_s |}
+        invoke asm_ln {| s: invoke concat {| a: s3, b: "]" |} |}
+      given 0 =>
+        let mov = invoke emit_mov_imm {| reg: "x16", n: off |}
+        let s1 = invoke concat {| a: mov, b: "  str " |}
+        let s2 = invoke concat {| a: s1, b: reg |}
+        invoke asm_ln {| s: invoke concat {| a: s2, b: ", [x29, x16]" |} |}
+    seal
+seal
+
+-- Generate mov/movn for integer immediate
+rite emit_mov_imm
+  given {| reg, n |} =>
+    let nc = invoke nl {| |}
+    divine (n >= 0) && (n < 65536)
+      given 1 =>
+        let s1 = invoke concat {| a: "  mov ", b: reg |}
+        let s2 = invoke concat {| a: s1, b: ", #" |}
+        let s3 = invoke concat {| a: s2, b: invoke int_to_str {| n: n |} |}
+        invoke concat {| a: s3, b: nc |}
+      given 0 =>
+        divine (n < 0) && (n >= (0 - 65536))
+          given 1 =>
+            let pos = 0 - (n + 1)
+            let s1 = invoke concat {| a: "  movn ", b: reg |}
+            let s2 = invoke concat {| a: s1, b: ", #" |}
+            let s3 = invoke concat {| a: s2, b: invoke int_to_str {| n: pos |} |}
+            invoke concat {| a: s3, b: nc |}
+          given 0 =>
+            divine n >= 0
+              given 1 =>
+                let lo = n % 65536
+                let hi = n / 65536
+                let s1 = invoke concat {| a: "  mov ", b: reg |}
+                let s2 = invoke concat {| a: s1, b: ", #" |}
+                let s3 = invoke concat {| a: s2, b: invoke int_to_str {| n: lo |} |}
+                let s4 = invoke concat {| a: s3, b: nc |}
+                let s5 = invoke concat {| a: s4, b: "  movk " |}
+                let s6 = invoke concat {| a: s5, b: reg |}
+                let s7 = invoke concat {| a: s6, b: ", #" |}
+                let s8 = invoke concat {| a: s7, b: invoke int_to_str {| n: hi |} |}
+                let s9 = invoke concat {| a: s8, b: ", lsl #16" |}
+                invoke concat {| a: s9, b: nc |}
+              given 0 =>
+                let abs_n = 0 - n
+                let lo = abs_n % 65536
+                let hi = abs_n / 65536
+                divine hi == 0
+                  given 1 =>
+                    let s1 = invoke concat {| a: "  mov ", b: reg |}
+                    let s2 = invoke concat {| a: s1, b: ", #" |}
+                    let s3 = invoke concat {| a: s2, b: invoke int_to_str {| n: lo |} |}
+                    let s4 = invoke concat {| a: s3, b: nc |}
+                    let s5 = invoke concat {| a: s4, b: "  neg " |}
+                    let s6 = invoke concat {| a: s5, b: reg |}
+                    let s7 = invoke concat {| a: s6, b: ", " |}
+                    let s8 = invoke concat {| a: s7, b: reg |}
+                    invoke concat {| a: s8, b: nc |}
+                  given 0 =>
+                    let s1 = invoke concat {| a: "  mov ", b: reg |}
+                    let s2 = invoke concat {| a: s1, b: ", #" |}
+                    let s3 = invoke concat {| a: s2, b: invoke int_to_str {| n: lo |} |}
+                    let s4 = invoke concat {| a: s3, b: nc |}
+                    let s5 = invoke concat {| a: s4, b: "  movk " |}
+                    let s6 = invoke concat {| a: s5, b: reg |}
+                    let s7 = invoke concat {| a: s6, b: ", #" |}
+                    let s8 = invoke concat {| a: s7, b: invoke int_to_str {| n: hi |} |}
+                    let s9 = invoke concat {| a: s8, b: ", lsl #16" |}
+                    let s10 = invoke concat {| a: s9, b: nc |}
+                    let s11 = invoke concat {| a: s10, b: "  neg " |}
+                    let s12 = invoke concat {| a: s11, b: reg |}
+                    let s13 = invoke concat {| a: s12, b: ", " |}
+                    let s14 = invoke concat {| a: s13, b: reg |}
+                    invoke concat {| a: s14, b: nc |}
+                seal
+            seal
+        seal
+    seal
+seal
+
+-- Search string table for existing entry
+rite find_str_asm
+  given {| s, strs |} =>
+    divine invoke is_nil {| list: strs |}
+      given 1 => {| tag: "none" |}
+      given 0 =>
+        let head = invoke list_head {| list: strs |}
+        let tail = invoke list_tail {| list: strs |}
+        divine invoke str_eq {| a: head.value, b: s |}
+          given 1 => {| tag: "some", label: head.label |}
+          given 0 => invoke find_str_asm {| s: s, strs: tail |}
+        seal
+    seal
+seal
+
+-- Add string to table (with dedup), return label
+rite add_str_asm
+  given {| s, state |} =>
+    let found = invoke find_str_asm {| s: s, strs: state.strs |}
+    divine found.tag
+      given "some" => {| label: found.label, state: state |}
+      given "none" =>
+        let idx = invoke list_len {| list: state.strs |}
+        let label = invoke concat {| a: "Lstr", b: invoke int_to_str {| n: idx |} |}
+        let entry = {| label: label, value: s |}
+        let new_strs = invoke cons {| head: entry, tail: state.strs |}
+        {| label: label, state: {| counter: state.counter, slot_counter: state.slot_counter, slots: state.slots, strs: new_strs |} |}
+    seal
+seal
+
+-- Escape a character for .asciz
+rite asm_escape_char
+  given {| c |} =>
+    divine c
+      given 34 => invoke concat {| a: invoke bsl {| |}, b: invoke dq {| |} |}
+      given 92 =>
+        let b = invoke bsl {| |}
+        invoke concat {| a: b, b: b |}
+      given 10 => invoke concat {| a: invoke bsl {| |}, b: "n" |}
+      given 9 => invoke concat {| a: invoke bsl {| |}, b: "t" |}
+      given 13 => invoke concat {| a: invoke bsl {| |}, b: "r" |}
+      given _ => invoke char_of_int {| n: c |}
+    seal
+seal
+
+rite asm_escape_loop
+  given {| s, pos, acc |} =>
+    let slen = invoke strlen {| s: s |}
+    divine pos >= slen
+      given 1 => acc
+      given 0 =>
+        let ch = invoke char_at {| s: s, n: pos |}
+        let esc = invoke asm_escape_char {| c: ch |}
+        invoke asm_escape_loop {| s: s, pos: pos + 1, acc: invoke concat {| a: acc, b: esc |} |}
+    seal
+seal
+
+rite asm_string
+  given {| s |} =>
+    let q = invoke dq {| |}
+    let escaped = invoke asm_escape_loop {| s: s, pos: 0, acc: "" |}
+    let s1 = invoke concat {| a: q, b: escaped |}
+    invoke concat {| a: s1, b: q |}
+seal
+
+-- Fixed-size function prologue/epilogue (2064-byte frame)
+rite emit_prologue
+  given {| |} =>
+    let n = invoke nl {| |}
+    let s1 = invoke concat {| a: "  stp x29, x30, [sp, #-16]!", b: n |}
+    let s2 = invoke concat {| a: s1, b: "  mov x29, sp" |}
+    let s3 = invoke concat {| a: s2, b: n |}
+    let s4 = invoke concat {| a: s3, b: "  sub sp, sp, #2048" |}
+    invoke concat {| a: s4, b: n |}
+seal
+
+rite emit_epilogue
+  given {| |} =>
+    let n = invoke nl {| |}
+    let s1 = invoke concat {| a: "  add sp, sp, #2048", b: n |}
+    let s2 = invoke concat {| a: s1, b: "  ldp x29, x30, [sp], #16" |}
+    let s3 = invoke concat {| a: s2, b: n |}
+    let s4 = invoke concat {| a: s3, b: "  ret" |}
+    invoke concat {| a: s4, b: n |}
+seal
+
+-- Check mode from argv[3]
+rite get_mode
+  given {| |} =>
+    let ac = invoke argc {| |}
+    divine ac >= 4
+      given 1 =>
+        divine invoke str_eq {| a: invoke argv {| n: 3 |}, b: "asm" |}
+          given 1 => 1
+          given 0 => 0
+        seal
+      given 0 => 0
+    seal
+seal
+
+-- Retain/release code for bound pattern vars (ASM)
+rite gen_retain_code_asm
+  given {| names, slots |} =>
+    divine invoke is_nil {| list: names |}
+      given 1 => ""
+      given 0 =>
+        let head = invoke list_head {| list: names |}
+        let tail = invoke list_tail {| list: names |}
+        let cn = invoke c_name {| name: head |}
+        let slot = invoke lookup_slot {| name: cn, slots: slots |}
+        let load = invoke emit_load_slot {| slot: slot, reg: "x0" |}
+        let s1 = invoke concat {| a: load, b: invoke asm_ln {| s: "  bl _rc_retain" |} |}
+        let rest = invoke gen_retain_code_asm {| names: tail, slots: slots |}
+        invoke concat {| a: s1, b: rest |}
+    seal
+seal
+
+rite gen_release_code_asm
+  given {| names, slots |} =>
+    divine invoke is_nil {| list: names |}
+      given 1 => ""
+      given 0 =>
+        let head = invoke list_head {| list: names |}
+        let tail = invoke list_tail {| list: names |}
+        let cn = invoke c_name {| name: head |}
+        let slot = invoke lookup_slot {| name: cn, slots: slots |}
+        let load = invoke emit_load_slot {| slot: slot, reg: "x0" |}
+        let s1 = invoke concat {| a: load, b: invoke asm_ln {| s: "  bl _rc_release" |} |}
+        let rest = invoke gen_release_code_asm {| names: tail, slots: slots |}
+        invoke concat {| a: s1, b: rest |}
+    seal
+seal
+
+-- ============================================================
+-- AArch64: Expression Emission
+-- ============================================================
+
+rite emit_int_lit_asm
+  given {| node, state |} =>
+    let f = invoke fresh_var {| prefix: "_t", counter: state.counter |}
+    let st1 = {| counter: f.counter, slot_counter: state.slot_counter, slots: state.slots, strs: state.strs |}
+    let r = invoke alloc_slot {| name: f.name, state: st1 |}
+    let val = invoke str_to_int {| s: node.value |}
+    let mov = invoke emit_mov_imm {| reg: "x0", n: val |}
+    let store = invoke emit_store_slot {| slot: r.slot, reg: "x0" |}
+    let code = invoke concat {| a: mov, b: invoke asm_ln {| s: "  bl _make_int" |} |}
+    {| code: invoke concat {| a: code, b: store |}, var: f.name, state: r.state |}
+seal
+
+rite emit_str_lit_asm
+  given {| node, state |} =>
+    let n = invoke nl {| |}
+    let f = invoke fresh_var {| prefix: "_t", counter: state.counter |}
+    let st1 = {| counter: f.counter, slot_counter: state.slot_counter, slots: state.slots, strs: state.strs |}
+    let sr = invoke add_str_asm {| s: node.value, state: st1 |}
+    let r = invoke alloc_slot {| name: f.name, state: sr.state |}
+    let store = invoke emit_store_slot {| slot: r.slot, reg: "x0" |}
+    let s1 = invoke concat {| a: "  adrp x0, ", b: sr.label |}
+    let s2 = invoke concat {| a: s1, b: "@PAGE" |}
+    let s3 = invoke concat {| a: s2, b: n |}
+    let s4 = invoke concat {| a: s3, b: "  add x0, x0, " |}
+    let s5 = invoke concat {| a: s4, b: sr.label |}
+    let s6 = invoke concat {| a: s5, b: "@PAGEOFF" |}
+    let s7 = invoke concat {| a: s6, b: n |}
+    let code = invoke concat {| a: s7, b: invoke asm_ln {| s: "  bl _make_str" |} |}
+    {| code: invoke concat {| a: code, b: store |}, var: f.name, state: r.state |}
+seal
+
+rite emit_var_asm
+  given {| node, state |} =>
+    let cn = invoke c_name {| name: node.name |}
+    let src_slot = invoke lookup_slot {| name: cn, slots: state.slots |}
+    let f = invoke fresh_var {| prefix: "_t", counter: state.counter |}
+    let st1 = {| counter: f.counter, slot_counter: state.slot_counter, slots: state.slots, strs: state.strs |}
+    let r = invoke alloc_slot {| name: f.name, state: st1 |}
+    let load = invoke emit_load_slot {| slot: src_slot, reg: "x8" |}
+    let store = invoke emit_store_slot {| slot: r.slot, reg: "x8" |}
+    let rload = invoke emit_load_slot {| slot: r.slot, reg: "x0" |}
+    let s1 = invoke concat {| a: load, b: store |}
+    let s2 = invoke concat {| a: s1, b: rload |}
+    {| code: invoke concat {| a: s2, b: invoke asm_ln {| s: "  bl _rc_retain" |} |}, var: f.name, state: r.state |}
+seal
+
+rite emit_binop_op_asm
+  given {| op |} =>
+    let n = invoke nl {| |}
+    divine op
+      given "+" => invoke asm_ln {| s: "  add x0, x8, x9" |}
+      given "-" => invoke asm_ln {| s: "  sub x0, x8, x9" |}
+      given "*" => invoke asm_ln {| s: "  mul x0, x8, x9" |}
+      given "/" => invoke asm_ln {| s: "  sdiv x0, x8, x9" |}
+      given "%" =>
+        let s1 = invoke concat {| a: "  sdiv x10, x8, x9", b: n |}
+        invoke concat {| a: s1, b: invoke asm_ln {| s: "  msub x0, x10, x9, x8" |} |}
+      given "==" =>
+        let s1 = invoke concat {| a: "  cmp x8, x9", b: n |}
+        invoke concat {| a: s1, b: invoke asm_ln {| s: "  cset x0, eq" |} |}
+      given "!=" =>
+        let s1 = invoke concat {| a: "  cmp x8, x9", b: n |}
+        invoke concat {| a: s1, b: invoke asm_ln {| s: "  cset x0, ne" |} |}
+      given "<" =>
+        let s1 = invoke concat {| a: "  cmp x8, x9", b: n |}
+        invoke concat {| a: s1, b: invoke asm_ln {| s: "  cset x0, lt" |} |}
+      given ">" =>
+        let s1 = invoke concat {| a: "  cmp x8, x9", b: n |}
+        invoke concat {| a: s1, b: invoke asm_ln {| s: "  cset x0, gt" |} |}
+      given "<=" =>
+        let s1 = invoke concat {| a: "  cmp x8, x9", b: n |}
+        invoke concat {| a: s1, b: invoke asm_ln {| s: "  cset x0, le" |} |}
+      given ">=" =>
+        let s1 = invoke concat {| a: "  cmp x8, x9", b: n |}
+        invoke concat {| a: s1, b: invoke asm_ln {| s: "  cset x0, ge" |} |}
+      given "&&" =>
+        let s1 = invoke concat {| a: "  cmp x8, #0", b: n |}
+        let s2 = invoke concat {| a: s1, b: "  cset w10, ne" |}
+        let s3 = invoke concat {| a: s2, b: n |}
+        let s4 = invoke concat {| a: s3, b: "  cmp x9, #0" |}
+        let s5 = invoke concat {| a: s4, b: n |}
+        let s6 = invoke concat {| a: s5, b: "  cset w11, ne" |}
+        let s7 = invoke concat {| a: s6, b: n |}
+        invoke concat {| a: s7, b: invoke asm_ln {| s: "  and x0, x10, x11" |} |}
+      given "||" =>
+        let s1 = invoke concat {| a: "  orr x10, x8, x9", b: n |}
+        let s2 = invoke concat {| a: s1, b: "  cmp x10, #0" |}
+        let s3 = invoke concat {| a: s2, b: n |}
+        invoke concat {| a: s3, b: invoke asm_ln {| s: "  cset x0, ne" |} |}
+    seal
+seal
+
+rite emit_binop_asm
+  given {| node, state |} =>
+    let r1 = invoke emit_expr_asm {| node: node.left, state: state |}
+    let r2 = invoke emit_expr_asm {| node: node.right, state: r1.state |}
+    let f = invoke fresh_var {| prefix: "_t", counter: r2.state.counter |}
+    let st = {| counter: f.counter, slot_counter: r2.state.slot_counter, slots: r2.state.slots, strs: r2.state.strs |}
+    let ar = invoke alloc_slot {| name: f.name, state: st |}
+    let ls = invoke lookup_slot {| name: r1.var, slots: ar.state.slots |}
+    let rs = invoke lookup_slot {| name: r2.var, slots: ar.state.slots |}
+    let ll = invoke emit_load_slot {| slot: ls, reg: "x8" |}
+    let rl = invoke emit_load_slot {| slot: rs, reg: "x9" |}
+    let op = invoke emit_binop_op_asm {| op: node.op |}
+    let store = invoke emit_store_slot {| slot: ar.slot, reg: "x0" |}
+    let rll = invoke emit_load_slot {| slot: ls, reg: "x0" |}
+    let rrl = invoke emit_load_slot {| slot: rs, reg: "x0" |}
+    let s1 = invoke concat {| a: r1.code, b: r2.code |}
+    let s2 = invoke concat {| a: s1, b: ll |}
+    let s3 = invoke concat {| a: s2, b: invoke asm_ln {| s: "  ldr x8, [x8, #8]" |} |}
+    let s4 = invoke concat {| a: s3, b: rl |}
+    let s5 = invoke concat {| a: s4, b: invoke asm_ln {| s: "  ldr x9, [x9, #8]" |} |}
+    let s6 = invoke concat {| a: s5, b: op |}
+    let s7 = invoke concat {| a: s6, b: invoke asm_ln {| s: "  bl _make_int" |} |}
+    let s8 = invoke concat {| a: s7, b: store |}
+    let s9 = invoke concat {| a: s8, b: rll |}
+    let s10 = invoke concat {| a: s9, b: invoke asm_ln {| s: "  bl _rc_release" |} |}
+    let s11 = invoke concat {| a: s10, b: rrl |}
+    {| code: invoke concat {| a: s11, b: invoke asm_ln {| s: "  bl _rc_release" |} |}, var: f.name, state: ar.state |}
+seal
+
+rite emit_unop_asm
+  given {| node, state |} =>
+    let n = invoke nl {| |}
+    let r = invoke emit_expr_asm {| node: node.operand, state: state |}
+    let f = invoke fresh_var {| prefix: "_t", counter: r.state.counter |}
+    let st = {| counter: f.counter, slot_counter: r.state.slot_counter, slots: r.state.slots, strs: r.state.strs |}
+    let ar = invoke alloc_slot {| name: f.name, state: st |}
+    let ss = invoke lookup_slot {| name: r.var, slots: ar.state.slots |}
+    let load = invoke emit_load_slot {| slot: ss, reg: "x8" |}
+    let store = invoke emit_store_slot {| slot: ar.slot, reg: "x0" |}
+    let rload = invoke emit_load_slot {| slot: ss, reg: "x0" |}
+    let s1 = invoke concat {| a: r.code, b: load |}
+    let s2 = invoke concat {| a: s1, b: "  ldr x8, [x8, #8]" |}
+    let s3 = invoke concat {| a: s2, b: n |}
+    let s4 = invoke concat {| a: s3, b: "  neg x0, x8" |}
+    let s5 = invoke concat {| a: s4, b: n |}
+    let s6 = invoke concat {| a: s5, b: invoke asm_ln {| s: "  bl _make_int" |} |}
+    let s7 = invoke concat {| a: s6, b: store |}
+    let s8 = invoke concat {| a: s7, b: rload |}
+    {| code: invoke concat {| a: s8, b: invoke asm_ln {| s: "  bl _rc_release" |} |}, var: f.name, state: ar.state |}
+seal
+
+rite emit_field_access_asm
+  given {| node, state |} =>
+    let n = invoke nl {| |}
+    let r = invoke emit_expr_asm {| node: node.obj, state: state |}
+    let f = invoke fresh_var {| prefix: "_t", counter: r.state.counter |}
+    let st1 = {| counter: f.counter, slot_counter: r.state.slot_counter, slots: r.state.slots, strs: r.state.strs |}
+    let sr = invoke add_str_asm {| s: node.field, state: st1 |}
+    let ar = invoke alloc_slot {| name: f.name, state: sr.state |}
+    let os = invoke lookup_slot {| name: r.var, slots: ar.state.slots |}
+    let lo = invoke emit_load_slot {| slot: os, reg: "x0" |}
+    let store = invoke emit_store_slot {| slot: ar.slot, reg: "x0" |}
+    let rl = invoke emit_load_slot {| slot: ar.slot, reg: "x0" |}
+    let ol = invoke emit_load_slot {| slot: os, reg: "x0" |}
+    let s1 = invoke concat {| a: r.code, b: lo |}
+    let s2 = invoke concat {| a: s1, b: "  adrp x1, " |}
+    let s3 = invoke concat {| a: s2, b: sr.label |}
+    let s4 = invoke concat {| a: s3, b: "@PAGE" |}
+    let s5 = invoke concat {| a: s4, b: n |}
+    let s6 = invoke concat {| a: s5, b: "  add x1, x1, " |}
+    let s7 = invoke concat {| a: s6, b: sr.label |}
+    let s8 = invoke concat {| a: s7, b: "@PAGEOFF" |}
+    let s9 = invoke concat {| a: s8, b: n |}
+    let s10 = invoke concat {| a: s9, b: invoke asm_ln {| s: "  bl _record_field" |} |}
+    let s11 = invoke concat {| a: s10, b: store |}
+    let s12 = invoke concat {| a: s11, b: rl |}
+    let s13 = invoke concat {| a: s12, b: invoke asm_ln {| s: "  bl _rc_retain" |} |}
+    let s14 = invoke concat {| a: s13, b: ol |}
+    {| code: invoke concat {| a: s14, b: invoke asm_ln {| s: "  bl _rc_release" |} |}, var: f.name, state: ar.state |}
+seal
+
+-- Emit all record field value expressions
+rite emit_record_vals_loop_asm
+  given {| fields, state, code_acc, vars_acc |} =>
+    divine invoke is_nil {| list: fields |}
+      given 1 => {| code: code_acc, vars: vars_acc, state: state |}
+      given 0 =>
+        let head = invoke list_head {| list: fields |}
+        let tail = invoke list_tail {| list: fields |}
+        let r = invoke emit_expr_asm {| node: head.value, state: state |}
+        let entry = {| name: head.name, var: r.var |}
+        let new_vars = invoke cons {| head: entry, tail: vars_acc |}
+        invoke emit_record_vals_loop_asm {| fields: tail, state: r.state, code_acc: invoke concat {| a: code_acc, b: r.code |}, vars_acc: new_vars |}
+    seal
+seal
+
+-- Set up name/value arrays on stack for record creation
+rite emit_record_setup_loop_asm
+  given {| entries, state, idx, num_fields |} =>
+    divine invoke is_nil {| list: entries |}
+      given 1 => {| code: "", state: state |}
+      given 0 =>
+        let n = invoke nl {| |}
+        let head = invoke list_head {| list: entries |}
+        let tail = invoke list_tail {| list: entries |}
+        let sr = invoke add_str_asm {| s: head.name, state: state |}
+        let names_off = invoke int_to_str {| n: idx * 8 |}
+        let vals_off = invoke int_to_str {| n: num_fields * 8 + idx * 8 |}
+        let n1 = invoke concat {| a: "  adrp x8, ", b: sr.label |}
+        let n2 = invoke concat {| a: n1, b: "@PAGE" |}
+        let n3 = invoke concat {| a: n2, b: n |}
+        let n4 = invoke concat {| a: n3, b: "  add x8, x8, " |}
+        let n5 = invoke concat {| a: n4, b: sr.label |}
+        let n6 = invoke concat {| a: n5, b: "@PAGEOFF" |}
+        let n7 = invoke concat {| a: n6, b: n |}
+        let n8 = invoke concat {| a: n7, b: "  str x8, [sp, #" |}
+        let n9 = invoke concat {| a: n8, b: names_off |}
+        let n10 = invoke asm_ln {| s: invoke concat {| a: n9, b: "]" |} |}
+        let vs = invoke lookup_slot {| name: head.var, slots: sr.state.slots |}
+        let vl = invoke emit_load_slot {| slot: vs, reg: "x9" |}
+        let v1 = invoke concat {| a: vl, b: "  str x9, [sp, #" |}
+        let v2 = invoke concat {| a: v1, b: vals_off |}
+        let v3 = invoke asm_ln {| s: invoke concat {| a: v2, b: "]" |} |}
+        let rest = invoke emit_record_setup_loop_asm {| entries: tail, state: sr.state, idx: idx + 1, num_fields: num_fields |}
+        let s1 = invoke concat {| a: n10, b: v3 |}
+        {| code: invoke concat {| a: s1, b: rest.code |}, state: rest.state |}
+    seal
+seal
+
+rite emit_record_asm
+  given {| node, state |} =>
+    let n = invoke nl {| |}
+    let nf = invoke list_len {| list: node.fields |}
+    let empty = invoke nil {| |}
+    let vr = invoke emit_record_vals_loop_asm {| fields: node.fields, state: state, code_acc: "", vars_acc: empty |}
+    let entries = invoke list_reverse {| list: vr.vars |}
+    let total = ((nf * 16 + 15) / 16) * 16
+    let sr = invoke emit_record_setup_loop_asm {| entries: entries, state: vr.state, idx: 0, num_fields: nf |}
+    let f = invoke fresh_var {| prefix: "_t", counter: sr.state.counter |}
+    let st1 = {| counter: f.counter, slot_counter: sr.state.slot_counter, slots: sr.state.slots, strs: sr.state.strs |}
+    let ar = invoke alloc_slot {| name: f.name, state: st1 |}
+    let store = invoke emit_store_slot {| slot: ar.slot, reg: "x0" |}
+    let ns_s = invoke int_to_str {| n: nf * 8 |}
+    let tot_s = invoke int_to_str {| n: total |}
+    let sub_sp = divine total == 0
+      given 1 => ""
+      given 0 => invoke asm_ln {| s: invoke concat {| a: "  sub sp, sp, #", b: tot_s |} |}
+    seal
+    let add_sp = divine total == 0
+      given 1 => ""
+      given 0 => invoke asm_ln {| s: invoke concat {| a: "  add sp, sp, #", b: tot_s |} |}
+    seal
+    let s1 = invoke concat {| a: vr.code, b: sub_sp |}
+    let s2 = invoke concat {| a: s1, b: sr.code |}
+    let s3 = invoke concat {| a: s2, b: invoke emit_mov_imm {| reg: "x0", n: nf |} |}
+    let s4 = invoke concat {| a: s3, b: "  mov x1, sp" |}
+    let s5 = invoke concat {| a: s4, b: n |}
+    let s6 = invoke concat {| a: s5, b: "  add x2, sp, #" |}
+    let s7 = invoke concat {| a: s6, b: ns_s |}
+    let s8 = invoke concat {| a: s7, b: n |}
+    let s9 = invoke concat {| a: s8, b: invoke asm_ln {| s: "  bl _make_record_with_fields" |} |}
+    let s10 = invoke concat {| a: s9, b: add_sp |}
+    {| code: invoke concat {| a: s10, b: store |}, var: f.name, state: ar.state |}
+seal
+
+rite emit_invoke_asm
+  given {| node, state |} =>
+    let n = invoke nl {| |}
+    let r = invoke emit_expr_asm {| node: node.arg, state: state |}
+    let f = invoke fresh_var {| prefix: "_t", counter: r.state.counter |}
+    let st = {| counter: f.counter, slot_counter: r.state.slot_counter, slots: r.state.slots, strs: r.state.strs |}
+    let ar = invoke alloc_slot {| name: f.name, state: st |}
+    let as2 = invoke lookup_slot {| name: r.var, slots: ar.state.slots |}
+    let la = invoke emit_load_slot {| slot: as2, reg: "x0" |}
+    let store = invoke emit_store_slot {| slot: ar.slot, reg: "x0" |}
+    let rla = invoke emit_load_slot {| slot: as2, reg: "x0" |}
+    let s1 = invoke concat {| a: r.code, b: la |}
+    let s2 = invoke concat {| a: s1, b: "  bl _rite_" |}
+    let s3 = invoke concat {| a: s2, b: node.name |}
+    let s4 = invoke concat {| a: s3, b: n |}
+    let s5 = invoke concat {| a: s4, b: store |}
+    let s6 = invoke concat {| a: s5, b: rla |}
+    {| code: invoke concat {| a: s6, b: invoke asm_ln {| s: "  bl _rc_release" |} |}, var: f.name, state: ar.state |}
+seal
+
+rite emit_hearken_asm
+  given {| state |} =>
+    let f = invoke fresh_var {| prefix: "_t", counter: state.counter |}
+    let st = {| counter: f.counter, slot_counter: state.slot_counter, slots: state.slots, strs: state.strs |}
+    let ar = invoke alloc_slot {| name: f.name, state: st |}
+    let store = invoke emit_store_slot {| slot: ar.slot, reg: "x0" |}
+    {| code: invoke concat {| a: invoke asm_ln {| s: "  bl _runtime_hearken" |}, b: store |}, var: f.name, state: ar.state |}
+seal
+
+rite emit_scry_asm
+  given {| state |} =>
+    let f = invoke fresh_var {| prefix: "_t", counter: state.counter |}
+    let st = {| counter: f.counter, slot_counter: state.slot_counter, slots: state.slots, strs: state.strs |}
+    let ar = invoke alloc_slot {| name: f.name, state: st |}
+    let store = invoke emit_store_slot {| slot: ar.slot, reg: "x0" |}
+    {| code: invoke concat {| a: invoke asm_ln {| s: "  bl _runtime_scry" |}, b: store |}, var: f.name, state: ar.state |}
+seal
+
+rite emit_let_bindings_loop_asm
+  given {| bindings, state, code_acc, names_acc |} =>
+    divine invoke is_nil {| list: bindings |}
+      given 1 => {| code: code_acc, state: state, names: names_acc |}
+      given 0 =>
+        let head = invoke list_head {| list: bindings |}
+        let tail = invoke list_tail {| list: bindings |}
+        let rv = invoke emit_expr_asm {| node: head.value, state: state |}
+        let vs = invoke lookup_slot {| name: rv.var, slots: rv.state.slots |}
+        let cn = invoke c_name {| name: head.name |}
+        let new_slots = invoke cons {| head: {| name: cn, slot: vs |}, tail: rv.state.slots |}
+        let ns = {| counter: rv.state.counter, slot_counter: rv.state.slot_counter, slots: new_slots, strs: rv.state.strs |}
+        let new_names = invoke cons {| head: head.name, tail: names_acc |}
+        invoke emit_let_bindings_loop_asm {| bindings: tail, state: ns, code_acc: invoke concat {| a: code_acc, b: rv.code |}, names_acc: new_names |}
+    seal
+seal
+
+rite emit_let_in_asm
+  given {| node, state |} =>
+    let chain = invoke collect_let_chain {| node: node |}
+    let empty = invoke nil {| |}
+    let br = invoke emit_let_bindings_loop_asm {| bindings: chain.bindings, state: state, code_acc: "", names_acc: empty |}
+    let rb = invoke emit_expr_asm {| node: chain.body, state: br.state |}
+    let release = invoke gen_release_code_asm {| names: br.names, slots: rb.state.slots |}
+    let s1 = invoke concat {| a: br.code, b: rb.code |}
+    {| code: invoke concat {| a: s1, b: release |}, var: rb.var, state: rb.state |}
+seal
+
+-- ============================================================
+-- AArch64: Pattern Matching
+-- ============================================================
+
+rite emit_rec_field_match_asm
+  given {| var_slot, field, fail_label, state |} =>
+    let n = invoke nl {| |}
+    let sr = invoke add_str_asm {| s: field.name, state: state |}
+    let tmp = invoke concat {| a: "_f_", b: field.name |}
+    let ar = invoke alloc_slot {| name: tmp, state: sr.state |}
+    let lr = invoke emit_load_slot {| slot: var_slot, reg: "x0" |}
+    let st = invoke emit_store_slot {| slot: ar.slot, reg: "x0" |}
+    let s1 = invoke concat {| a: lr, b: "  adrp x1, " |}
+    let s2 = invoke concat {| a: s1, b: sr.label |}
+    let s3 = invoke concat {| a: s2, b: "@PAGE" |}
+    let s4 = invoke concat {| a: s3, b: n |}
+    let s5 = invoke concat {| a: s4, b: "  add x1, x1, " |}
+    let s6 = invoke concat {| a: s5, b: sr.label |}
+    let s7 = invoke concat {| a: s6, b: "@PAGEOFF" |}
+    let s8 = invoke concat {| a: s7, b: n |}
+    let s9 = invoke concat {| a: s8, b: invoke asm_ln {| s: "  bl _record_field" |} |}
+    let s10 = invoke concat {| a: s9, b: st |}
+    let s11 = invoke concat {| a: s10, b: "  cbz x0, " |}
+    let s12 = invoke concat {| a: s11, b: fail_label |}
+    let base = invoke concat {| a: s12, b: n |}
+    let cn = invoke c_name {| name: field.name |}
+    divine field.pat.tag
+      given "pat_none" =>
+        let ns = invoke cons {| head: {| name: cn, slot: ar.slot |}, tail: ar.state.slots |}
+        {| code: base, state: {| counter: ar.state.counter, slot_counter: ar.state.slot_counter, slots: ns, strs: ar.state.strs |} |}
+      given "pat_var" =>
+        let ns = invoke cons {| head: {| name: cn, slot: ar.slot |}, tail: ar.state.slots |}
+        {| code: base, state: {| counter: ar.state.counter, slot_counter: ar.state.slot_counter, slots: ns, strs: ar.state.strs |} |}
+      given "pat_wild" =>
+        {| code: base, state: ar.state |}
+      given _ =>
+        let ns = invoke cons {| head: {| name: cn, slot: ar.slot |}, tail: ar.state.slots |}
+        let nst = {| counter: ar.state.counter, slot_counter: ar.state.slot_counter, slots: ns, strs: ar.state.strs |}
+        let pm = invoke emit_pat_match_asm {| var_slot: ar.slot, pat: field.pat, fail_label: fail_label, state: nst |}
+        {| code: invoke concat {| a: base, b: pm.code |}, state: pm.state |}
+    seal
+seal
+
+rite emit_rec_pat_loop_asm
+  given {| var_slot, fields, fail_label, state, code_acc |} =>
+    divine invoke is_nil {| list: fields |}
+      given 1 => {| code: code_acc, state: state |}
+      given 0 =>
+        let head = invoke list_head {| list: fields |}
+        let tail = invoke list_tail {| list: fields |}
+        let r = invoke emit_rec_field_match_asm {| var_slot: var_slot, field: head, fail_label: fail_label, state: state |}
+        invoke emit_rec_pat_loop_asm {| var_slot: var_slot, fields: tail, fail_label: fail_label, state: r.state, code_acc: invoke concat {| a: code_acc, b: r.code |} |}
+    seal
+seal
+
+rite emit_pat_match_asm
+  given {| var_slot, pat, fail_label, state |} =>
+    let n = invoke nl {| |}
+    divine pat.tag
+      given "pat_wild" => {| code: "", state: state |}
+      given "pat_var" =>
+        let cn = invoke c_name {| name: pat.name |}
+        let ar = invoke alloc_slot {| name: cn, state: state |}
+        let load = invoke emit_load_slot {| slot: var_slot, reg: "x8" |}
+        let store = invoke emit_store_slot {| slot: ar.slot, reg: "x8" |}
+        {| code: invoke concat {| a: load, b: store |}, state: ar.state |}
+      given "pat_int" =>
+        let val = invoke str_to_int {| s: pat.value |}
+        let load = invoke emit_load_slot {| slot: var_slot, reg: "x8" |}
+        let s1 = invoke concat {| a: load, b: "  ldr w9, [x8]" |}
+        let s2 = invoke concat {| a: s1, b: n |}
+        let s3 = invoke concat {| a: s2, b: "  cmp w9, #0" |}
+        let s4 = invoke concat {| a: s3, b: n |}
+        let s5 = invoke concat {| a: s4, b: "  b.ne " |}
+        let s6 = invoke concat {| a: s5, b: fail_label |}
+        let s7 = invoke concat {| a: s6, b: n |}
+        let s8 = invoke concat {| a: s7, b: "  ldr x8, [x8, #8]" |}
+        let s9 = invoke concat {| a: s8, b: n |}
+        let mov = invoke emit_mov_imm {| reg: "x9", n: val |}
+        let s10 = invoke concat {| a: s9, b: mov |}
+        let s11 = invoke concat {| a: s10, b: "  cmp x8, x9" |}
+        let s12 = invoke concat {| a: s11, b: n |}
+        let s13 = invoke concat {| a: s12, b: "  b.ne " |}
+        let s14 = invoke concat {| a: s13, b: fail_label |}
+        {| code: invoke concat {| a: s14, b: n |}, state: state |}
+      given "pat_str" =>
+        let sr = invoke add_str_asm {| s: pat.value, state: state |}
+        let load = invoke emit_load_slot {| slot: var_slot, reg: "x8" |}
+        let s1 = invoke concat {| a: load, b: "  ldr w9, [x8]" |}
+        let s2 = invoke concat {| a: s1, b: n |}
+        let s3 = invoke concat {| a: s2, b: "  cmp w9, #1" |}
+        let s4 = invoke concat {| a: s3, b: n |}
+        let s5 = invoke concat {| a: s4, b: "  b.ne " |}
+        let s6 = invoke concat {| a: s5, b: fail_label |}
+        let s7 = invoke concat {| a: s6, b: n |}
+        let s8 = invoke concat {| a: s7, b: "  ldr x0, [x8, #8]" |}
+        let s9 = invoke concat {| a: s8, b: n |}
+        let s10 = invoke concat {| a: s9, b: "  adrp x1, " |}
+        let s11 = invoke concat {| a: s10, b: sr.label |}
+        let s12 = invoke concat {| a: s11, b: "@PAGE" |}
+        let s13 = invoke concat {| a: s12, b: n |}
+        let s14 = invoke concat {| a: s13, b: "  add x1, x1, " |}
+        let s15 = invoke concat {| a: s14, b: sr.label |}
+        let s16 = invoke concat {| a: s15, b: "@PAGEOFF" |}
+        let s17 = invoke concat {| a: s16, b: n |}
+        let s18 = invoke concat {| a: s17, b: invoke asm_ln {| s: "  bl _strcmp" |} |}
+        let s19 = invoke concat {| a: s18, b: "  cbnz w0, " |}
+        let s20 = invoke concat {| a: s19, b: fail_label |}
+        {| code: invoke concat {| a: s20, b: n |}, state: sr.state |}
+      given "pat_rec" =>
+        let load = invoke emit_load_slot {| slot: var_slot, reg: "x8" |}
+        let s1 = invoke concat {| a: load, b: "  ldr w9, [x8]" |}
+        let s2 = invoke concat {| a: s1, b: n |}
+        let s3 = invoke concat {| a: s2, b: "  cmp w9, #2" |}
+        let s4 = invoke concat {| a: s3, b: n |}
+        let s5 = invoke concat {| a: s4, b: "  b.ne " |}
+        let s6 = invoke concat {| a: s5, b: fail_label |}
+        let s7 = invoke concat {| a: s6, b: n |}
+        invoke emit_rec_pat_loop_asm {| var_slot: var_slot, fields: pat.fields, fail_label: fail_label, state: state, code_acc: s7 |}
+    seal
+seal
+
+-- ============================================================
+-- AArch64: Divine Expression
+-- ============================================================
+
+rite emit_divine_clause_asm
+  given {| scr_slot, dvn_slot, done_label, clause, state |} =>
+    let n = invoke nl {| |}
+    let fl = invoke fresh_var {| prefix: "Ldvnf", counter: state.counter |}
+    let st1 = {| counter: fl.counter, slot_counter: state.slot_counter, slots: state.slots, strs: state.strs |}
+    let saved_slots = st1.slots
+    let saved_sc = st1.slot_counter
+    let pm = invoke emit_pat_match_asm {| var_slot: scr_slot, pat: clause.pat, fail_label: fl.name, state: st1 |}
+    let bound = invoke extract_bound_names {| pat: clause.pat |}
+    let retain = invoke gen_retain_code_asm {| names: bound, slots: pm.state.slots |}
+    let rb = invoke emit_expr_asm {| node: clause.body, state: pm.state |}
+    let release = invoke gen_release_code_asm {| names: bound, slots: rb.state.slots |}
+    let bs = invoke lookup_slot {| name: rb.var, slots: rb.state.slots |}
+    let lb = invoke emit_load_slot {| slot: bs, reg: "x8" |}
+    let sd = invoke emit_store_slot {| slot: dvn_slot, reg: "x8" |}
+    let s1 = invoke concat {| a: pm.code, b: retain |}
+    let s2 = invoke concat {| a: s1, b: rb.code |}
+    let s3 = invoke concat {| a: s2, b: release |}
+    let s4 = invoke concat {| a: s3, b: lb |}
+    let s5 = invoke concat {| a: s4, b: sd |}
+    let s6 = invoke concat {| a: s5, b: "  b " |}
+    let s7 = invoke concat {| a: s6, b: done_label |}
+    let s8 = invoke concat {| a: s7, b: n |}
+    let s9 = invoke concat {| a: s8, b: fl.name |}
+    let s10 = invoke concat {| a: s9, b: ":" |}
+    let code = invoke concat {| a: s10, b: n |}
+    {| code: code, state: {| counter: rb.state.counter, slot_counter: saved_sc, slots: saved_slots, strs: rb.state.strs |} |}
+seal
+
+rite emit_divine_clauses_loop_asm
+  given {| scr_slot, dvn_slot, done_label, clauses, state, acc |} =>
+    divine invoke is_nil {| list: clauses |}
+      given 1 => {| code: acc, state: state |}
+      given 0 =>
+        let head = invoke list_head {| list: clauses |}
+        let tail = invoke list_tail {| list: clauses |}
+        let r = invoke emit_divine_clause_asm {| scr_slot: scr_slot, dvn_slot: dvn_slot, done_label: done_label, clause: head, state: state |}
+        invoke emit_divine_clauses_loop_asm {| scr_slot: scr_slot, dvn_slot: dvn_slot, done_label: done_label, clauses: tail, state: r.state, acc: invoke concat {| a: acc, b: r.code |} |}
+    seal
+seal
+
+rite emit_divine_asm
+  given {| node, state |} =>
+    let n = invoke nl {| |}
+    let rs = invoke emit_expr_asm {| node: node.scrutinee, state: state |}
+    let scr = invoke fresh_var {| prefix: "_scr", counter: rs.state.counter |}
+    let st1 = {| counter: scr.counter, slot_counter: rs.state.slot_counter, slots: rs.state.slots, strs: rs.state.strs |}
+    let scr_r = invoke alloc_slot {| name: scr.name, state: st1 |}
+    let src_s = invoke lookup_slot {| name: rs.var, slots: scr_r.state.slots |}
+    let ls = invoke emit_load_slot {| slot: src_s, reg: "x8" |}
+    let ss = invoke emit_store_slot {| slot: scr_r.slot, reg: "x8" |}
+    let dvn = invoke fresh_var {| prefix: "_dvn", counter: scr_r.state.counter |}
+    let st2 = {| counter: dvn.counter, slot_counter: scr_r.state.slot_counter, slots: scr_r.state.slots, strs: scr_r.state.strs |}
+    let dvn_r = invoke alloc_slot {| name: dvn.name, state: st2 |}
+    let done = invoke fresh_var {| prefix: "Ldone", counter: dvn_r.state.counter |}
+    let st3 = {| counter: done.counter, slot_counter: dvn_r.state.slot_counter, slots: dvn_r.state.slots, strs: dvn_r.state.strs |}
+    let cr = invoke emit_divine_clauses_loop_asm {| scr_slot: scr_r.slot, dvn_slot: dvn_r.slot, done_label: done.name, clauses: node.clauses, state: st3, acc: "" |}
+    let mf_sr = invoke add_str_asm {| s: "divine", state: cr.state |}
+    let mf1 = invoke concat {| a: "  adrp x0, ", b: mf_sr.label |}
+    let mf2 = invoke concat {| a: mf1, b: "@PAGE" |}
+    let mf3 = invoke concat {| a: mf2, b: n |}
+    let mf4 = invoke concat {| a: mf3, b: "  add x0, x0, " |}
+    let mf5 = invoke concat {| a: mf4, b: mf_sr.label |}
+    let mf6 = invoke concat {| a: mf5, b: "@PAGEOFF" |}
+    let mf7 = invoke concat {| a: mf6, b: n |}
+    let mf8 = invoke concat {| a: mf7, b: invoke asm_ln {| s: "  bl _badlang_match_fail" |} |}
+    let rl = invoke emit_load_slot {| slot: scr_r.slot, reg: "x0" |}
+    let s1 = invoke concat {| a: rs.code, b: ls |}
+    let s2 = invoke concat {| a: s1, b: ss |}
+    let s3 = invoke concat {| a: s2, b: cr.code |}
+    let s4 = invoke concat {| a: s3, b: mf8 |}
+    let s5 = invoke concat {| a: s4, b: done.name |}
+    let s6 = invoke concat {| a: s5, b: ":" |}
+    let s7 = invoke concat {| a: s6, b: n |}
+    let s8 = invoke concat {| a: s7, b: rl |}
+    let code = invoke concat {| a: s8, b: invoke asm_ln {| s: "  bl _rc_release" |} |}
+    {| code: code, var: dvn.name, state: mf_sr.state |}
+seal
+
+-- Expression dispatcher (ASM)
+rite emit_expr_asm
+  given {| node, state |} =>
+    divine node.tag
+      given "int_lit" => invoke emit_int_lit_asm {| node: node, state: state |}
+      given "str_lit" => invoke emit_str_lit_asm {| node: node, state: state |}
+      given "var" => invoke emit_var_asm {| node: node, state: state |}
+      given "binop" => invoke emit_binop_asm {| node: node, state: state |}
+      given "unop" => invoke emit_unop_asm {| node: node, state: state |}
+      given "field_access" => invoke emit_field_access_asm {| node: node, state: state |}
+      given "record" => invoke emit_record_asm {| node: node, state: state |}
+      given "summon" => invoke emit_record_asm {| node: {| tag: "record", fields: node.fields |}, state: state |}
+      given "invoke" => invoke emit_invoke_asm {| node: node, state: state |}
+      given "hearken" => invoke emit_hearken_asm {| state: state |}
+      given "scry" => invoke emit_scry_asm {| state: state |}
+      given "let_in" => invoke emit_let_in_asm {| node: node, state: state |}
+      given "divine" => invoke emit_divine_asm {| node: node, state: state |}
+    seal
+seal
+
+-- ============================================================
+-- AArch64: Rite & Clause Emission
+-- ============================================================
+
+rite emit_clause_asm
+  given {| clause, clause_id, func_prefix, state |} =>
+    let n = invoke nl {| |}
+    let cid = invoke int_to_str {| n: clause_id |}
+    let fl1 = invoke concat {| a: func_prefix, b: "c" |}
+    let fl2 = invoke concat {| a: fl1, b: cid |}
+    let fail_label = invoke concat {| a: fl2, b: "f" |}
+    let saved_slots = state.slots
+    let saved_sc = state.slot_counter
+    let arg_slot = invoke lookup_slot {| name: "arg", slots: state.slots |}
+    let pm = invoke emit_pat_match_asm {| var_slot: arg_slot, pat: clause.pat, fail_label: fail_label, state: state |}
+    let bound = invoke extract_bound_names {| pat: clause.pat |}
+    let retain = invoke gen_retain_code_asm {| names: bound, slots: pm.state.slots |}
+    let rb = invoke emit_expr_asm {| node: clause.body, state: pm.state |}
+    let release = invoke gen_release_code_asm {| names: bound, slots: rb.state.slots |}
+    let bs = invoke lookup_slot {| name: rb.var, slots: rb.state.slots |}
+    let lr = invoke emit_load_slot {| slot: bs, reg: "x0" |}
+    let epi = invoke emit_epilogue {| |}
+    let s1 = invoke concat {| a: pm.code, b: retain |}
+    let s2 = invoke concat {| a: s1, b: rb.code |}
+    let s3 = invoke concat {| a: s2, b: release |}
+    let s4 = invoke concat {| a: s3, b: lr |}
+    let s5 = invoke concat {| a: s4, b: epi |}
+    let s6 = invoke concat {| a: s5, b: fail_label |}
+    let s7 = invoke concat {| a: s6, b: ":" |}
+    let code = invoke concat {| a: s7, b: n |}
+    {| code: code, state: {| counter: rb.state.counter, slot_counter: saved_sc, slots: saved_slots, strs: rb.state.strs |} |}
+seal
+
+rite emit_clauses_loop_asm
+  given {| clauses, clause_id, func_prefix, state, acc |} =>
+    divine invoke is_nil {| list: clauses |}
+      given 1 => {| code: acc, state: state |}
+      given 0 =>
+        let head = invoke list_head {| list: clauses |}
+        let tail = invoke list_tail {| list: clauses |}
+        let r = invoke emit_clause_asm {| clause: head, clause_id: clause_id, func_prefix: func_prefix, state: state |}
+        invoke emit_clauses_loop_asm {| clauses: tail, clause_id: clause_id + 1, func_prefix: func_prefix, state: r.state, acc: invoke concat {| a: acc, b: r.code |} |}
+    seal
+seal
+
+rite emit_rite_asm
+  given {| name, clauses, state |} =>
+    let n = invoke nl {| |}
+    let fp = invoke concat {| a: "rite_", b: name |}
+    let fp2 = invoke concat {| a: fp, b: "_" |}
+    let pro = invoke emit_prologue {| |}
+    let init_s = invoke cons {| head: {| name: "arg", slot: 0 |}, tail: invoke nil {| |} |}
+    let fst = {| counter: state.counter, slot_counter: 1, slots: init_s, strs: state.strs |}
+    let store_arg = invoke emit_store_slot {| slot: 0, reg: "x0" |}
+    let rc = invoke emit_clauses_loop_asm {| clauses: clauses, clause_id: 0, func_prefix: fp2, state: fst, acc: "" |}
+    let mf_msg = invoke concat {| a: "rite '", b: name |}
+    let mf_msg2 = invoke concat {| a: mf_msg, b: "'" |}
+    let mf_sr = invoke add_str_asm {| s: mf_msg2, state: rc.state |}
+    let mf1 = invoke concat {| a: "  adrp x0, ", b: mf_sr.label |}
+    let mf2 = invoke concat {| a: mf1, b: "@PAGE" |}
+    let mf3 = invoke concat {| a: mf2, b: n |}
+    let mf4 = invoke concat {| a: mf3, b: "  add x0, x0, " |}
+    let mf5 = invoke concat {| a: mf4, b: mf_sr.label |}
+    let mf6 = invoke concat {| a: mf5, b: "@PAGEOFF" |}
+    let mf7 = invoke concat {| a: mf6, b: n |}
+    let mf8 = invoke concat {| a: mf7, b: invoke asm_ln {| s: "  bl _badlang_match_fail" |} |}
+    let l1 = invoke concat {| a: ".globl _rite_", b: name |}
+    let l2 = invoke concat {| a: l1, b: n |}
+    let l3 = invoke concat {| a: l2, b: "_rite_" |}
+    let l4 = invoke concat {| a: l3, b: name |}
+    let l5 = invoke concat {| a: l4, b: ":" |}
+    let l6 = invoke concat {| a: l5, b: n |}
+    let s1 = invoke concat {| a: l6, b: pro |}
+    let s2 = invoke concat {| a: s1, b: store_arg |}
+    let s3 = invoke concat {| a: s2, b: rc.code |}
+    let s4 = invoke concat {| a: s3, b: mf8 |}
+    let code = invoke concat {| a: s4, b: n |}
+    {| code: code, state: {| counter: mf_sr.state.counter, slot_counter: state.slot_counter, slots: state.slots, strs: mf_sr.state.strs |} |}
+seal
+
+-- ============================================================
+-- AArch64: Statement & Main Emission
+-- ============================================================
+
+rite emit_stmt_asm
+  given {| stmt, state |} =>
+    divine stmt.tag
+      given "stmt_let" =>
+        let r = invoke emit_expr_asm {| node: stmt.value, state: state |}
+        let cn = invoke c_name {| name: stmt.name |}
+        let vs = invoke lookup_slot {| name: r.var, slots: r.state.slots |}
+        let ns = invoke cons {| head: {| name: cn, slot: vs |}, tail: r.state.slots |}
+        {| code: r.code, state: {| counter: r.state.counter, slot_counter: r.state.slot_counter, slots: ns, strs: r.state.strs |} |}
+      given "stmt_utter" =>
+        let r = invoke emit_expr_asm {| node: stmt.value, state: state |}
+        let vs = invoke lookup_slot {| name: r.var, slots: r.state.slots |}
+        let load = invoke emit_load_slot {| slot: vs, reg: "x0" |}
+        let rload = invoke emit_load_slot {| slot: vs, reg: "x0" |}
+        let s1 = invoke concat {| a: r.code, b: load |}
+        let s2 = invoke concat {| a: s1, b: invoke asm_ln {| s: "  bl _utter" |} |}
+        let s3 = invoke concat {| a: s2, b: rload |}
+        {| code: invoke concat {| a: s3, b: invoke asm_ln {| s: "  bl _rc_release" |} |}, state: r.state |}
+      given "stmt_whisper" =>
+        let r = invoke emit_expr_asm {| node: stmt.value, state: state |}
+        let vs = invoke lookup_slot {| name: r.var, slots: r.state.slots |}
+        let load = invoke emit_load_slot {| slot: vs, reg: "x0" |}
+        let rload = invoke emit_load_slot {| slot: vs, reg: "x0" |}
+        let s1 = invoke concat {| a: r.code, b: load |}
+        let s2 = invoke concat {| a: s1, b: invoke asm_ln {| s: "  bl _whisper" |} |}
+        let s3 = invoke concat {| a: s2, b: rload |}
+        {| code: invoke concat {| a: s3, b: invoke asm_ln {| s: "  bl _rc_release" |} |}, state: r.state |}
+      given "stmt_expr" =>
+        let r = invoke emit_expr_asm {| node: stmt.value, state: state |}
+        let vs = invoke lookup_slot {| name: r.var, slots: r.state.slots |}
+        let load = invoke emit_load_slot {| slot: vs, reg: "x0" |}
+        let s1 = invoke concat {| a: r.code, b: load |}
+        {| code: invoke concat {| a: s1, b: invoke asm_ln {| s: "  bl _rc_release" |} |}, state: r.state |}
+    seal
+seal
+
+rite emit_stmts_loop_asm
+  given {| stmts, state, acc |} =>
+    divine invoke is_nil {| list: stmts |}
+      given 1 => {| code: acc, state: state |}
+      given 0 =>
+        let head = invoke list_head {| list: stmts |}
+        let tail = invoke list_tail {| list: stmts |}
+        let r = invoke emit_stmt_asm {| stmt: head, state: state |}
+        invoke emit_stmts_loop_asm {| stmts: tail, state: r.state, acc: invoke concat {| a: acc, b: r.code |} |}
+    seal
+seal
+
+rite emit_main_fn_asm
+  given {| decls, state |} =>
+    let n = invoke nl {| |}
+    let rit = invoke find_ritual {| decls: decls, name: "main" |}
+    let pro = invoke emit_prologue {| |}
+    let ac1 = invoke concat {| a: "  adrp x8, _g_argc@GOTPAGE", b: n |}
+    let ac2 = invoke concat {| a: ac1, b: "  ldr x8, [x8, _g_argc@GOTPAGEOFF]" |}
+    let ac3 = invoke concat {| a: ac2, b: n |}
+    let argc_code = invoke concat {| a: ac3, b: invoke asm_ln {| s: "  str w0, [x8]" |} |}
+    let av1 = invoke concat {| a: "  adrp x8, _g_argv@GOTPAGE", b: n |}
+    let av2 = invoke concat {| a: av1, b: "  ldr x8, [x8, _g_argv@GOTPAGEOFF]" |}
+    let av3 = invoke concat {| a: av2, b: n |}
+    let argv_code = invoke concat {| a: av3, b: invoke asm_ln {| s: "  str x1, [x8]" |} |}
+    let main_hdr = invoke concat {| a: ".globl _main", b: n |}
+    let main_hdr2 = invoke concat {| a: main_hdr, b: "_main:" |}
+    let main_hdr3 = invoke concat {| a: main_hdr2, b: n |}
+    divine rit.tag
+      given "none" =>
+        let s1 = invoke concat {| a: main_hdr3, b: pro |}
+        let s2 = invoke concat {| a: s1, b: argc_code |}
+        let s3 = invoke concat {| a: s2, b: argv_code |}
+        let s4 = invoke concat {| a: s3, b: invoke asm_ln {| s: "  mov x0, #0" |} |}
+        {| code: invoke concat {| a: s4, b: invoke emit_epilogue {| |} |}, state: state |}
+      given "some" =>
+        let init = invoke nil {| |}
+        let fst = {| counter: state.counter, slot_counter: 0, slots: init, strs: state.strs |}
+        let rs = invoke emit_stmts_loop_asm {| stmts: rit.stmts, state: fst, acc: "" |}
+        let empty = invoke nil {| |}
+        let let_names = invoke collect_let_names {| stmts: rit.stmts, acc: empty |}
+        let rel = invoke gen_release_code_asm {| names: let_names, slots: rs.state.slots |}
+        let s1 = invoke concat {| a: main_hdr3, b: pro |}
+        let s2 = invoke concat {| a: s1, b: argc_code |}
+        let s3 = invoke concat {| a: s2, b: argv_code |}
+        let s4 = invoke concat {| a: s3, b: rs.code |}
+        let s5 = invoke concat {| a: s4, b: rel |}
+        let s6 = invoke concat {| a: s5, b: invoke asm_ln {| s: "  mov x0, #0" |} |}
+        let code = invoke concat {| a: s6, b: invoke emit_epilogue {| |} |}
+        {| code: code, state: {| counter: rs.state.counter, slot_counter: state.slot_counter, slots: state.slots, strs: rs.state.strs |} |}
+    seal
+seal
+
+-- ============================================================
+-- AArch64: Top-Level Pipeline
+-- ============================================================
+
+rite emit_decls_loop_asm
+  given {| decls, state, acc |} =>
+    divine invoke is_nil {| list: decls |}
+      given 1 => {| code: acc, state: state |}
+      given 0 =>
+        let head = invoke list_head {| list: decls |}
+        let tail = invoke list_tail {| list: decls |}
+        let r = divine invoke str_eq {| a: head.tag, b: "decl_rite" |}
+          given 1 =>
+            divine invoke is_builtin_rite {| name: head.name |}
+              given 1 => {| code: "", state: state |}
+              given 0 => invoke emit_rite_asm {| name: head.name, clauses: head.clauses, state: state |}
+            seal
+          given 0 => {| code: "", state: state |}
+        seal
+        invoke emit_decls_loop_asm {| decls: tail, state: r.state, acc: invoke concat {| a: acc, b: r.code |} |}
+    seal
+seal
+
+rite emit_string_table_loop
+  given {| strs, acc |} =>
+    let n = invoke nl {| |}
+    divine invoke is_nil {| list: strs |}
+      given 1 => acc
+      given 0 =>
+        let head = invoke list_head {| list: strs |}
+        let tail = invoke list_tail {| list: strs |}
+        let esc = invoke asm_string {| s: head.value |}
+        let s1 = invoke concat {| a: head.label, b: ":" |}
+        let s2 = invoke concat {| a: s1, b: n |}
+        let s3 = invoke concat {| a: s2, b: "  .asciz " |}
+        let s4 = invoke concat {| a: s3, b: esc |}
+        let line = invoke concat {| a: s4, b: n |}
+        invoke emit_string_table_loop {| strs: tail, acc: invoke concat {| a: acc, b: line |} |}
+    seal
+seal
+
+rite emit_string_table
+  given {| strs |} =>
+    let n = invoke nl {| |}
+    let reversed = invoke list_reverse {| list: strs |}
+    let hdr = invoke concat {| a: n, b: ".section __TEXT,__cstring" |}
+    let hdr2 = invoke concat {| a: hdr, b: n |}
+    invoke emit_string_table_loop {| strs: reversed, acc: hdr2 |}
+seal
+
+-- Assemble the complete .s file
+rite emit_asm
+  given {| decls |} =>
+    let n = invoke nl {| |}
+    let empty = invoke nil {| |}
+    let init_state = {| counter: 0, slot_counter: 0, slots: empty, strs: empty |}
+    let rite_defs = invoke emit_decls_loop_asm {| decls: decls, state: init_state, acc: "" |}
+    let main_fn = invoke emit_main_fn_asm {| decls: decls, state: rite_defs.state |}
+    let str_table = invoke emit_string_table {| strs: main_fn.state.strs |}
+    let hdr = invoke concat {| a: ".section __TEXT,__text", b: n |}
+    let hdr2 = invoke concat {| a: hdr, b: ".align 2" |}
+    let hdr3 = invoke concat {| a: hdr2, b: n |}
+    let hdr4 = invoke concat {| a: hdr3, b: n |}
+    let s1 = invoke concat {| a: hdr4, b: rite_defs.code |}
+    let s2 = invoke concat {| a: s1, b: main_fn.code |}
+    invoke concat {| a: s2, b: str_table |}
+seal
+
+-- ============================================================
 -- Main Ritual: Compiler Pipeline
 -- ============================================================
 
@@ -2056,7 +3160,11 @@ ritual main
   let src = invoke unearth {| path: invoke argv {| n: 1 |} |}
   let tokens = invoke tokenize {| src: src |}
   let decls = invoke parse_program {| tokens: tokens |}
-  let output = invoke emit_c {| decls: decls |}
+  let mode = invoke get_mode {| |}
+  let output = divine mode
+    given 1 => invoke emit_asm {| decls: decls |}
+    given 0 => invoke emit_c {| decls: decls |}
+  seal
   let out_path = invoke argv {| n: 2 |}
   invoke inscribe {| path: out_path, content: output |}
 seal
