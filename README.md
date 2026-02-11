@@ -2,11 +2,15 @@
 
 A programming language of rites and glyphs.
 
-badlang is an experimental language built from first principles — parser
-generator, grammar, type system, and C code generation — all in Haskell.
-It draws from pattern calculus and structural subtyping to create a
-language where pattern matching is the fundamental operation and all
-functions accept structural records.
+badlang is an experiment in the limits of agentic programming. The entire
+language — parser generator, grammar, type system, C code generation, and
+a self-hosting compiler — was built collaboratively with AI. We pushed the
+experiment as far as writing a complete badlang compiler *in badlang itself*,
+one that bootstraps and reaches a fixed point.
+
+The language is built from first principles in Haskell. It draws from pattern
+calculus and structural subtyping to create a language where pattern matching
+is the fundamental operation and all functions accept structural records.
 
 ## Quick Start
 
@@ -201,6 +205,21 @@ can be compiled with any C compiler that supports `__builtin_va_arg`
 | `examples/subtyping.bad` | Width subtyping, anonymous records              |
 | `examples/divine.bad`    | Inline pattern matching with fizzbuzz            |
 | `examples/mutual.bad`    | Mutual recursion, Ackermann, Collatz, GCD, Fibonacci |
+| `examples/compiler/compiler.bad` | Self-hosting compiler (badlang written in badlang) |
+
+### Self-Hosting Compiler
+
+badlang is self-hosting: `examples/compiler/compiler.bad` is a complete
+badlang compiler written in badlang itself. It implements the full pipeline
+— tokenizer, parser, type checker, and C code emitter — and can compile
+itself. A bootstrap test verifies that the compiler reaches a fixed point:
+
+```bash
+examples/compiler/bootstrap.sh 3
+```
+
+This compiles `compiler.bad` through three generations and confirms each
+produces identical C output.
 
 ## Building
 

@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Let Bindings - The Badlang Book</title>
+        <title>Data Structures and Utilities - The Badlang Book</title>
 
 
         <!-- Custom HTML head -->
@@ -174,63 +174,94 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="let-bindings"><a class="header" href="#let-bindings">Let Bindings</a></h1>
-<p><code>let</code> introduces a local variable by binding a name to an expression’s value.</p>
-<h2 id="in-rite-bodies"><a class="header" href="#in-rite-bodies">In Rite Bodies</a></h2>
-<p>Inside a <code>given</code> clause body, <code>let</code> bindings precede the final expression:</p>
-<pre><code>rite hypotenuse_sq
-  given {| a, b |} =&gt;
-    let a_sq = a * a
-    let b_sq = b * b
-    a_sq + b_sq
+                        <h1 id="data-structures-and-utilities"><a class="header" href="#data-structures-and-utilities">Data Structures and Utilities</a></h1>
+<p>Before the compiler can tokenize or parse anything, it needs basic data
+structures. badlang has no built-in lists, so the compiler builds them from
+records.</p>
+<h2 id="linked-lists-from-records"><a class="header" href="#linked-lists-from-records">Linked Lists from Records</a></h2>
+<p>The compiler implements linked lists using tagged records:</p>
+<pre><code>rite nil
+  given {| |} =&gt; {| tag: "nil" |}
+seal
+
+rite cons
+  given {| head, tail |} =&gt; {| tag: "cons", head: head, tail: tail |}
 seal
 </code></pre>
-<p>Each <code>let</code> binding is visible to all subsequent bindings and to the final
-return expression. The last expression in the body (without a <code>let</code>) is the
-return value.</p>
-<h2 id="in-rituals"><a class="header" href="#in-rituals">In Rituals</a></h2>
-<p>In a ritual, <code>let</code> bindings introduce variables for subsequent statements:</p>
-<pre><code>ritual main
-  let x = 5
-  let y = x * 2
-  utter y
-seal
-</code></pre>
-<h2 id="shadowing"><a class="header" href="#shadowing">Shadowing</a></h2>
-<p>A <code>let</code> binding can shadow a previous binding of the same name:</p>
-<pre><code>rite example
-  given {| n |} =&gt;
-    let n = n + 1
-    let n = n * 2
-    n
-seal
-</code></pre>
-<p>Here, <code>invoke example {| n: 5 |}</code> evaluates to <code>12</code>: the original <code>n</code> (5) is
-shadowed by <code>n + 1</code> (6), which is shadowed by <code>n * 2</code> (12).</p>
-<h2 id="let-in-expressions"><a class="header" href="#let-in-expressions">let in Expressions</a></h2>
-<p><code>let</code> bindings can appear anywhere a multi-line expression is expected,
-including inside <code>divine</code> bodies:</p>
-<pre><code>rite classify
-  given {| n |} =&gt;
-    let positive = n &gt; 0
-    divine positive
-      given 1 =&gt;
-        let doubled = n * 2
-        doubled
-      given 0 =&gt; 0
+<p>A list is either <code>{| tag: "nil" |}</code> or <code>{| tag: "cons", head: x, tail: xs |}</code>.
+Pattern matching on the <code>tag</code> field distinguishes the two cases. This is a
+classic encoding of algebraic data types using structural records.</p>
+<h3 id="list-operations"><a class="header" href="#list-operations">List Operations</a></h3>
+<p>The compiler provides a small standard library of list operations:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Rite</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>is_nil</code></td><td>Returns <code>1</code> if the list is nil, <code>0</code> otherwise</td></tr>
+<tr><td><code>list_head</code></td><td>Returns the head element</td></tr>
+<tr><td><code>list_tail</code></td><td>Returns the tail</td></tr>
+<tr><td><code>list_len</code></td><td>Counts elements (via tail-recursive accumulator)</td></tr>
+<tr><td><code>list_reverse</code></td><td>Reverses a list (via tail-recursive accumulator)</td></tr>
+<tr><td><code>list_nth</code></td><td>Returns the element at index N</td></tr>
+</tbody>
+</table>
+</div>
+<p>All recursive list operations use <strong>accumulator-passing style</strong> for
+tail recursion:</p>
+<pre><code>rite list_reverse_acc
+  given {| list, acc |} =&gt;
+    divine invoke is_nil {| list: list |}
+      given 1 =&gt; acc
+      given 0 =&gt;
+        let h = invoke list_head {| list: list |}
+        let t = invoke list_tail {| list: list |}
+        invoke list_reverse_acc {| list: t, acc: invoke cons {| head: h, tail: acc |} |}
     seal
 seal
 </code></pre>
+<h3 id="the-accumulate-then-reverse-pattern"><a class="header" href="#the-accumulate-then-reverse-pattern">The Accumulate-Then-Reverse Pattern</a></h3>
+<p>Throughout the compiler, recursive parsers accumulate results by <code>cons</code>-ing
+onto the front of a list (which is O(1)), building the list in reverse order.
+When the recursion finishes, a final <code>list_reverse</code> call restores the correct
+order. This pattern appears in the tokenizer, the parser, and the code emitter.</p>
+<h2 id="character-classification"><a class="header" href="#character-classification">Character Classification</a></h2>
+<p>The compiler provides character classification rites for the tokenizer:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Rite</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>is_digit</code></td><td>ASCII digits 0–9</td></tr>
+<tr><td><code>is_alpha</code></td><td>ASCII letters a–z, A–Z</td></tr>
+<tr><td><code>is_alnum</code></td><td>Alphanumeric characters</td></tr>
+<tr><td><code>is_ws</code></td><td>Whitespace (space, newline, CR, tab)</td></tr>
+</tbody>
+</table>
+</div>
+<p>These operate on integer character codes obtained via <code>char_at</code> — one of the
+built-in string rites provided by the runtime.</p>
+<h2 id="string-helpers"><a class="header" href="#string-helpers">String Helpers</a></h2>
+<p>Since badlang strings are immutable and there is no character type, string
+manipulation uses the built-in rites <code>strlen</code>, <code>char_at</code>, <code>substr</code>, and
+<code>concat</code>. The compiler adds convenience wrappers like:</p>
+<ul>
+<li><code>str_eq</code> — string equality via <code>strcmp</code></li>
+<li><code>str_starts_with</code> — prefix matching</li>
+<li>A string builder pattern using <code>concat</code> accumulation</li>
+</ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../expressions/invoke-summon.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../self-hosting.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../expressions/field-access.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../self-hosting/tokenizer.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -240,11 +271,11 @@ seal
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../expressions/invoke-summon.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../self-hosting.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../expressions/field-access.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../self-hosting/tokenizer.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

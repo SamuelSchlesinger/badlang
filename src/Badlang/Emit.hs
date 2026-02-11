@@ -292,6 +292,74 @@ cRuntime = unlines
   , "    return make_str(g_argv[idx]);"
   , "}"
   , ""
+  , "/* ── string built-in rites ─────────────────────────────────── */"
+  , ""
+  , "static Value* rite_strlen(Value* arg) {"
+  , "    Value* sVal = record_field(arg, \"s\");"
+  , "    return make_int((int64_t)strlen(sVal->str_val));"
+  , "}"
+  , ""
+  , "static Value* rite_char_at(Value* arg) {"
+  , "    Value* sVal = record_field(arg, \"s\");"
+  , "    Value* nVal = record_field(arg, \"n\");"
+  , "    int64_t idx = nVal->int_val;"
+  , "    int64_t len = (int64_t)strlen(sVal->str_val);"
+  , "    if (idx < 0 || idx >= len) return make_int(-1);"
+  , "    return make_int((int64_t)(unsigned char)sVal->str_val[idx]);"
+  , "}"
+  , ""
+  , "static Value* rite_substr(Value* arg) {"
+  , "    Value* sVal = record_field(arg, \"s\");"
+  , "    Value* startVal = record_field(arg, \"start\");"
+  , "    Value* lenVal = record_field(arg, \"len\");"
+  , "    int64_t slen = (int64_t)strlen(sVal->str_val);"
+  , "    int64_t start = startVal->int_val;"
+  , "    int64_t rlen = lenVal->int_val;"
+  , "    if (start < 0) start = 0;"
+  , "    if (start >= slen || rlen <= 0) return make_str(\"\");"
+  , "    if (start + rlen > slen) rlen = slen - start;"
+  , "    char* buf = (char*)malloc(rlen + 1);"
+  , "    memcpy(buf, sVal->str_val + start, rlen);"
+  , "    buf[rlen] = '\\0';"
+  , "    Value* result = make_str(buf);"
+  , "    free(buf);"
+  , "    return result;"
+  , "}"
+  , ""
+  , "static Value* rite_concat(Value* arg) {"
+  , "    Value* aVal = record_field(arg, \"a\");"
+  , "    Value* bVal = record_field(arg, \"b\");"
+  , "    size_t la = strlen(aVal->str_val);"
+  , "    size_t lb = strlen(bVal->str_val);"
+  , "    char* buf = (char*)malloc(la + lb + 1);"
+  , "    memcpy(buf, aVal->str_val, la);"
+  , "    memcpy(buf + la, bVal->str_val, lb);"
+  , "    buf[la + lb] = '\\0';"
+  , "    Value* result = make_str(buf);"
+  , "    free(buf);"
+  , "    return result;"
+  , "}"
+  , ""
+  , "static Value* rite_int_to_str(Value* arg) {"
+  , "    Value* nVal = record_field(arg, \"n\");"
+  , "    char buf[32];"
+  , "    snprintf(buf, sizeof(buf), \"%lld\", (long long)nVal->int_val);"
+  , "    return make_str(buf);"
+  , "}"
+  , ""
+  , "static Value* rite_char_of_int(Value* arg) {"
+  , "    Value* nVal = record_field(arg, \"n\");"
+  , "    char buf[2] = { (char)nVal->int_val, '\\0' };"
+  , "    return make_str(buf);"
+  , "}"
+  , ""
+  , "static Value* rite_strcmp(Value* arg) {"
+  , "    Value* aVal = record_field(arg, \"a\");"
+  , "    Value* bVal = record_field(arg, \"b\");"
+  , "    int r = strcmp(aVal->str_val, bVal->str_val);"
+  , "    return make_int((int64_t)(r < 0 ? -1 : (r > 0 ? 1 : 0)));"
+  , "}"
+  , ""
   , "/* ── end runtime ────────────────────────────────────────────── */"
   , ""
   ]
@@ -319,7 +387,9 @@ emitC (Program decls) =
 
 -- | Built-in rite names (defined in runtime, no forward decl needed).
 builtinRiteNames :: [String]
-builtinRiteNames = ["unearth", "inscribe", "argc", "argv"]
+builtinRiteNames = ["unearth", "inscribe", "argc", "argv",
+                     "strlen", "char_at", "substr", "concat",
+                     "int_to_str", "char_of_int", "strcmp"]
 
 -- | Emit forward declarations for rites.
 emitForwardDecl :: Decl -> String
@@ -501,17 +571,25 @@ emitExpr Scry = do
   return ("Value* " ++ t ++ " = runtime_scry();\n", t)
 
 emitExpr (LetIn name value body) = do
-  (valSetup, valVar) <- emitExpr value
-  (bodySetup, bodyVar) <- emitExpr body
-  t <- freshVar "_t"
-  return (valSetup ++
-          "Value* " ++ t ++ ";\n" ++
-          "{\n" ++
-          "Value* " ++ cName name ++ " = " ++ valVar ++ ";\n" ++
-          bodySetup ++
-          t ++ " = " ++ bodyVar ++ ";\n" ++
-          "rc_release(" ++ cName name ++ ");\n" ++
-          "}\n", t)
+  let (bindings, finalBody) = collectLetChain (LetIn name value body)
+  -- Emit all bindings as flat statements
+  bindResults <- mapM (\(n, v) -> do
+    (setup, var) <- emitExpr v
+    return (setup ++ "Value* " ++ cName n ++ " = " ++ var ++ ";\n", n)
+    ) bindings
+  let bindingsCode = concatMap fst bindResults
+      boundNames   = map snd bindResults
+  -- Emit body
+  (bodySetup, bodyVar) <- emitExpr finalBody
+  -- Release in reverse declaration order
+  let releaseCode = concatMap (\n -> "rc_release(" ++ cName n ++ ");\n") (reverse boundNames)
+  return (bindingsCode ++ bodySetup ++ releaseCode, bodyVar)
+  where
+    collectLetChain :: Expr -> ([(String, Expr)], Expr)
+    collectLetChain (LetIn n v b) =
+      let (rest, fb) = collectLetChain b
+      in ((n, v) : rest, fb)
+    collectLetChain other = ([], other)
 
 emitExpr (Divine scrutinee clauses) = do
   (scrSetup, scrVar) <- emitExpr scrutinee
@@ -548,6 +626,7 @@ emitBinOp op a b = case op of
     Sub -> "make_int(" ++ a ++ "->int_val - " ++ b ++ "->int_val)"
     Mul -> "make_int(" ++ a ++ "->int_val * " ++ b ++ "->int_val)"
     Div -> "make_int(" ++ a ++ "->int_val / " ++ b ++ "->int_val)"
+    Mod -> "make_int(" ++ a ++ "->int_val % " ++ b ++ "->int_val)"
     Eq  -> "make_int(" ++ a ++ "->int_val == " ++ b ++ "->int_val)"
     Neq -> "make_int(" ++ a ++ "->int_val != " ++ b ++ "->int_val)"
     Lt  -> "make_int(" ++ a ++ "->int_val < " ++ b ++ "->int_val)"

@@ -1,0 +1,16 @@
+ritual main
+  let s = "hello world"
+  utter invoke strlen {| s: s |}
+  utter invoke char_at {| s: s, n: 0 |}
+  utter invoke char_at {| s: s, n: 4 |}
+  utter invoke substr {| s: s, start: 0, len: 5 |}
+  utter invoke concat {| a: "foo", b: "bar" |}
+  utter invoke int_to_str {| n: 42 |}
+  utter invoke char_of_int {| n: 65 |}
+  utter invoke strcmp {| a: "abc", b: "abc" |}
+  utter invoke strcmp {| a: "abc", b: "def" |}
+  utter invoke strcmp {| a: "def", b: "abc" |}
+  -- Test mod
+  utter 10 % 3
+  utter 15 % 5
+seal

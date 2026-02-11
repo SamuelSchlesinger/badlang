@@ -5,6 +5,7 @@ dist-newstyle/
 *.dyn_hi
 *.c
 !src/**/*.c
+!examples/compiler/runtime.c
 *.exe
 .claude/
 

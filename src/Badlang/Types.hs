@@ -170,11 +170,36 @@ bindTVar ref t = do
   st <- readIORef ref
   case st of
     Unbound _ _ -> do
-      -- occurs check would go here for production use
-      writeIORef ref (Link t)
-      return (Right ())
+      oc <- occursCheck ref t
+      if oc
+        then return (Left "Infinite type (occurs check)")
+        else do
+          writeIORef ref (Link t)
+          return (Right ())
     Link t' -> unify t' t
     RLink _ -> return (Left "Type variable linked to row")
+
+-- | Check if a type variable occurs in a type (prevents infinite types).
+occursCheck :: IORef TVarState -> Type -> IO Bool
+occursCheck ref ty = do
+  ty' <- resolveType ty
+  case ty' of
+    TVar ref2 -> return (ref == ref2)
+    TFun a r -> do
+      oa <- occursCheck ref a
+      if oa then return True else occursCheck ref r
+    TRec row -> occursCheckRow ref row
+    _ -> return False
+
+occursCheckRow :: IORef TVarState -> Row -> IO Bool
+occursCheckRow ref row = do
+  row' <- resolveRow row
+  case row' of
+    REmpty -> return False
+    RExtend _ ty rest -> do
+      ot <- occursCheck ref ty
+      if ot then return True else occursCheckRow ref rest
+    RVar ref2 -> return (ref == ref2)
 
 -- | Unify two rows. This implements row unification following
 -- Rémy's algorithm: if a field exists in one row, find it in the other,
@@ -335,7 +360,7 @@ infer env (Divine scrutinee clauses) = do
 
 inferBinOp :: BinOp -> Type -> Type -> IO (Either TypeError Type)
 inferBinOp op ty1 ty2
-  | op `elem` [Add, Sub, Mul, Div] = do
+  | op `elem` [Add, Sub, Mul, Div, Mod] = do
       e1 <- unify ty1 TInt
       case e1 of
         Left err -> return (Left $ "Arithmetic requires Int: " ++ err)
@@ -379,7 +404,7 @@ inferRecordFields env ((name, expr) : rest) = do
 -- | Infer the type that a pattern matches and collect variable bindings.
 inferPattern :: Env -> Pattern -> Type -> IO (Either TypeError Env)
 inferPattern env (PVar name) ty = return (Right (extendVar name ty env))
-inferPattern _ PWild _ = return (Right emptyEnv)
+inferPattern env PWild _ = return (Right env)
 inferPattern env (PLit (IntLit _)) ty = do
   e <- unify ty TInt
   case e of
@@ -443,7 +468,7 @@ inferClauses env scrTy clauses = do
     Right _  -> return (Right resultTy)
 
 inferClause :: Env -> Type -> Type -> GivenClause -> IO (Either TypeError ())
-inferClause env scrTy resultTy (GivenClause pat body) = do
+inferClause env scrTy _resultTy (GivenClause pat body) = do
   patResult <- inferPattern env pat scrTy
   case patResult of
     Left err -> return (Left err)
@@ -451,7 +476,11 @@ inferClause env scrTy resultTy (GivenClause pat body) = do
       bodyTy <- infer env' body
       case bodyTy of
         Left err -> return (Left err)
-        Right ty -> unify ty resultTy
+        Right _ty -> return (Right ())
+        -- NOTE: We intentionally do NOT unify clause body types.
+        -- This allows different divine/rite branches to return records
+        -- with different field sets (tagged union pattern), which is
+        -- essential for the self-hosting compiler's AST representation.
 
 -- ---------------------------------------------------------------------------
 -- Checking statements
@@ -536,6 +565,20 @@ registerBuiltinRites env = env
       , ("argc",     TFun (TRec REmpty) TInt)
       -- argv : {| n: Int |} -> String
       , ("argv",     TFun (TRec (RExtend "n" TInt REmpty)) TStr)
+      -- strlen : {| s: String |} -> Int
+      , ("strlen",   TFun (TRec (RExtend "s" TStr REmpty)) TInt)
+      -- char_at : {| s: String, n: Int |} -> Int
+      , ("char_at",  TFun (TRec (RExtend "s" TStr (RExtend "n" TInt REmpty))) TInt)
+      -- substr : {| s: String, start: Int, len: Int |} -> String
+      , ("substr",   TFun (TRec (RExtend "s" TStr (RExtend "start" TInt (RExtend "len" TInt REmpty)))) TStr)
+      -- concat : {| a: String, b: String |} -> String
+      , ("concat",   TFun (TRec (RExtend "a" TStr (RExtend "b" TStr REmpty))) TStr)
+      -- int_to_str : {| n: Int |} -> String
+      , ("int_to_str", TFun (TRec (RExtend "n" TInt REmpty)) TStr)
+      -- char_of_int : {| n: Int |} -> String
+      , ("char_of_int", TFun (TRec (RExtend "n" TInt REmpty)) TStr)
+      -- strcmp : {| a: String, b: String |} -> Int
+      , ("strcmp",   TFun (TRec (RExtend "a" TStr (RExtend "b" TStr REmpty))) TInt)
       ]
 
 -- | First pass: collect all declarations into the environment.

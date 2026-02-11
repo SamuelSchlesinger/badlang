@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a16586d1.js";
+            window.path_to_searchindex_js = "searchindex-d4d4b451.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-35ffca0c.js"></script>
+        <script src="toc-daf9c5e4.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -2042,17 +2042,19 @@ incrementing their reference counts.</p>
 }
 </code></pre>
 <p>The caller must <code>rc_retain</code> the result if it needs to outlive the record.</p>
-<h3 id="let--in--block-scoping"><a class="header" href="#let--in--block-scoping">let … in → Block Scoping</a></h3>
-<p>Let bindings use C block scoping with a result variable declared outside:</p>
-<pre><code class="language-c">Value* _t5;
-{
-    Value* bl_x = /* evaluated value */;
-    /* body that may reference bl_x */
-    _t5 = /* body result */;
-    rc_release(bl_x);
-}
-/* _t5 is the result */
+<h3 id="let--in--flat-sequential-statements"><a class="header" href="#let--in--flat-sequential-statements">let … in → Flat Sequential Statements</a></h3>
+<p>Chains of <code>let</code> bindings are flattened into sequential C variable declarations.
+The compiler collects consecutive <code>let</code> bindings and emits them without nesting,
+then releases all bound variables in reverse declaration order after the body:</p>
+<pre><code class="language-c">Value* bl_x = /* evaluated value for x */;
+Value* bl_y = /* evaluated value for y */;
+/* body code that may reference bl_x, bl_y */
+/* body result is used directly */
+rc_release(bl_y);
+rc_release(bl_x);
 </code></pre>
+<p>This avoids O(N) nesting depth for N sequential bindings, keeping the generated
+C flat regardless of how many <code>let</code> bindings appear in a row.</p>
 <h3 id="divine--local-variable--goto"><a class="header" href="#divine--local-variable--goto">divine → Local Variable + goto</a></h3>
 <p><code>divine</code> expressions compile to a local result variable and a label for early
 exit, with each clause checking its pattern and jumping to the end on match.
@@ -2095,6 +2097,522 @@ cat examples/hello.c
 </code></pre>
 <p>The output is intentionally readable. It’s a useful learning tool for
 understanding how high-level constructs map to low-level code.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="the-self-hosting-compiler"><a class="header" href="#the-self-hosting-compiler">The Self-Hosting Compiler</a></h1>
+<p>badlang is <strong>self-hosting</strong>: the file <code>examples/compiler/compiler.bad</code> is a
+complete badlang compiler written in badlang itself. It implements the full
+compilation pipeline — tokenizer, parser, and C code emitter — and can
+compile itself.</p>
+<h2 id="why-self-hosting"><a class="header" href="#why-self-hosting">Why Self-Hosting?</a></h2>
+<p>A self-hosting compiler is the ultimate test of a language’s expressiveness. If
+a language can implement its own compiler, it demonstrates that the language is
+powerful enough for real-world systems programming. For badlang, it also
+serves as:</p>
+<ul>
+<li><strong>A stress test</strong> of every language feature: records, pattern matching,
+recursion, structural subtyping, and I/O all get a serious workout.</li>
+<li><strong>A correctness proof</strong> via bootstrapping: when the compiler compiles itself
+and produces identical output across generations, we know it faithfully
+implements its own semantics.</li>
+<li><strong>The largest badlang program</strong>, exercising the compiler at scale (~2000
+lines).</li>
+</ul>
+<h2 id="architecture-at-a-glance"><a class="header" href="#architecture-at-a-glance">Architecture at a Glance</a></h2>
+<p>The self-hosting compiler follows the same pipeline as the Haskell reference
+compiler, minus the type checker:</p>
+<pre><code>Source (.bad) → Tokenize → Parse → Emit C → Write File
+</code></pre>
+<p>The compiler reads a source file, tokenizes it, parses the token stream into
+an AST, generates C code, and writes the result to a file. It relies on a
+shared <code>runtime.c</code> that provides the value representation, reference counting,
+and built-in rites for file I/O and string manipulation.</p>
+<p>The entire compiler is a single file organized into clear sections:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Section</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td>Utility library</td><td>Character classification, string helpers, linked lists</td></tr>
+<tr><td>Tokenizer</td><td>Lexical analysis into tokens</td></tr>
+<tr><td>Parser</td><td>Recursive descent into AST nodes</td></tr>
+<tr><td>Code emitter</td><td>AST to C translation</td></tr>
+<tr><td>Driver</td><td>Main ritual tying it all together</td></tr>
+</tbody>
+</table>
+</div>
+<p>Each section is covered in detail in the following subchapters.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="data-structures-and-utilities"><a class="header" href="#data-structures-and-utilities">Data Structures and Utilities</a></h1>
+<p>Before the compiler can tokenize or parse anything, it needs basic data
+structures. badlang has no built-in lists, so the compiler builds them from
+records.</p>
+<h2 id="linked-lists-from-records"><a class="header" href="#linked-lists-from-records">Linked Lists from Records</a></h2>
+<p>The compiler implements linked lists using tagged records:</p>
+<pre><code>rite nil
+  given {| |} =&gt; {| tag: "nil" |}
+seal
+
+rite cons
+  given {| head, tail |} =&gt; {| tag: "cons", head: head, tail: tail |}
+seal
+</code></pre>
+<p>A list is either <code>{| tag: "nil" |}</code> or <code>{| tag: "cons", head: x, tail: xs |}</code>.
+Pattern matching on the <code>tag</code> field distinguishes the two cases. This is a
+classic encoding of algebraic data types using structural records.</p>
+<h3 id="list-operations"><a class="header" href="#list-operations">List Operations</a></h3>
+<p>The compiler provides a small standard library of list operations:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Rite</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>is_nil</code></td><td>Returns <code>1</code> if the list is nil, <code>0</code> otherwise</td></tr>
+<tr><td><code>list_head</code></td><td>Returns the head element</td></tr>
+<tr><td><code>list_tail</code></td><td>Returns the tail</td></tr>
+<tr><td><code>list_len</code></td><td>Counts elements (via tail-recursive accumulator)</td></tr>
+<tr><td><code>list_reverse</code></td><td>Reverses a list (via tail-recursive accumulator)</td></tr>
+<tr><td><code>list_nth</code></td><td>Returns the element at index N</td></tr>
+</tbody>
+</table>
+</div>
+<p>All recursive list operations use <strong>accumulator-passing style</strong> for
+tail recursion:</p>
+<pre><code>rite list_reverse_acc
+  given {| list, acc |} =&gt;
+    divine invoke is_nil {| list: list |}
+      given 1 =&gt; acc
+      given 0 =&gt;
+        let h = invoke list_head {| list: list |}
+        let t = invoke list_tail {| list: list |}
+        invoke list_reverse_acc {| list: t, acc: invoke cons {| head: h, tail: acc |} |}
+    seal
+seal
+</code></pre>
+<h3 id="the-accumulate-then-reverse-pattern"><a class="header" href="#the-accumulate-then-reverse-pattern">The Accumulate-Then-Reverse Pattern</a></h3>
+<p>Throughout the compiler, recursive parsers accumulate results by <code>cons</code>-ing
+onto the front of a list (which is O(1)), building the list in reverse order.
+When the recursion finishes, a final <code>list_reverse</code> call restores the correct
+order. This pattern appears in the tokenizer, the parser, and the code emitter.</p>
+<h2 id="character-classification"><a class="header" href="#character-classification">Character Classification</a></h2>
+<p>The compiler provides character classification rites for the tokenizer:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Rite</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>is_digit</code></td><td>ASCII digits 0–9</td></tr>
+<tr><td><code>is_alpha</code></td><td>ASCII letters a–z, A–Z</td></tr>
+<tr><td><code>is_alnum</code></td><td>Alphanumeric characters</td></tr>
+<tr><td><code>is_ws</code></td><td>Whitespace (space, newline, CR, tab)</td></tr>
+</tbody>
+</table>
+</div>
+<p>These operate on integer character codes obtained via <code>char_at</code> — one of the
+built-in string rites provided by the runtime.</p>
+<h2 id="string-helpers"><a class="header" href="#string-helpers">String Helpers</a></h2>
+<p>Since badlang strings are immutable and there is no character type, string
+manipulation uses the built-in rites <code>strlen</code>, <code>char_at</code>, <code>substr</code>, and
+<code>concat</code>. The compiler adds convenience wrappers like:</p>
+<ul>
+<li><code>str_eq</code> — string equality via <code>strcmp</code></li>
+<li><code>str_starts_with</code> — prefix matching</li>
+<li>A string builder pattern using <code>concat</code> accumulation</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="tokenizer"><a class="header" href="#tokenizer">Tokenizer</a></h1>
+<p>The tokenizer (lexer) converts a source string into a list of tokens. Each
+token is a record with a <code>type</code> and a <code>value</code>:</p>
+<pre><code>{| type: "ident", value: "factorial" |}
+{| type: "int",   value: "42" |}
+{| type: "+",     value: "+" |}
+</code></pre>
+<h2 id="token-types"><a class="header" href="#token-types">Token Types</a></h2>
+<p>The tokenizer recognizes the following token types:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Category</th><th>Types</th></tr>
+</thead>
+<tbody>
+<tr><td>Keywords</td><td><code>rite</code>, <code>ritual</code>, <code>altar</code>, <code>given</code>, <code>seal</code>, <code>let</code>, <code>invoke</code>, <code>summon</code>, <code>divine</code>, <code>hearken</code>, <code>scry</code>, <code>utter</code>, <code>whisper</code></td></tr>
+<tr><td>Identifiers</td><td><code>ident</code></td></tr>
+<tr><td>Literals</td><td><code>int</code>, <code>str</code></td></tr>
+<tr><td>Operators</td><td><code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>%</code>, <code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code>, <code>&amp;&amp;</code>, <code>||</code></td></tr>
+<tr><td>Delimiters</td><td><code>{|</code>, <code>|}</code>, <code>(</code>, <code>)</code>, <code>.</code>, <code>,</code>, <code>:</code>, <code>=</code>, <code>=&gt;</code></td></tr>
+<tr><td>Special</td><td><code>_</code> (wildcard), <code>eof</code></td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h2>
+<p>The tokenizer operates on a source string and a position index. At each step,
+it skips whitespace and <code>--</code> comments, then dispatches based on the current
+character:</p>
+<ol>
+<li>
+<p><strong>Digits</strong> → <code>lex_number</code>: Scan forward to find the end of the digit
+sequence, extract with <code>substr</code>.</p>
+</li>
+<li>
+<p><strong><code>"</code></strong> → <code>lex_string</code>: Scan forward to the closing <code>"</code>, extract the
+contents (without quotes).</p>
+</li>
+<li>
+<p><strong>Letters or <code>_</code></strong> → <code>lex_word</code>: Scan to the end of the alphanumeric
+sequence. Check against the keyword list with <code>is_keyword</code>. If it matches,
+the token type is the keyword itself (e.g., <code>"rite"</code>). A lone <code>_</code> becomes
+the wildcard token. Otherwise, it’s an <code>ident</code>.</p>
+</li>
+<li>
+<p><strong>Punctuation</strong> → <code>lex_punct</code>: Check for two-character tokens first (<code>==</code>,
+<code>=&gt;</code>, <code>!=</code>, <code>&lt;=</code>, <code>&gt;=</code>, <code>{|</code>, <code>|}</code>, <code>||</code>, <code>&amp;&amp;</code>), then fall back to
+single-character tokens.</p>
+</li>
+</ol>
+<h2 id="the-tokenization-loop"><a class="header" href="#the-tokenization-loop">The Tokenization Loop</a></h2>
+<p>The main loop (<code>tokenize_loop</code>) is tail-recursive with an accumulator:</p>
+<pre><code>rite tokenize_loop
+  given {| src, pos, acc |} =&gt;
+    -- skip whitespace and comments
+    -- if at end of string, reverse acc and append EOF
+    -- otherwise, lex next token, cons onto acc, recurse
+seal
+</code></pre>
+<p>Tokens accumulate in reverse order via <code>cons</code> and are reversed at the end.
+The final token list always ends with an <code>{| type: "eof", value: "" |}</code> sentinel.</p>
+<h2 id="whitespace-and-comments"><a class="header" href="#whitespace-and-comments">Whitespace and Comments</a></h2>
+<p>The <code>skip_ws_cmt</code> rite handles both whitespace and line comments recursively:</p>
+<ul>
+<li>Skip any whitespace characters</li>
+<li>If the next two characters are <code>--</code>, skip to end of line</li>
+<li>Repeat until neither whitespace nor comment is found</li>
+</ul>
+<p>This means comments can appear anywhere whitespace is legal.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="parser"><a class="header" href="#parser">Parser</a></h1>
+<p>The parser transforms a list of tokens into an abstract syntax tree (AST). It
+is a <strong>recursive descent parser</strong> with <strong>precedence climbing</strong> for operators.</p>
+<h2 id="token-stream-interface"><a class="header" href="#token-stream-interface">Token Stream Interface</a></h2>
+<p>The parser consumes tokens through three helper rites:</p>
+<ul>
+<li><code>peek</code> — look at the next token without consuming it</li>
+<li><code>advance</code> — consume the current token and return the rest</li>
+<li><code>expect</code> — consume a token of a specific type, or abort with an error</li>
+</ul>
+<p>Every parse rite takes a <code>tokens</code> parameter and returns a record containing the
+parsed AST <code>node</code> and the remaining <code>rest</code> tokens.</p>
+<h2 id="ast-node-types"><a class="header" href="#ast-node-types">AST Node Types</a></h2>
+<p>The parser produces tagged records as AST nodes. Each node has a <code>tag</code> field
+that identifies its type.</p>
+<h3 id="expressions-1"><a class="header" href="#expressions-1">Expressions</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Tag</th><th>Fields</th><th>Example</th></tr>
+</thead>
+<tbody>
+<tr><td><code>int_lit</code></td><td><code>value</code></td><td><code>42</code></td></tr>
+<tr><td><code>str_lit</code></td><td><code>value</code></td><td><code>"hello"</code></td></tr>
+<tr><td><code>var</code></td><td><code>name</code></td><td><code>x</code></td></tr>
+<tr><td><code>binop</code></td><td><code>op</code>, <code>left</code>, <code>right</code></td><td><code>x + 1</code></td></tr>
+<tr><td><code>unop</code></td><td><code>op</code>, <code>operand</code></td><td><code>-x</code></td></tr>
+<tr><td><code>field_access</code></td><td><code>obj</code>, <code>field</code></td><td><code>point.x</code></td></tr>
+<tr><td><code>record</code></td><td><code>fields</code></td><td><code>{| x: 1, y: 2 |}</code></td></tr>
+<tr><td><code>summon</code></td><td><code>name</code>, <code>fields</code></td><td><code>summon Point {| x: 1 |}</code></td></tr>
+<tr><td><code>invoke</code></td><td><code>name</code>, <code>arg</code></td><td><code>invoke factorial {| n: 5 |}</code></td></tr>
+<tr><td><code>let_in</code></td><td><code>name</code>, <code>value</code>, <code>body</code></td><td><code>let x = 1</code> (desugared)</td></tr>
+<tr><td><code>divine</code></td><td><code>scrutinee</code>, <code>clauses</code></td><td><code>divine expr given ... seal</code></td></tr>
+<tr><td><code>hearken</code></td><td><em>(none)</em></td><td><code>hearken</code></td></tr>
+<tr><td><code>scry</code></td><td><em>(none)</em></td><td><code>scry</code></td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="patterns-1"><a class="header" href="#patterns-1">Patterns</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Tag</th><th>Fields</th><th>Example</th></tr>
+</thead>
+<tbody>
+<tr><td><code>pat_int</code></td><td><code>value</code></td><td><code>0</code></td></tr>
+<tr><td><code>pat_str</code></td><td><code>value</code></td><td><code>"hello"</code></td></tr>
+<tr><td><code>pat_var</code></td><td><code>name</code></td><td><code>n</code></td></tr>
+<tr><td><code>pat_wild</code></td><td><em>(none)</em></td><td><code>_</code></td></tr>
+<tr><td><code>pat_rec</code></td><td><code>fields</code></td><td><code>{| x, y: 0 |}</code></td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="declarations-1"><a class="header" href="#declarations-1">Declarations</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Tag</th><th>Fields</th><th>Example</th></tr>
+</thead>
+<tbody>
+<tr><td><code>decl_rite</code></td><td><code>name</code>, <code>clauses</code></td><td><code>rite factorial given ... seal</code></td></tr>
+<tr><td><code>decl_ritual</code></td><td><code>name</code>, <code>stmts</code></td><td><code>ritual main ... seal</code></td></tr>
+<tr><td><code>decl_altar</code></td><td><code>name</code>, <code>fields</code></td><td><code>altar Point x: Int y: Int seal</code></td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="operator-precedence"><a class="header" href="#operator-precedence">Operator Precedence</a></h2>
+<p>The parser implements operator precedence via a chain of mutually recursive
+rites, from lowest to highest precedence:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Level</th><th>Operators</th><th>Rite</th></tr>
+</thead>
+<tbody>
+<tr><td>1 (lowest)</td><td><code>||</code></td><td><code>parse_or_expr</code></td></tr>
+<tr><td>2</td><td><code>&amp;&amp;</code></td><td><code>parse_and_expr</code></td></tr>
+<tr><td>3</td><td><code>==</code> <code>!=</code> <code>&lt;</code> <code>&gt;</code> <code>&lt;=</code> <code>&gt;=</code></td><td><code>parse_cmp_expr</code></td></tr>
+<tr><td>4</td><td><code>+</code> <code>-</code></td><td><code>parse_add_expr</code></td></tr>
+<tr><td>5</td><td><code>*</code> <code>/</code> <code>%</code></td><td><code>parse_mul_expr</code></td></tr>
+<tr><td>6</td><td>unary <code>-</code></td><td><code>parse_unary_expr</code></td></tr>
+<tr><td>7 (highest)</td><td><code>.</code> (field access)</td><td><code>parse_postfix_expr</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Each level parses its operand by calling the next higher level, then checks for
+its operator in a tail-recursive loop. For example, <code>parse_add_expr</code> calls
+<code>parse_mul_expr</code> for its left operand, then loops checking for <code>+</code> or <code>-</code>.</p>
+<p>All binary operators are <strong>left-associative</strong>: <code>a + b + c</code> parses as
+<code>(a + b) + c</code>.</p>
+<h2 id="parsing-let-bindings"><a class="header" href="#parsing-let-bindings">Parsing Let Bindings</a></h2>
+<p>Sequential <code>let</code> bindings in a block are parsed into a list, then folded into
+right-nested <code>let_in</code> AST nodes:</p>
+<pre><code>let x = 1        →   {| tag: "let_in", name: "x", value: 1,
+let y = x + 1             body: {| tag: "let_in", name: "y", value: ...,
+x * y                              body: {| tag: "binop", ... |} |} |}
+</code></pre>
+<p>The <code>parse_let_bindings</code> rite collects bindings into a list, then
+<code>fold_let_bindings</code> converts them into nested <code>let_in</code> nodes where the
+innermost body is the final expression.</p>
+<h2 id="parsing-invoke"><a class="header" href="#parsing-invoke">Parsing Invoke</a></h2>
+<p><code>invoke</code> supports three argument forms:</p>
+<ol>
+<li><strong>Record literal:</strong> <code>invoke f {| x: 1 |}</code></li>
+<li><strong>Parenthesized expression:</strong> <code>invoke f (expr)</code></li>
+<li><strong>Variable:</strong> <code>invoke f x</code></li>
+</ol>
+<p>This flexibility lets the programmer choose the most readable form for each
+call site.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="code-generation"><a class="header" href="#code-generation">Code Generation</a></h1>
+<p>The code emitter translates AST nodes into C code. It generates
+reference-counted <code>Value*</code> operations that work with the shared <code>runtime.c</code>.</p>
+<h2 id="the-emitter-pattern"><a class="header" href="#the-emitter-pattern">The Emitter Pattern</a></h2>
+<p>Every emitter rite follows the same convention. It takes an AST node and a
+<code>counter</code> (for generating unique variable names), and returns:</p>
+<pre><code>{| code: String, var: String, counter: Int |}
+</code></pre>
+<ul>
+<li><strong><code>code</code></strong> — C statements that set up the computation (variable declarations,
+function calls, etc.)</li>
+<li><strong><code>var</code></strong> — the name of the C variable holding the result</li>
+<li><strong><code>counter</code></strong> — the updated counter for the next fresh variable</li>
+</ul>
+<p>The counter is <strong>threaded</strong> through every emitter call: each rite receives
+the counter, may allocate fresh variables (incrementing it), and passes the
+updated counter to the next call. This ensures all generated variable names
+are globally unique.</p>
+<h2 id="fresh-variables"><a class="header" href="#fresh-variables">Fresh Variables</a></h2>
+<p>The <code>fresh_var</code> rite generates unique C identifiers:</p>
+<pre><code>invoke fresh_var {| prefix: "_t", counter: 0 |}
+→ {| name: "_t0", counter: 1 |}
+</code></pre>
+<p>Generated names include <code>_t0</code>, <code>_t1</code>, … for temporaries, <code>_scr0</code> for
+scrutinees, <code>_dvn0</code> for divine results, and <code>_done0</code> for goto labels.</p>
+<h2 id="identifier-mangling-1"><a class="header" href="#identifier-mangling-1">Identifier Mangling</a></h2>
+<p>The <code>c_name</code> rite prefixes badlang identifiers with <code>bl_</code> to avoid collisions
+with C keywords. The special name <code>arg</code> (the rite parameter) is left unmangled
+since it matches the generated C function signature.</p>
+<h2 id="expression-emission"><a class="header" href="#expression-emission">Expression Emission</a></h2>
+<p>The central dispatcher <code>emit_expr</code> pattern-matches on the AST node’s <code>tag</code>
+field and delegates to specialized emitters:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>AST Tag</th><th>Emitter</th><th>Generated C</th></tr>
+</thead>
+<tbody>
+<tr><td><code>int_lit</code></td><td><code>emit_int_lit</code></td><td><code>make_int(42)</code></td></tr>
+<tr><td><code>str_lit</code></td><td><code>emit_str_lit</code></td><td><code>make_str("hello")</code></td></tr>
+<tr><td><code>var</code></td><td><code>emit_var</code></td><td><code>bl_x; rc_retain(bl_x)</code></td></tr>
+<tr><td><code>binop</code></td><td><code>emit_binop</code></td><td>Emit both sides, apply op, release operands</td></tr>
+<tr><td><code>unop</code></td><td><code>emit_unop</code></td><td>Emit operand, negate</td></tr>
+<tr><td><code>field_access</code></td><td><code>emit_field_access</code></td><td><code>record_field(obj, "name")</code> + retain</td></tr>
+<tr><td><code>record</code></td><td><code>emit_record</code></td><td><code>make_record(n, "f1", v1, ...)</code></td></tr>
+<tr><td><code>invoke</code></td><td><code>emit_invoke_expr</code></td><td><code>rite_name(arg)</code></td></tr>
+<tr><td><code>let_in</code></td><td><code>emit_let_in</code></td><td>Flat sequential bindings (see below)</td></tr>
+<tr><td><code>divine</code></td><td><code>emit_divine</code></td><td>Cascading if-chains with goto</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="let-binding-chains"><a class="header" href="#let-binding-chains">Let Binding Chains</a></h3>
+<p>The emitter flattens chains of nested <code>let_in</code> nodes into sequential C
+variable declarations. The <code>collect_let_chain</code> rite walks the nested structure
+and extracts all bindings and the final body. Then <code>emit_let_bindings_loop</code>
+emits each binding as a flat <code>Value*</code> declaration, and all bound variables are
+released in reverse order after the body:</p>
+<pre><code class="language-c">// let x = 1
+// let y = x + 1
+// x * y
+Value* bl_x = make_int(1);
+Value* bl_y = make_int(bl_x-&gt;int_val + make_int(1)-&gt;int_val);
+/* ... body code ... */
+rc_release(bl_y);
+rc_release(bl_x);
+</code></pre>
+<p>This avoids nested <code>{ }</code> blocks, keeping the generated C flat regardless of how
+many sequential <code>let</code> bindings appear.</p>
+<h3 id="record-emission"><a class="header" href="#record-emission">Record Emission</a></h3>
+<p>Records are emitted as variadic <code>make_record</code> calls. The emitter loops over the
+field list, emitting each value expression and collecting the field names and
+result variables into an argument string:</p>
+<pre><code class="language-c">make_record(2, "x", _t0, "y", _t1)
+</code></pre>
+<p><code>make_record</code> <strong>adopts</strong> the field values — it takes ownership without
+incrementing their reference counts.</p>
+<h2 id="pattern-matching-1"><a class="header" href="#pattern-matching-1">Pattern Matching</a></h2>
+<p>Pattern matching emission produces two things:</p>
+<ul>
+<li><strong><code>cond</code></strong> — a C condition expression (e.g., <code>_f_x != NULL &amp;&amp; _f_x-&gt;int_val == 0</code>)</li>
+<li><strong><code>bindings</code></strong> — C variable declarations extracting matched values</li>
+</ul>
+<h3 id="record-patterns"><a class="header" href="#record-patterns">Record Patterns</a></h3>
+<p>For each field in a record pattern, the emitter generates:</p>
+<pre><code class="language-c">Value* _f_x = record_field(arg, "x");
+Value* bl_x = _f_x;
+</code></pre>
+<p>The condition checks that <code>_f_x != NULL</code> (the field exists). For literal
+sub-patterns, it additionally checks the value:</p>
+<pre><code class="language-c">_f_n != NULL &amp;&amp; _f_n-&gt;tag == TAG_INT &amp;&amp; _f_n-&gt;int_val == 0
+</code></pre>
+<h3 id="divine-expressions"><a class="header" href="#divine-expressions">Divine Expressions</a></h3>
+<p><code>divine</code> compiles to a local result variable, a scrutinee, and a series of
+if-blocks with a shared <code>goto</code> label:</p>
+<pre><code class="language-c">Value* _dvn0;
+Value* _scr0 = /* scrutinee */;
+/* clause 1: */ if (condition) { ... _dvn0 = result; goto _done0; }
+/* clause 2: */ if (condition) { ... _dvn0 = result; goto _done0; }
+fprintf(stderr, "Pattern match failure\n"); exit(1);
+_done0:;
+rc_release(_scr0);
+</code></pre>
+<p>Each clause retains pattern-bound variables on entry and releases them before
+the <code>goto</code>.</p>
+<h2 id="rite-definitions"><a class="header" href="#rite-definitions">Rite Definitions</a></h2>
+<p>Each rite compiles to a static C function:</p>
+<pre><code class="language-c">static Value* rite_factorial(Value* arg) {
+    /* clause 1 */
+    /* clause 2 */
+    fprintf(stderr, "Pattern match failure in rite 'factorial'\n");
+    exit(1);
+}
+</code></pre>
+<p>Clauses are emitted as cascading if-blocks. On a successful match, the body is
+evaluated, pattern-bound variables are released, and the result is returned.</p>
+<h2 id="built-in-rites"><a class="header" href="#built-in-rites">Built-in Rites</a></h2>
+<p>Certain rites (<code>unearth</code>, <code>inscribe</code>, <code>concat</code>, <code>strlen</code>, <code>char_at</code>, <code>substr</code>,
+<code>strcmp</code>, <code>int_to_str</code>, <code>char_of_int</code>, <code>argc</code>, <code>argv</code>) are implemented in
+<code>runtime.c</code> rather than generated. The emitter checks <code>is_builtin_rite</code> and
+skips code generation for these — they are available as C functions at link
+time.</p>
+<h2 id="assembling-the-output"><a class="header" href="#assembling-the-output">Assembling the Output</a></h2>
+<p>The top-level <code>emit_c</code> rite assembles the complete C file by concatenating:</p>
+<ol>
+<li>The contents of <code>runtime.c</code> (read via <code>unearth</code>)</li>
+<li>Forward declarations for all non-builtin rites</li>
+<li>Rite definitions</li>
+<li>The <code>main()</code> function (from the <code>ritual main</code> declaration)</li>
+</ol>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="bootstrapping"><a class="header" href="#bootstrapping">Bootstrapping</a></h1>
+<p>A self-hosting compiler faces a chicken-and-egg problem: to compile itself, it
+needs a compiler. Bootstrapping is the process of resolving this by using an
+existing compiler to get things started.</p>
+<h2 id="the-bootstrap-chain"><a class="header" href="#the-bootstrap-chain">The Bootstrap Chain</a></h2>
+<p>badlang’s bootstrap process uses the Haskell reference compiler as the seed:</p>
+<pre><code>                    Haskell compiler
+                         |
+compiler.bad ──────► gen0 binary
+                         |
+compiler.bad ──────► gen1.c ──► gen1 binary
+                                    |
+compiler.bad ───────────────► gen2.c ──► gen2 binary
+                                            |
+compiler.bad ─────────────────────────► gen3.c
+</code></pre>
+<ol>
+<li><strong>gen0</strong>: The Haskell compiler compiles <code>compiler.bad</code> to C, which is
+compiled to a native binary.</li>
+<li><strong>gen1</strong>: The gen0 binary compiles <code>compiler.bad</code>, producing <code>gen1.c</code>.</li>
+<li><strong>gen2</strong>: The gen1 binary compiles <code>compiler.bad</code>, producing <code>gen2.c</code>.</li>
+<li><strong>gen3</strong>: And so on.</li>
+</ol>
+<h2 id="the-fixed-point"><a class="header" href="#the-fixed-point">The Fixed Point</a></h2>
+<p>The key property is that <strong>gen1.c and gen2.c are identical</strong>. This means the
+compiler has reached a <strong>fixed point</strong>: it produces the same output regardless
+of which generation compiled it.</p>
+<p>Why does gen0’s output differ? Because gen0 was compiled by the <em>Haskell</em>
+compiler, which may generate slightly different C code (different variable
+numbering, different formatting). But once the self-hosting compiler compiles
+itself (gen1), its output is determined entirely by <code>compiler.bad</code> — and since
+gen1 and gen2 are the same binary (they came from identical C), they produce
+identical output.</p>
+<p>This fixed-point property is a strong correctness argument: the compiler
+faithfully implements the language semantics that it itself is written in.</p>
+<h2 id="running-the-bootstrap-test"><a class="header" href="#running-the-bootstrap-test">Running the Bootstrap Test</a></h2>
+<p>The <code>bootstrap.sh</code> script automates the full bootstrap chain:</p>
+<pre><code class="language-bash">cd examples/compiler
+./bootstrap.sh 3
+</code></pre>
+<p>This compiles through three generations and verifies:</p>
+<ul>
+<li>Each generation compiles successfully</li>
+<li>gen1.c through gen3.c are all identical</li>
+<li>The final generation can compile <code>hello.bad</code> and produce correct output</li>
+</ul>
+<p>A successful run looks like:</p>
+<pre><code>=== Badlang Bootstrap Test ===
+Generations: 3
+
+[gen0] Compiling compiler.bad with Haskell compiler...
+[gen0] OK
+[gen1] Compiling compiler.bad with gen0...
+[gen1] OK
+[gen2] Compiling compiler.bad with gen1...
+[gen2] OK
+[gen3] Compiling compiler.bad with gen2...
+[gen3] OK
+
+=== Verifying Fixed Point ===
+[gen1.c == gen2.c] OK
+[gen1.c == gen3.c] OK
+
+=== Smoke Test (gen3 compiles hello.bad) ===
+Output matches expected: OK
+
+=== BOOTSTRAP SUCCESS ===
+The compiler reaches a fixed point at gen1.
+All 3 generations produce identical C output.
+</code></pre>
+<h2 id="what-the-bootstrap-proves"><a class="header" href="#what-the-bootstrap-proves">What the Bootstrap Proves</a></h2>
+<p>The bootstrap test establishes several things:</p>
+<ol>
+<li><strong>Completeness</strong> — the language is expressive enough to implement its own
+compiler.</li>
+<li><strong>Correctness</strong> — the self-hosting compiler agrees with the reference
+compiler on the language’s semantics (both produce working compilers).</li>
+<li><strong>Determinism</strong> — the compiler produces identical output when given
+identical input, regardless of which generation compiled it.</li>
+<li><strong>Stability</strong> — changes to the compiler can be validated by re-running the
+bootstrap and checking that the fixed point is preserved.</li>
+</ol>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="keyword-reference"><a class="header" href="#keyword-reference">Keyword Reference</a></h1>
 <p>All reserved keywords in badlang.</p>
@@ -2254,7 +2772,7 @@ be <code>Int</code>.</p>
 </div>
 <p>Use parentheses to override precedence: <code>(a + b) * c</code>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="built-in-rites"><a class="header" href="#built-in-rites">Built-in Rites</a></h1>
+<h1 id="built-in-rites-1"><a class="header" href="#built-in-rites-1">Built-in Rites</a></h1>
 <p>badlang provides several built-in rites for I/O and system interaction. These
 are implemented in the C runtime and available in every program.</p>
 <h2 id="console-io"><a class="header" href="#console-io">Console I/O</a></h2>

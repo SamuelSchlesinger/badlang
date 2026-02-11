@@ -36,6 +36,12 @@
 
 - [The Compilation Pipeline](./pipeline.md)
 - [C Code Generation](./codegen.md)
+- [The Self-Hosting Compiler](./self-hosting.md)
+  - [Data Structures and Utilities](./self-hosting/overview.md)
+  - [Tokenizer](./self-hosting/tokenizer.md)
+  - [Parser](./self-hosting/parser.md)
+  - [Code Generation](./self-hosting/codegen.md)
+  - [Bootstrapping](./self-hosting/bootstrapping.md)
 
 # Appendix
 

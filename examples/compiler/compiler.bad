@@ -1,0 +1,2062 @@
+-- Phase 1: Utility library for self-hosting compiler
+-- Character classification, string helpers, linked lists, string builder
+
+-- ============================================================
+-- Character Classification
+-- ============================================================
+
+rite is_digit
+  given {| c |} => (c >= 48) && (c <= 57)
+seal
+
+rite is_alpha
+  given {| c |} => ((c >= 65) && (c <= 90)) || ((c >= 97) && (c <= 122))
+seal
+
+rite is_alnum
+  given {| c |} => (invoke is_digit {| c: c |}) || (invoke is_alpha {| c: c |})
+seal
+
+rite is_whitespace
+  given {| c |} => (c == 32) || (c == 10) || (c == 13) || (c == 9)
+seal
+
+rite is_underscore
+  given {| c |} => c == 95
+seal
+
+rite is_ident_char
+  given {| c |} => (invoke is_alnum {| c: c |}) || (invoke is_underscore {| c: c |})
+seal
+
+-- ============================================================
+-- String Helpers
+-- ============================================================
+
+rite str_eq
+  given {| a, b |} =>
+    divine invoke strcmp {| a: a, b: b |}
+      given 0 => 1
+      given _ => 0
+    seal
+seal
+
+rite starts_with
+  given {| s, prefix |} =>
+    let plen = invoke strlen {| s: prefix |}
+    let slen = invoke strlen {| s: s |}
+    divine slen >= plen
+      given 0 => 0
+      given 1 =>
+        let sub = invoke substr {| s: s, start: 0, len: plen |}
+        invoke str_eq {| a: sub, b: prefix |}
+    seal
+seal
+
+rite str_to_int_acc
+  given {| s, pos, acc |} =>
+    let slen = invoke strlen {| s: s |}
+    divine pos >= slen
+      given 1 => acc
+      given 0 =>
+        let ch = invoke char_at {| s: s, n: pos |}
+        let digit = ch - 48
+        invoke str_to_int_acc {| s: s, pos: pos + 1, acc: acc * 10 + digit |}
+    seal
+seal
+
+rite str_to_int
+  given {| s |} =>
+    let slen = invoke strlen {| s: s |}
+    divine slen == 0
+      given 1 => 0
+      given 0 =>
+        let first = invoke char_at {| s: s, n: 0 |}
+        divine first == 45
+          given 1 =>
+            let rest = invoke substr {| s: s, start: 1, len: slen - 1 |}
+            0 - (invoke str_to_int_acc {| s: rest, pos: 0, acc: 0 |})
+          given 0 =>
+            invoke str_to_int_acc {| s: s, pos: 0, acc: 0 |}
+        seal
+    seal
+seal
+
+rite char_to_str
+  given {| c |} => invoke char_of_int {| n: c |}
+seal
+
+-- ============================================================
+-- List Operations
+-- ============================================================
+
+rite nil
+  given {| |} => {| tag: "nil" |}
+seal
+
+rite cons
+  given {| head, tail |} => {| tag: "cons", head: head, tail: tail |}
+seal
+
+rite is_nil
+  given {| list |} =>
+    divine list
+      given {| tag: "nil" |} => 1
+      given {| tag: "cons" |} => 0
+    seal
+seal
+
+rite list_head
+  given {| list |} =>
+    divine list
+      given {| tag: "cons", head |} => head
+    seal
+seal
+
+rite list_tail
+  given {| list |} =>
+    divine list
+      given {| tag: "cons", tail |} => tail
+    seal
+seal
+
+rite list_len_acc
+  given {| list, acc |} =>
+    divine list
+      given {| tag: "nil" |} => acc
+      given {| tag: "cons", tail |} =>
+        invoke list_len_acc {| list: tail, acc: acc + 1 |}
+    seal
+seal
+
+rite list_len
+  given {| list |} => invoke list_len_acc {| list: list, acc: 0 |}
+seal
+
+rite list_reverse_acc
+  given {| list, acc |} =>
+    divine list
+      given {| tag: "nil" |} => acc
+      given {| tag: "cons", head, tail |} =>
+        let new_acc = invoke cons {| head: head, tail: acc |}
+        invoke list_reverse_acc {| list: tail, acc: new_acc |}
+    seal
+seal
+
+rite list_reverse
+  given {| list |} =>
+    let empty = invoke nil {| |}
+    invoke list_reverse_acc {| list: list, acc: empty |}
+seal
+
+rite list_nth
+  given {| list, n |} =>
+    divine list
+      given {| tag: "cons", head, tail |} =>
+        divine n == 0
+          given 1 => head
+          given 0 => invoke list_nth {| list: tail, n: n - 1 |}
+        seal
+    seal
+seal
+
+-- ============================================================
+-- String Builder
+-- ============================================================
+
+rite sb_empty
+  given {| |} => ""
+seal
+
+rite sb_append
+  given {| buf, s |} => invoke concat {| a: buf, b: s |}
+seal
+
+-- ============================================================
+-- Lexer Helpers
+-- ============================================================
+
+rite make_tok
+  given {| type, value |} => {| type: type, value: value |}
+seal
+
+rite skip_ws
+  given {| src, pos |} =>
+    let slen = invoke strlen {| s: src |}
+    divine pos >= slen
+      given 1 => pos
+      given 0 =>
+        let ch = invoke char_at {| s: src, n: pos |}
+        divine invoke is_whitespace {| c: ch |}
+          given 1 => invoke skip_ws {| src: src, pos: pos + 1 |}
+          given 0 => pos
+        seal
+    seal
+seal
+
+rite skip_line
+  given {| src, pos |} =>
+    let slen = invoke strlen {| s: src |}
+    divine pos >= slen
+      given 1 => pos
+      given 0 =>
+        let ch = invoke char_at {| s: src, n: pos |}
+        divine ch == 10
+          given 1 => pos + 1
+          given 0 => invoke skip_line {| src: src, pos: pos + 1 |}
+        seal
+    seal
+seal
+
+rite skip_ws_cmt
+  given {| src, pos |} =>
+    let p1 = invoke skip_ws {| src: src, pos: pos |}
+    let slen = invoke strlen {| s: src |}
+    divine (p1 + 1) < slen
+      given 1 =>
+        let c1 = invoke char_at {| s: src, n: p1 |}
+        let c2 = invoke char_at {| s: src, n: p1 + 1 |}
+        divine (c1 == 45) && (c2 == 45)
+          given 1 =>
+            let p2 = invoke skip_line {| src: src, pos: p1 + 2 |}
+            invoke skip_ws_cmt {| src: src, pos: p2 |}
+          given 0 => p1
+        seal
+      given 0 => p1
+    seal
+seal
+
+rite find_digit_end
+  given {| src, pos |} =>
+    let slen = invoke strlen {| s: src |}
+    divine pos >= slen
+      given 1 => pos
+      given 0 =>
+        let ch = invoke char_at {| s: src, n: pos |}
+        divine invoke is_digit {| c: ch |}
+          given 1 => invoke find_digit_end {| src: src, pos: pos + 1 |}
+          given 0 => pos
+        seal
+    seal
+seal
+
+rite find_word_end
+  given {| src, pos |} =>
+    let slen = invoke strlen {| s: src |}
+    divine pos >= slen
+      given 1 => pos
+      given 0 =>
+        let ch = invoke char_at {| s: src, n: pos |}
+        divine invoke is_ident_char {| c: ch |}
+          given 1 => invoke find_word_end {| src: src, pos: pos + 1 |}
+          given 0 => pos
+        seal
+    seal
+seal
+
+rite find_str_end
+  given {| src, pos |} =>
+    let slen = invoke strlen {| s: src |}
+    divine pos >= slen
+      given 1 => pos
+      given 0 =>
+        let ch = invoke char_at {| s: src, n: pos |}
+        divine ch == 34
+          given 1 => pos
+          given 0 => invoke find_str_end {| src: src, pos: pos + 1 |}
+        seal
+    seal
+seal
+
+rite is_keyword
+  given {| word |} =>
+    (invoke str_eq {| a: word, b: "altar" |}) ||
+    (invoke str_eq {| a: word, b: "rite" |}) ||
+    (invoke str_eq {| a: word, b: "ritual" |}) ||
+    (invoke str_eq {| a: word, b: "given" |}) ||
+    (invoke str_eq {| a: word, b: "seal" |}) ||
+    (invoke str_eq {| a: word, b: "let" |}) ||
+    (invoke str_eq {| a: word, b: "in" |}) ||
+    (invoke str_eq {| a: word, b: "invoke" |}) ||
+    (invoke str_eq {| a: word, b: "summon" |}) ||
+    (invoke str_eq {| a: word, b: "utter" |}) ||
+    (invoke str_eq {| a: word, b: "whisper" |}) ||
+    (invoke str_eq {| a: word, b: "divine" |}) ||
+    (invoke str_eq {| a: word, b: "hearken" |}) ||
+    (invoke str_eq {| a: word, b: "scry" |})
+seal
+
+rite peek_char
+  given {| src, pos |} =>
+    let slen = invoke strlen {| s: src |}
+    divine (pos + 1) < slen
+      given 1 => invoke char_at {| s: src, n: pos + 1 |}
+      given 0 => 0 - 1
+    seal
+seal
+
+-- ============================================================
+-- Lexer Core
+-- ============================================================
+
+rite lex_number
+  given {| src, pos |} =>
+    let end_pos = invoke find_digit_end {| src: src, pos: pos |}
+    let value = invoke substr {| s: src, start: pos, len: end_pos - pos |}
+    {| type: "int", value: value, pos: end_pos |}
+seal
+
+rite lex_string
+  given {| src, pos |} =>
+    let end_pos = invoke find_str_end {| src: src, pos: pos + 1 |}
+    let value = invoke substr {| s: src, start: pos + 1, len: end_pos - pos - 1 |}
+    {| type: "str", value: value, pos: end_pos + 1 |}
+seal
+
+rite lex_word
+  given {| src, pos |} =>
+    let end_pos = invoke find_word_end {| src: src, pos: pos |}
+    let word = invoke substr {| s: src, start: pos, len: end_pos - pos |}
+    divine invoke str_eq {| a: word, b: "_" |}
+      given 1 => {| type: "_", value: "_", pos: end_pos |}
+      given 0 =>
+        divine invoke is_keyword {| word: word |}
+          given 1 => {| type: word, value: word, pos: end_pos |}
+          given 0 => {| type: "ident", value: word, pos: end_pos |}
+        seal
+    seal
+seal
+
+rite lex_punct
+  given {| src, pos, ch |} =>
+    let next_ch = invoke peek_char {| src: src, pos: pos |}
+    divine ch
+      given 123 => {| type: "{|", value: "{|", pos: pos + 2 |}
+      given 124 =>
+        divine next_ch
+          given 125 => {| type: "|}", value: "|}", pos: pos + 2 |}
+          given 124 => {| type: "||", value: "||", pos: pos + 2 |}
+        seal
+      given 61 =>
+        divine next_ch
+          given 61 => {| type: "==", value: "==", pos: pos + 2 |}
+          given 62 => {| type: "=>", value: "=>", pos: pos + 2 |}
+          given _ => {| type: "=", value: "=", pos: pos + 1 |}
+        seal
+      given 33 => {| type: "!=", value: "!=", pos: pos + 2 |}
+      given 60 =>
+        divine next_ch
+          given 61 => {| type: "<=", value: "<=", pos: pos + 2 |}
+          given _ => {| type: "<", value: "<", pos: pos + 1 |}
+        seal
+      given 62 =>
+        divine next_ch
+          given 61 => {| type: ">=", value: ">=", pos: pos + 2 |}
+          given _ => {| type: ">", value: ">", pos: pos + 1 |}
+        seal
+      given 38 => {| type: "&&", value: "&&", pos: pos + 2 |}
+      given 45 => {| type: "-", value: "-", pos: pos + 1 |}
+      given 43 => {| type: "+", value: "+", pos: pos + 1 |}
+      given 42 => {| type: "*", value: "*", pos: pos + 1 |}
+      given 47 => {| type: "/", value: "/", pos: pos + 1 |}
+      given 37 => {| type: "%", value: "%", pos: pos + 1 |}
+      given 40 => {| type: "(", value: "(", pos: pos + 1 |}
+      given 41 => {| type: ")", value: ")", pos: pos + 1 |}
+      given 46 => {| type: ".", value: ".", pos: pos + 1 |}
+      given 44 => {| type: ",", value: ",", pos: pos + 1 |}
+      given 58 => {| type: ":", value: ":", pos: pos + 1 |}
+    seal
+seal
+
+rite lex_next
+  given {| src, pos |} =>
+    let slen = invoke strlen {| s: src |}
+    divine pos >= slen
+      given 1 => {| type: "eof", value: "", pos: pos |}
+      given 0 =>
+        let ch = invoke char_at {| s: src, n: pos |}
+        divine invoke is_digit {| c: ch |}
+          given 1 => invoke lex_number {| src: src, pos: pos |}
+          given 0 =>
+            divine (invoke is_alpha {| c: ch |}) || (invoke is_underscore {| c: ch |})
+              given 1 => invoke lex_word {| src: src, pos: pos |}
+              given 0 =>
+                divine ch == 34
+                  given 1 => invoke lex_string {| src: src, pos: pos |}
+                  given 0 => invoke lex_punct {| src: src, pos: pos, ch: ch |}
+                seal
+            seal
+        seal
+    seal
+seal
+
+-- ============================================================
+-- Lexer Driver
+-- ============================================================
+
+rite tokenize_loop
+  given {| src, pos, acc |} =>
+    let p = invoke skip_ws_cmt {| src: src, pos: pos |}
+    let tok_result = invoke lex_next {| src: src, pos: p |}
+    divine invoke str_eq {| a: tok_result.type, b: "eof" |}
+      given 1 =>
+        let eof_tok = invoke make_tok {| type: "eof", value: "" |}
+        let final_list = invoke cons {| head: eof_tok, tail: acc |}
+        invoke list_reverse {| list: final_list |}
+      given 0 =>
+        let tok = invoke make_tok {| type: tok_result.type, value: tok_result.value |}
+        let new_acc = invoke cons {| head: tok, tail: acc |}
+        invoke tokenize_loop {| src: src, pos: tok_result.pos, acc: new_acc |}
+    seal
+seal
+
+rite tokenize
+  given {| src |} =>
+    let empty = invoke nil {| |}
+    invoke tokenize_loop {| src: src, pos: 0, acc: empty |}
+seal
+
+-- ============================================================
+-- Token Printing
+-- ============================================================
+
+rite tok_to_str
+  given {| tok |} =>
+    let nl = invoke char_of_int {| n: 10 |}
+    let vlen = invoke strlen {| s: tok.value |}
+    divine vlen == 0
+      given 1 => invoke concat {| a: tok.type, b: nl |}
+      given 0 =>
+        let s1 = invoke concat {| a: tok.type, b: " " |}
+        let s2 = invoke concat {| a: s1, b: tok.value |}
+        invoke concat {| a: s2, b: nl |}
+    seal
+seal
+
+rite print_tokens_acc
+  given {| list, acc |} =>
+    divine invoke is_nil {| list: list |}
+      given 1 => acc
+      given 0 =>
+        let head = invoke list_head {| list: list |}
+        let tail = invoke list_tail {| list: list |}
+        let s = invoke tok_to_str {| tok: head |}
+        let new_acc = invoke concat {| a: acc, b: s |}
+        invoke print_tokens_acc {| list: tail, acc: new_acc |}
+    seal
+seal
+
+rite print_tokens
+  given {| list |} =>
+    invoke print_tokens_acc {| list: list, acc: "" |}
+seal
+
+-- ============================================================
+-- Parser Infrastructure
+-- ============================================================
+
+rite peek
+  given {| tokens |} =>
+    divine invoke is_nil {| list: tokens |}
+      given 1 => {| type: "eof", value: "" |}
+      given 0 => invoke list_head {| list: tokens |}
+    seal
+seal
+
+rite advance
+  given {| tokens |} =>
+    divine invoke is_nil {| list: tokens |}
+      given 1 => tokens
+      given 0 => invoke list_tail {| list: tokens |}
+    seal
+seal
+
+rite expect
+  given {| tokens, type |} =>
+    let tok = invoke peek {| tokens: tokens |}
+    divine invoke str_eq {| a: tok.type, b: type |}
+      given 1 => invoke advance {| tokens: tokens |}
+    seal
+seal
+
+rite expect_ident
+  given {| tokens |} =>
+    let tok = invoke peek {| tokens: tokens |}
+    divine invoke str_eq {| a: tok.type, b: "ident" |}
+      given 1 =>
+        let rest = invoke advance {| tokens: tokens |}
+        {| name: tok.value, rest: rest |}
+    seal
+seal
+
+-- ============================================================
+-- Operator Helpers
+-- ============================================================
+
+rite is_cmp_op
+  given {| type |} =>
+    (invoke str_eq {| a: type, b: "==" |}) ||
+    (invoke str_eq {| a: type, b: "!=" |}) ||
+    (invoke str_eq {| a: type, b: "<" |}) ||
+    (invoke str_eq {| a: type, b: ">" |}) ||
+    (invoke str_eq {| a: type, b: "<=" |}) ||
+    (invoke str_eq {| a: type, b: ">=" |})
+seal
+
+rite is_add_op
+  given {| type |} =>
+    (invoke str_eq {| a: type, b: "+" |}) ||
+    (invoke str_eq {| a: type, b: "-" |})
+seal
+
+rite is_mul_op
+  given {| type |} =>
+    (invoke str_eq {| a: type, b: "*" |}) ||
+    (invoke str_eq {| a: type, b: "/" |}) ||
+    (invoke str_eq {| a: type, b: "%" |})
+seal
+
+-- ============================================================
+-- Record / Field Parsing
+-- ============================================================
+
+rite parse_field_inits
+  given {| tokens, acc |} =>
+    let id = invoke expect_ident {| tokens: tokens |}
+    let rest1 = invoke expect {| tokens: id.rest, type: ":" |}
+    let r = invoke parse_expr {| tokens: rest1 |}
+    let field = {| name: id.name, value: r.node |}
+    let new_acc = invoke cons {| head: field, tail: acc |}
+    let tok = invoke peek {| tokens: r.rest |}
+    divine invoke str_eq {| a: tok.type, b: "," |}
+      given 1 =>
+        let rest2 = invoke advance {| tokens: r.rest |}
+        invoke parse_field_inits {| tokens: rest2, acc: new_acc |}
+      given 0 =>
+        let result = invoke list_reverse {| list: new_acc |}
+        {| node: result, rest: r.rest |}
+    seal
+seal
+
+rite parse_record_lit
+  given {| tokens |} =>
+    let rest1 = invoke expect {| tokens: tokens, type: "{|" |}
+    let tok = invoke peek {| tokens: rest1 |}
+    divine invoke str_eq {| a: tok.type, b: "|}" |}
+      given 1 =>
+        let rest2 = invoke advance {| tokens: rest1 |}
+        let empty = invoke nil {| |}
+        {| node: {| tag: "record", fields: empty |}, rest: rest2 |}
+      given 0 =>
+        let empty = invoke nil {| |}
+        let r = invoke parse_field_inits {| tokens: rest1, acc: empty |}
+        let rest2 = invoke expect {| tokens: r.rest, type: "|}" |}
+        {| node: {| tag: "record", fields: r.node |}, rest: rest2 |}
+    seal
+seal
+
+-- ============================================================
+-- Pattern Parsing
+-- ============================================================
+
+rite parse_pat_fields
+  given {| tokens, acc |} =>
+    let id = invoke expect_ident {| tokens: tokens |}
+    let tok = invoke peek {| tokens: id.rest |}
+    divine invoke str_eq {| a: tok.type, b: ":" |}
+      given 1 =>
+        let rest1 = invoke advance {| tokens: id.rest |}
+        let r = invoke parse_pattern {| tokens: rest1 |}
+        let field = {| name: id.name, pat: r.node |}
+        let new_acc = invoke cons {| head: field, tail: acc |}
+        let tok2 = invoke peek {| tokens: r.rest |}
+        divine invoke str_eq {| a: tok2.type, b: "," |}
+          given 1 =>
+            let rest2 = invoke advance {| tokens: r.rest |}
+            invoke parse_pat_fields {| tokens: rest2, acc: new_acc |}
+          given 0 =>
+            let result = invoke list_reverse {| list: new_acc |}
+            {| node: result, rest: r.rest |}
+        seal
+      given 0 =>
+        let field = {| name: id.name, pat: {| tag: "pat_none" |} |}
+        let new_acc = invoke cons {| head: field, tail: acc |}
+        let tok2 = invoke peek {| tokens: id.rest |}
+        divine invoke str_eq {| a: tok2.type, b: "," |}
+          given 1 =>
+            let rest1 = invoke advance {| tokens: id.rest |}
+            invoke parse_pat_fields {| tokens: rest1, acc: new_acc |}
+          given 0 =>
+            let result = invoke list_reverse {| list: new_acc |}
+            {| node: result, rest: id.rest |}
+        seal
+    seal
+seal
+
+rite parse_record_pat
+  given {| tokens |} =>
+    let rest1 = invoke expect {| tokens: tokens, type: "{|" |}
+    let tok = invoke peek {| tokens: rest1 |}
+    divine invoke str_eq {| a: tok.type, b: "|}" |}
+      given 1 =>
+        let rest2 = invoke advance {| tokens: rest1 |}
+        let empty = invoke nil {| |}
+        {| node: {| tag: "pat_rec", fields: empty |}, rest: rest2 |}
+      given 0 =>
+        let empty = invoke nil {| |}
+        let r = invoke parse_pat_fields {| tokens: rest1, acc: empty |}
+        let rest2 = invoke expect {| tokens: r.rest, type: "|}" |}
+        {| node: {| tag: "pat_rec", fields: r.node |}, rest: rest2 |}
+    seal
+seal
+
+rite parse_pattern
+  given {| tokens |} =>
+    let tok = invoke peek {| tokens: tokens |}
+    divine tok.type
+      given "{|" => invoke parse_record_pat {| tokens: tokens |}
+      given "int" =>
+        let rest1 = invoke advance {| tokens: tokens |}
+        {| node: {| tag: "pat_int", value: tok.value |}, rest: rest1 |}
+      given "str" =>
+        let rest1 = invoke advance {| tokens: tokens |}
+        {| node: {| tag: "pat_str", value: tok.value |}, rest: rest1 |}
+      given "_" =>
+        let rest1 = invoke advance {| tokens: tokens |}
+        {| node: {| tag: "pat_wild" |}, rest: rest1 |}
+      given _ =>
+        let rest1 = invoke advance {| tokens: tokens |}
+        {| node: {| tag: "pat_var", name: tok.value |}, rest: rest1 |}
+    seal
+seal
+
+-- ============================================================
+-- Block Expression / Let Bindings
+-- ============================================================
+
+rite fold_let_bindings
+  given {| bindings, body |} =>
+    divine invoke is_nil {| list: bindings |}
+      given 1 => body
+      given 0 =>
+        let head = invoke list_head {| list: bindings |}
+        let tail = invoke list_tail {| list: bindings |}
+        let inner = invoke fold_let_bindings {| bindings: tail, body: body |}
+        {| tag: "let_in", name: head.name, value: head.value, body: inner |}
+    seal
+seal
+
+rite collect_let_chain_acc
+  given {| node, acc |} =>
+    divine node.tag
+      given "let_in" =>
+        let binding = {| name: node.name, value: node.value |}
+        let new_acc = invoke cons {| head: binding, tail: acc |}
+        invoke collect_let_chain_acc {| node: node.body, acc: new_acc |}
+      given _ =>
+        let reversed = invoke list_reverse {| list: acc |}
+        {| bindings: reversed, body: node |}
+    seal
+seal
+
+rite collect_let_chain
+  given {| node |} =>
+    let empty = invoke nil {| |}
+    invoke collect_let_chain_acc {| node: node, acc: empty |}
+seal
+
+rite parse_let_bindings
+  given {| tokens, acc |} =>
+    let tok = invoke peek {| tokens: tokens |}
+    divine invoke str_eq {| a: tok.type, b: "let" |}
+      given 1 =>
+        let rest1 = invoke advance {| tokens: tokens |}
+        let id = invoke expect_ident {| tokens: rest1 |}
+        let rest2 = invoke expect {| tokens: id.rest, type: "=" |}
+        let r = invoke parse_expr {| tokens: rest2 |}
+        let binding = {| name: id.name, value: r.node |}
+        let new_acc = invoke cons {| head: binding, tail: acc |}
+        invoke parse_let_bindings {| tokens: r.rest, acc: new_acc |}
+      given 0 =>
+        let result = invoke list_reverse {| list: acc |}
+        {| node: result, rest: tokens |}
+    seal
+seal
+
+rite parse_block_expr
+  given {| tokens |} =>
+    let empty = invoke nil {| |}
+    let r_bindings = invoke parse_let_bindings {| tokens: tokens, acc: empty |}
+    let r_expr = invoke parse_expr {| tokens: r_bindings.rest |}
+    let body = invoke fold_let_bindings {| bindings: r_bindings.node, body: r_expr.node |}
+    {| node: body, rest: r_expr.rest |}
+seal
+
+-- ============================================================
+-- Given Clauses
+-- ============================================================
+
+rite parse_given_clause
+  given {| tokens |} =>
+    let rest1 = invoke expect {| tokens: tokens, type: "given" |}
+    let r_pat = invoke parse_pattern {| tokens: rest1 |}
+    let rest2 = invoke expect {| tokens: r_pat.rest, type: "=>" |}
+    let r_body = invoke parse_block_expr {| tokens: rest2 |}
+    {| node: {| pat: r_pat.node, body: r_body.node |}, rest: r_body.rest |}
+seal
+
+rite parse_given_clauses
+  given {| tokens, acc |} =>
+    let tok = invoke peek {| tokens: tokens |}
+    divine invoke str_eq {| a: tok.type, b: "given" |}
+      given 1 =>
+        let r = invoke parse_given_clause {| tokens: tokens |}
+        let new_acc = invoke cons {| head: r.node, tail: acc |}
+        invoke parse_given_clauses {| tokens: r.rest, acc: new_acc |}
+      given 0 =>
+        let result = invoke list_reverse {| list: acc |}
+        {| node: result, rest: tokens |}
+    seal
+seal
+
+-- ============================================================
+-- Complex Expressions (invoke, summon, divine)
+-- ============================================================
+
+rite parse_invoke_arg
+  given {| tokens |} =>
+    let tok = invoke peek {| tokens: tokens |}
+    divine invoke str_eq {| a: tok.type, b: "{|" |}
+      given 1 => invoke parse_record_lit {| tokens: tokens |}
+      given 0 =>
+        divine invoke str_eq {| a: tok.type, b: "(" |}
+          given 1 =>
+            let rest1 = invoke advance {| tokens: tokens |}
+            let r = invoke parse_expr {| tokens: rest1 |}
+            let rest2 = invoke expect {| tokens: r.rest, type: ")" |}
+            {| node: r.node, rest: rest2 |}
+          given 0 =>
+            let rest1 = invoke advance {| tokens: tokens |}
+            {| node: {| tag: "var", name: tok.value |}, rest: rest1 |}
+        seal
+    seal
+seal
+
+rite parse_invoke_expr
+  given {| tokens |} =>
+    let rest1 = invoke expect {| tokens: tokens, type: "invoke" |}
+    let id = invoke expect_ident {| tokens: rest1 |}
+    let r = invoke parse_invoke_arg {| tokens: id.rest |}
+    {| node: {| tag: "invoke", name: id.name, arg: r.node |}, rest: r.rest |}
+seal
+
+rite parse_summon_expr
+  given {| tokens |} =>
+    let rest1 = invoke expect {| tokens: tokens, type: "summon" |}
+    let id = invoke expect_ident {| tokens: rest1 |}
+    let r = invoke parse_record_lit {| tokens: id.rest |}
+    {| node: {| tag: "summon", name: id.name, fields: r.node.fields |}, rest: r.rest |}
+seal
+
+rite parse_divine_expr
+  given {| tokens |} =>
+    let rest1 = invoke expect {| tokens: tokens, type: "divine" |}
+    let r = invoke parse_expr {| tokens: rest1 |}
+    let empty = invoke nil {| |}
+    let r2 = invoke parse_given_clauses {| tokens: r.rest, acc: empty |}
+    let rest2 = invoke expect {| tokens: r2.rest, type: "seal" |}
+    {| node: {| tag: "divine", scrutinee: r.node, clauses: r2.node |}, rest: rest2 |}
+seal
+
+-- ============================================================
+-- Primary Expression
+-- ============================================================
+
+rite parse_primary
+  given {| tokens |} =>
+    let tok = invoke peek {| tokens: tokens |}
+    divine tok.type
+      given "int" =>
+        let rest1 = invoke advance {| tokens: tokens |}
+        {| node: {| tag: "int_lit", value: tok.value |}, rest: rest1 |}
+      given "str" =>
+        let rest1 = invoke advance {| tokens: tokens |}
+        {| node: {| tag: "str_lit", value: tok.value |}, rest: rest1 |}
+      given "ident" =>
+        let rest1 = invoke advance {| tokens: tokens |}
+        {| node: {| tag: "var", name: tok.value |}, rest: rest1 |}
+      given "hearken" =>
+        let rest1 = invoke advance {| tokens: tokens |}
+        {| node: {| tag: "hearken" |}, rest: rest1 |}
+      given "scry" =>
+        let rest1 = invoke advance {| tokens: tokens |}
+        {| node: {| tag: "scry" |}, rest: rest1 |}
+      given "(" =>
+        let rest1 = invoke advance {| tokens: tokens |}
+        let r = invoke parse_expr {| tokens: rest1 |}
+        let rest2 = invoke expect {| tokens: r.rest, type: ")" |}
+        {| node: r.node, rest: rest2 |}
+      given "invoke" => invoke parse_invoke_expr {| tokens: tokens |}
+      given "summon" => invoke parse_summon_expr {| tokens: tokens |}
+      given "divine" => invoke parse_divine_expr {| tokens: tokens |}
+      given "{|" => invoke parse_record_lit {| tokens: tokens |}
+    seal
+seal
+
+-- ============================================================
+-- Expression Precedence Chain
+-- ============================================================
+
+rite parse_postfix_tail
+  given {| left, tokens |} =>
+    let tok = invoke peek {| tokens: tokens |}
+    divine invoke str_eq {| a: tok.type, b: "." |}
+      given 1 =>
+        let rest1 = invoke advance {| tokens: tokens |}
+        let id = invoke expect_ident {| tokens: rest1 |}
+        let node = {| tag: "field_access", obj: left, field: id.name |}
+        invoke parse_postfix_tail {| left: node, tokens: id.rest |}
+      given 0 => {| node: left, rest: tokens |}
+    seal
+seal
+
+rite parse_postfix_expr
+  given {| tokens |} =>
+    let r = invoke parse_primary {| tokens: tokens |}
+    invoke parse_postfix_tail {| left: r.node, tokens: r.rest |}
+seal
+
+rite parse_unary_expr
+  given {| tokens |} =>
+    let tok = invoke peek {| tokens: tokens |}
+    divine invoke str_eq {| a: tok.type, b: "-" |}
+      given 1 =>
+        let rest1 = invoke advance {| tokens: tokens |}
+        let r = invoke parse_unary_expr {| tokens: rest1 |}
+        let node = {| tag: "unop", op: "-", operand: r.node |}
+        {| node: node, rest: r.rest |}
+      given 0 => invoke parse_postfix_expr {| tokens: tokens |}
+    seal
+seal
+
+rite parse_mul_tail
+  given {| left, tokens |} =>
+    let tok = invoke peek {| tokens: tokens |}
+    divine invoke is_mul_op {| type: tok.type |}
+      given 1 =>
+        let rest1 = invoke advance {| tokens: tokens |}
+        let r = invoke parse_unary_expr {| tokens: rest1 |}
+        let node = {| tag: "binop", op: tok.type, left: left, right: r.node |}
+        invoke parse_mul_tail {| left: node, tokens: r.rest |}
+      given 0 => {| node: left, rest: tokens |}
+    seal
+seal
+
+rite parse_mul_expr
+  given {| tokens |} =>
+    let r = invoke parse_unary_expr {| tokens: tokens |}
+    invoke parse_mul_tail {| left: r.node, tokens: r.rest |}
+seal
+
+rite parse_add_tail
+  given {| left, tokens |} =>
+    let tok = invoke peek {| tokens: tokens |}
+    divine invoke is_add_op {| type: tok.type |}
+      given 1 =>
+        let rest1 = invoke advance {| tokens: tokens |}
+        let r = invoke parse_mul_expr {| tokens: rest1 |}
+        let node = {| tag: "binop", op: tok.type, left: left, right: r.node |}
+        invoke parse_add_tail {| left: node, tokens: r.rest |}
+      given 0 => {| node: left, rest: tokens |}
+    seal
+seal
+
+rite parse_add_expr
+  given {| tokens |} =>
+    let r = invoke parse_mul_expr {| tokens: tokens |}
+    invoke parse_add_tail {| left: r.node, tokens: r.rest |}
+seal
+
+rite parse_cmp_expr
+  given {| tokens |} =>
+    let r = invoke parse_add_expr {| tokens: tokens |}
+    let tok = invoke peek {| tokens: r.rest |}
+    divine invoke is_cmp_op {| type: tok.type |}
+      given 1 =>
+        let rest1 = invoke advance {| tokens: r.rest |}
+        let r2 = invoke parse_add_expr {| tokens: rest1 |}
+        let node = {| tag: "binop", op: tok.type, left: r.node, right: r2.node |}
+        {| node: node, rest: r2.rest |}
+      given 0 => {| node: r.node, rest: r.rest |}
+    seal
+seal
+
+rite parse_and_tail
+  given {| left, tokens |} =>
+    let tok = invoke peek {| tokens: tokens |}
+    divine invoke str_eq {| a: tok.type, b: "&&" |}
+      given 1 =>
+        let rest1 = invoke advance {| tokens: tokens |}
+        let r = invoke parse_cmp_expr {| tokens: rest1 |}
+        let node = {| tag: "binop", op: "&&", left: left, right: r.node |}
+        invoke parse_and_tail {| left: node, tokens: r.rest |}
+      given 0 => {| node: left, rest: tokens |}
+    seal
+seal
+
+rite parse_and_expr
+  given {| tokens |} =>
+    let r = invoke parse_cmp_expr {| tokens: tokens |}
+    invoke parse_and_tail {| left: r.node, tokens: r.rest |}
+seal
+
+rite parse_or_tail
+  given {| left, tokens |} =>
+    let tok = invoke peek {| tokens: tokens |}
+    divine invoke str_eq {| a: tok.type, b: "||" |}
+      given 1 =>
+        let rest1 = invoke advance {| tokens: tokens |}
+        let r = invoke parse_and_expr {| tokens: rest1 |}
+        let node = {| tag: "binop", op: "||", left: left, right: r.node |}
+        invoke parse_or_tail {| left: node, tokens: r.rest |}
+      given 0 => {| node: left, rest: tokens |}
+    seal
+seal
+
+rite parse_or_expr
+  given {| tokens |} =>
+    let r = invoke parse_and_expr {| tokens: tokens |}
+    invoke parse_or_tail {| left: r.node, tokens: r.rest |}
+seal
+
+rite parse_expr
+  given {| tokens |} => invoke parse_or_expr {| tokens: tokens |}
+seal
+
+-- ============================================================
+-- Statement Parsing
+-- ============================================================
+
+rite parse_stmt
+  given {| tokens |} =>
+    let tok = invoke peek {| tokens: tokens |}
+    divine tok.type
+      given "let" =>
+        let rest1 = invoke advance {| tokens: tokens |}
+        let id = invoke expect_ident {| tokens: rest1 |}
+        let rest2 = invoke expect {| tokens: id.rest, type: "=" |}
+        let r = invoke parse_expr {| tokens: rest2 |}
+        {| node: {| tag: "stmt_let", name: id.name, value: r.node |}, rest: r.rest |}
+      given "utter" =>
+        let rest1 = invoke advance {| tokens: tokens |}
+        let r = invoke parse_expr {| tokens: rest1 |}
+        {| node: {| tag: "stmt_utter", value: r.node |}, rest: r.rest |}
+      given "whisper" =>
+        let rest1 = invoke advance {| tokens: tokens |}
+        let r = invoke parse_expr {| tokens: rest1 |}
+        {| node: {| tag: "stmt_whisper", value: r.node |}, rest: r.rest |}
+      given _ =>
+        let r = invoke parse_expr {| tokens: tokens |}
+        {| node: {| tag: "stmt_expr", value: r.node |}, rest: r.rest |}
+    seal
+seal
+
+rite parse_stmts
+  given {| tokens, acc |} =>
+    let tok = invoke peek {| tokens: tokens |}
+    divine invoke str_eq {| a: tok.type, b: "seal" |}
+      given 1 =>
+        let result = invoke list_reverse {| list: acc |}
+        {| node: result, rest: tokens |}
+      given 0 =>
+        let r = invoke parse_stmt {| tokens: tokens |}
+        let new_acc = invoke cons {| head: r.node, tail: acc |}
+        invoke parse_stmts {| tokens: r.rest, acc: new_acc |}
+    seal
+seal
+
+-- ============================================================
+-- Declaration Parsing
+-- ============================================================
+
+rite parse_altar_fields
+  given {| tokens, acc |} =>
+    let tok = invoke peek {| tokens: tokens |}
+    divine invoke str_eq {| a: tok.type, b: "seal" |}
+      given 1 =>
+        let result = invoke list_reverse {| list: acc |}
+        {| node: result, rest: tokens |}
+      given 0 =>
+        let id = invoke expect_ident {| tokens: tokens |}
+        let rest1 = invoke expect {| tokens: id.rest, type: ":" |}
+        let type_id = invoke expect_ident {| tokens: rest1 |}
+        let field = {| name: id.name, type_name: type_id.name |}
+        let new_acc = invoke cons {| head: field, tail: acc |}
+        invoke parse_altar_fields {| tokens: type_id.rest, acc: new_acc |}
+    seal
+seal
+
+rite parse_rite_decl
+  given {| tokens |} =>
+    let rest1 = invoke expect {| tokens: tokens, type: "rite" |}
+    let id = invoke expect_ident {| tokens: rest1 |}
+    let empty = invoke nil {| |}
+    let r = invoke parse_given_clauses {| tokens: id.rest, acc: empty |}
+    let rest2 = invoke expect {| tokens: r.rest, type: "seal" |}
+    {| node: {| tag: "decl_rite", name: id.name, clauses: r.node |}, rest: rest2 |}
+seal
+
+rite parse_ritual_decl
+  given {| tokens |} =>
+    let rest1 = invoke expect {| tokens: tokens, type: "ritual" |}
+    let id = invoke expect_ident {| tokens: rest1 |}
+    let empty = invoke nil {| |}
+    let r = invoke parse_stmts {| tokens: id.rest, acc: empty |}
+    let rest2 = invoke expect {| tokens: r.rest, type: "seal" |}
+    {| node: {| tag: "decl_ritual", name: id.name, stmts: r.node |}, rest: rest2 |}
+seal
+
+rite parse_altar_decl
+  given {| tokens |} =>
+    let rest1 = invoke expect {| tokens: tokens, type: "altar" |}
+    let id = invoke expect_ident {| tokens: rest1 |}
+    let empty = invoke nil {| |}
+    let r = invoke parse_altar_fields {| tokens: id.rest, acc: empty |}
+    let rest2 = invoke expect {| tokens: r.rest, type: "seal" |}
+    {| node: {| tag: "decl_altar", name: id.name, fields: r.node |}, rest: rest2 |}
+seal
+
+rite parse_decl
+  given {| tokens |} =>
+    let tok = invoke peek {| tokens: tokens |}
+    divine tok.type
+      given "rite" => invoke parse_rite_decl {| tokens: tokens |}
+      given "ritual" => invoke parse_ritual_decl {| tokens: tokens |}
+      given "altar" => invoke parse_altar_decl {| tokens: tokens |}
+    seal
+seal
+
+rite parse_decls
+  given {| tokens, acc |} =>
+    let tok = invoke peek {| tokens: tokens |}
+    divine invoke str_eq {| a: tok.type, b: "eof" |}
+      given 1 => invoke list_reverse {| list: acc |}
+      given 0 =>
+        let r = invoke parse_decl {| tokens: tokens |}
+        let new_acc = invoke cons {| head: r.node, tail: acc |}
+        invoke parse_decls {| tokens: r.rest, acc: new_acc |}
+    seal
+seal
+
+rite parse_program
+  given {| tokens |} =>
+    let empty = invoke nil {| |}
+    invoke parse_decls {| tokens: tokens, acc: empty |}
+seal
+
+-- ============================================================
+-- Code Generation: Foundation Helpers
+-- ============================================================
+
+-- Character constants
+rite dq
+  given {| |} => invoke char_of_int {| n: 34 |}
+seal
+
+rite bsl
+  given {| |} => invoke char_of_int {| n: 92 |}
+seal
+
+rite nl
+  given {| |} => invoke char_of_int {| n: 10 |}
+seal
+
+-- Fresh variable generation: returns {| name: "_tN", counter: N+1 |}
+rite fresh_var
+  given {| prefix, counter |} =>
+    let name = invoke concat {| a: prefix, b: invoke int_to_str {| n: counter |} |}
+    {| name: name, counter: counter + 1 |}
+seal
+
+-- Escape a single character for C string literals
+rite c_escape_char
+  given {| c |} =>
+    divine c
+      given 34 =>
+        let b = invoke bsl {| |}
+        let q = invoke dq {| |}
+        invoke concat {| a: b, b: q |}
+      given 92 =>
+        let b = invoke bsl {| |}
+        invoke concat {| a: b, b: b |}
+      given 10 =>
+        let b = invoke bsl {| |}
+        invoke concat {| a: b, b: "n" |}
+      given _ => invoke char_of_int {| n: c |}
+    seal
+seal
+
+-- Loop helper for c_string
+rite c_escape_str_loop
+  given {| s, pos, acc |} =>
+    let slen = invoke strlen {| s: s |}
+    divine pos >= slen
+      given 1 => acc
+      given 0 =>
+        let ch = invoke char_at {| s: s, n: pos |}
+        let esc = invoke c_escape_char {| c: ch |}
+        let new_acc = invoke concat {| a: acc, b: esc |}
+        invoke c_escape_str_loop {| s: s, pos: pos + 1, acc: new_acc |}
+    seal
+seal
+
+-- Wrap a string in escaped C double quotes: "..."
+rite c_string
+  given {| s |} =>
+    let q = invoke dq {| |}
+    let escaped = invoke c_escape_str_loop {| s: s, pos: 0, acc: "" |}
+    let s1 = invoke concat {| a: q, b: escaped |}
+    invoke concat {| a: s1, b: q |}
+seal
+
+-- Mangle a badlang identifier for C (bl_ prefix, except "arg")
+rite c_name
+  given {| name |} =>
+    divine invoke str_eq {| a: name, b: "arg" |}
+      given 1 => "arg"
+      given 0 => invoke concat {| a: "bl_", b: name |}
+    seal
+seal
+
+-- Check if a rite name is a built-in (defined in runtime, no forward decl needed)
+rite is_builtin_rite
+  given {| name |} =>
+    (invoke str_eq {| a: name, b: "unearth" |}) ||
+    (invoke str_eq {| a: name, b: "inscribe" |}) ||
+    (invoke str_eq {| a: name, b: "argc" |}) ||
+    (invoke str_eq {| a: name, b: "argv" |}) ||
+    (invoke str_eq {| a: name, b: "strlen" |}) ||
+    (invoke str_eq {| a: name, b: "char_at" |}) ||
+    (invoke str_eq {| a: name, b: "substr" |}) ||
+    (invoke str_eq {| a: name, b: "concat" |}) ||
+    (invoke str_eq {| a: name, b: "int_to_str" |}) ||
+    (invoke str_eq {| a: name, b: "char_of_int" |}) ||
+    (invoke str_eq {| a: name, b: "strcmp" |})
+seal
+
+-- ============================================================
+-- Code Generation: Expression Emission
+-- ============================================================
+-- Each emitter returns {| code: String, var: String, counter: Int |}
+
+-- Emit a binary operation (pure helper, operands are variable names)
+rite emit_binop_c
+  given {| op, a, b |} =>
+    divine op
+      given "+" =>
+        let s1 = invoke concat {| a: "make_int(", b: a |}
+        let s2 = invoke concat {| a: s1, b: "->int_val + " |}
+        let s3 = invoke concat {| a: s2, b: b |}
+        invoke concat {| a: s3, b: "->int_val)" |}
+      given "-" =>
+        let s1 = invoke concat {| a: "make_int(", b: a |}
+        let s2 = invoke concat {| a: s1, b: "->int_val - " |}
+        let s3 = invoke concat {| a: s2, b: b |}
+        invoke concat {| a: s3, b: "->int_val)" |}
+      given "*" =>
+        let s1 = invoke concat {| a: "make_int(", b: a |}
+        let s2 = invoke concat {| a: s1, b: "->int_val * " |}
+        let s3 = invoke concat {| a: s2, b: b |}
+        invoke concat {| a: s3, b: "->int_val)" |}
+      given "/" =>
+        let s1 = invoke concat {| a: "make_int(", b: a |}
+        let s2 = invoke concat {| a: s1, b: "->int_val / " |}
+        let s3 = invoke concat {| a: s2, b: b |}
+        invoke concat {| a: s3, b: "->int_val)" |}
+      given "%" =>
+        let s1 = invoke concat {| a: "make_int(", b: a |}
+        let s2 = invoke concat {| a: s1, b: "->int_val % " |}
+        let s3 = invoke concat {| a: s2, b: b |}
+        invoke concat {| a: s3, b: "->int_val)" |}
+      given "==" =>
+        let s1 = invoke concat {| a: "make_int(", b: a |}
+        let s2 = invoke concat {| a: s1, b: "->int_val == " |}
+        let s3 = invoke concat {| a: s2, b: b |}
+        invoke concat {| a: s3, b: "->int_val)" |}
+      given "!=" =>
+        let s1 = invoke concat {| a: "make_int(", b: a |}
+        let s2 = invoke concat {| a: s1, b: "->int_val != " |}
+        let s3 = invoke concat {| a: s2, b: b |}
+        invoke concat {| a: s3, b: "->int_val)" |}
+      given "<" =>
+        let s1 = invoke concat {| a: "make_int(", b: a |}
+        let s2 = invoke concat {| a: s1, b: "->int_val < " |}
+        let s3 = invoke concat {| a: s2, b: b |}
+        invoke concat {| a: s3, b: "->int_val)" |}
+      given ">" =>
+        let s1 = invoke concat {| a: "make_int(", b: a |}
+        let s2 = invoke concat {| a: s1, b: "->int_val > " |}
+        let s3 = invoke concat {| a: s2, b: b |}
+        invoke concat {| a: s3, b: "->int_val)" |}
+      given "<=" =>
+        let s1 = invoke concat {| a: "make_int(", b: a |}
+        let s2 = invoke concat {| a: s1, b: "->int_val <= " |}
+        let s3 = invoke concat {| a: s2, b: b |}
+        invoke concat {| a: s3, b: "->int_val)" |}
+      given ">=" =>
+        let s1 = invoke concat {| a: "make_int(", b: a |}
+        let s2 = invoke concat {| a: s1, b: "->int_val >= " |}
+        let s3 = invoke concat {| a: s2, b: b |}
+        invoke concat {| a: s3, b: "->int_val)" |}
+      given "&&" =>
+        let s1 = invoke concat {| a: "make_int(", b: a |}
+        let s2 = invoke concat {| a: s1, b: "->int_val && " |}
+        let s3 = invoke concat {| a: s2, b: b |}
+        invoke concat {| a: s3, b: "->int_val)" |}
+      given "||" =>
+        let s1 = invoke concat {| a: "make_int(", b: a |}
+        let s2 = invoke concat {| a: s1, b: "->int_val || " |}
+        let s3 = invoke concat {| a: s2, b: b |}
+        invoke concat {| a: s3, b: "->int_val)" |}
+    seal
+seal
+
+rite emit_int_lit
+  given {| node, counter |} =>
+    let f = invoke fresh_var {| prefix: "_t", counter: counter |}
+    let n = invoke nl {| |}
+    let s1 = invoke concat {| a: "Value* ", b: f.name |}
+    let s2 = invoke concat {| a: s1, b: " = make_int(" |}
+    let s3 = invoke concat {| a: s2, b: node.value |}
+    let s4 = invoke concat {| a: s3, b: ");" |}
+    let code = invoke concat {| a: s4, b: n |}
+    {| code: code, var: f.name, counter: f.counter |}
+seal
+
+rite emit_str_lit
+  given {| node, counter |} =>
+    let f = invoke fresh_var {| prefix: "_t", counter: counter |}
+    let n = invoke nl {| |}
+    let cs = invoke c_string {| s: node.value |}
+    let s1 = invoke concat {| a: "Value* ", b: f.name |}
+    let s2 = invoke concat {| a: s1, b: " = make_str(" |}
+    let s3 = invoke concat {| a: s2, b: cs |}
+    let s4 = invoke concat {| a: s3, b: ");" |}
+    let code = invoke concat {| a: s4, b: n |}
+    {| code: code, var: f.name, counter: f.counter |}
+seal
+
+rite emit_var
+  given {| node, counter |} =>
+    let f = invoke fresh_var {| prefix: "_t", counter: counter |}
+    let n = invoke nl {| |}
+    let cn = invoke c_name {| name: node.name |}
+    let s1 = invoke concat {| a: "Value* ", b: f.name |}
+    let s2 = invoke concat {| a: s1, b: " = " |}
+    let s3 = invoke concat {| a: s2, b: cn |}
+    let s4 = invoke concat {| a: s3, b: "; rc_retain(" |}
+    let s5 = invoke concat {| a: s4, b: f.name |}
+    let s6 = invoke concat {| a: s5, b: ");" |}
+    let code = invoke concat {| a: s6, b: n |}
+    {| code: code, var: f.name, counter: f.counter |}
+seal
+
+rite emit_binop
+  given {| node, counter |} =>
+    let n = invoke nl {| |}
+    let r1 = invoke emit_expr {| node: node.left, counter: counter |}
+    let r2 = invoke emit_expr {| node: node.right, counter: r1.counter |}
+    let f = invoke fresh_var {| prefix: "_t", counter: r2.counter |}
+    let op_str = invoke emit_binop_c {| op: node.op, a: r1.var, b: r2.var |}
+    let s1 = invoke concat {| a: r1.code, b: r2.code |}
+    let s2 = invoke concat {| a: s1, b: "Value* " |}
+    let s3 = invoke concat {| a: s2, b: f.name |}
+    let s4 = invoke concat {| a: s3, b: " = " |}
+    let s5 = invoke concat {| a: s4, b: op_str |}
+    let s6 = invoke concat {| a: s5, b: ";" |}
+    let s7 = invoke concat {| a: s6, b: n |}
+    let s8 = invoke concat {| a: s7, b: "rc_release(" |}
+    let s9 = invoke concat {| a: s8, b: r1.var |}
+    let s10 = invoke concat {| a: s9, b: "); rc_release(" |}
+    let s11 = invoke concat {| a: s10, b: r2.var |}
+    let s12 = invoke concat {| a: s11, b: ");" |}
+    let code = invoke concat {| a: s12, b: n |}
+    {| code: code, var: f.name, counter: f.counter |}
+seal
+
+rite emit_unop
+  given {| node, counter |} =>
+    let n = invoke nl {| |}
+    let r = invoke emit_expr {| node: node.operand, counter: counter |}
+    let f = invoke fresh_var {| prefix: "_t", counter: r.counter |}
+    -- Only negation supported for now
+    let s1 = invoke concat {| a: r.code, b: "Value* " |}
+    let s2 = invoke concat {| a: s1, b: f.name |}
+    let s3 = invoke concat {| a: s2, b: " = make_int(-" |}
+    let s4 = invoke concat {| a: s3, b: r.var |}
+    let s5 = invoke concat {| a: s4, b: "->int_val);" |}
+    let s6 = invoke concat {| a: s5, b: n |}
+    let s7 = invoke concat {| a: s6, b: "rc_release(" |}
+    let s8 = invoke concat {| a: s7, b: r.var |}
+    let s9 = invoke concat {| a: s8, b: ");" |}
+    let code = invoke concat {| a: s9, b: n |}
+    {| code: code, var: f.name, counter: f.counter |}
+seal
+
+rite emit_field_access
+  given {| node, counter |} =>
+    let n = invoke nl {| |}
+    let r = invoke emit_expr {| node: node.obj, counter: counter |}
+    let f = invoke fresh_var {| prefix: "_t", counter: r.counter |}
+    let cs = invoke c_string {| s: node.field |}
+    let s1 = invoke concat {| a: r.code, b: "Value* " |}
+    let s2 = invoke concat {| a: s1, b: f.name |}
+    let s3 = invoke concat {| a: s2, b: " = record_field(" |}
+    let s4 = invoke concat {| a: s3, b: r.var |}
+    let s5 = invoke concat {| a: s4, b: ", " |}
+    let s6 = invoke concat {| a: s5, b: cs |}
+    let s7 = invoke concat {| a: s6, b: ");" |}
+    let s8 = invoke concat {| a: s7, b: n |}
+    let s9 = invoke concat {| a: s8, b: "rc_retain(" |}
+    let s10 = invoke concat {| a: s9, b: f.name |}
+    let s11 = invoke concat {| a: s10, b: ");" |}
+    let s12 = invoke concat {| a: s11, b: n |}
+    let s13 = invoke concat {| a: s12, b: "rc_release(" |}
+    let s14 = invoke concat {| a: s13, b: r.var |}
+    let s15 = invoke concat {| a: s14, b: ");" |}
+    let code = invoke concat {| a: s15, b: n |}
+    {| code: code, var: f.name, counter: f.counter |}
+seal
+
+-- Emit record field values, building up code and argument list
+rite emit_record_fields_loop
+  given {| fields, counter, setup, args |} =>
+    divine invoke is_nil {| list: fields |}
+      given 1 => {| setup: setup, args: args, counter: counter |}
+      given 0 =>
+        let head = invoke list_head {| list: fields |}
+        let tail = invoke list_tail {| list: fields |}
+        let r = invoke emit_expr {| node: head.value, counter: counter |}
+        let new_setup = invoke concat {| a: setup, b: r.code |}
+        let cs = invoke c_string {| s: head.name |}
+        let a1 = invoke concat {| a: args, b: ", " |}
+        let a2 = invoke concat {| a: a1, b: cs |}
+        let a3 = invoke concat {| a: a2, b: ", " |}
+        let new_args = invoke concat {| a: a3, b: r.var |}
+        invoke emit_record_fields_loop {| fields: tail, counter: r.counter, setup: new_setup, args: new_args |}
+    seal
+seal
+
+rite emit_record
+  given {| node, counter |} =>
+    let n = invoke nl {| |}
+    let num_fields = invoke list_len {| list: node.fields |}
+    let num_str = invoke int_to_str {| n: num_fields |}
+    let r = invoke emit_record_fields_loop {| fields: node.fields, counter: counter, setup: "", args: "" |}
+    let f = invoke fresh_var {| prefix: "_t", counter: r.counter |}
+    let s1 = invoke concat {| a: r.setup, b: "Value* " |}
+    let s2 = invoke concat {| a: s1, b: f.name |}
+    let s3 = invoke concat {| a: s2, b: " = make_record(" |}
+    let s4 = invoke concat {| a: s3, b: num_str |}
+    let s5 = invoke concat {| a: s4, b: r.args |}
+    let s6 = invoke concat {| a: s5, b: ");" |}
+    let code = invoke concat {| a: s6, b: n |}
+    {| code: code, var: f.name, counter: f.counter |}
+seal
+
+rite emit_invoke_expr
+  given {| node, counter |} =>
+    let n = invoke nl {| |}
+    let r = invoke emit_expr {| node: node.arg, counter: counter |}
+    let f = invoke fresh_var {| prefix: "_t", counter: r.counter |}
+    let s1 = invoke concat {| a: r.code, b: "Value* " |}
+    let s2 = invoke concat {| a: s1, b: f.name |}
+    let s3 = invoke concat {| a: s2, b: " = rite_" |}
+    let s4 = invoke concat {| a: s3, b: node.name |}
+    let s5 = invoke concat {| a: s4, b: "(" |}
+    let s6 = invoke concat {| a: s5, b: r.var |}
+    let s7 = invoke concat {| a: s6, b: ");" |}
+    let s8 = invoke concat {| a: s7, b: n |}
+    let s9 = invoke concat {| a: s8, b: "rc_release(" |}
+    let s10 = invoke concat {| a: s9, b: r.var |}
+    let s11 = invoke concat {| a: s10, b: ");" |}
+    let code = invoke concat {| a: s11, b: n |}
+    {| code: code, var: f.name, counter: f.counter |}
+seal
+
+rite emit_hearken
+  given {| counter |} =>
+    let f = invoke fresh_var {| prefix: "_t", counter: counter |}
+    let n = invoke nl {| |}
+    let s1 = invoke concat {| a: "Value* ", b: f.name |}
+    let s2 = invoke concat {| a: s1, b: " = runtime_hearken();" |}
+    let code = invoke concat {| a: s2, b: n |}
+    {| code: code, var: f.name, counter: f.counter |}
+seal
+
+rite emit_scry
+  given {| counter |} =>
+    let f = invoke fresh_var {| prefix: "_t", counter: counter |}
+    let n = invoke nl {| |}
+    let s1 = invoke concat {| a: "Value* ", b: f.name |}
+    let s2 = invoke concat {| a: s1, b: " = runtime_scry();" |}
+    let code = invoke concat {| a: s2, b: n |}
+    {| code: code, var: f.name, counter: f.counter |}
+seal
+
+rite emit_let_bindings_loop
+  given {| bindings, counter, code_acc, names_acc |} =>
+    divine invoke is_nil {| list: bindings |}
+      given 1 => {| code: code_acc, counter: counter, names: names_acc |}
+      given 0 =>
+        let head = invoke list_head {| list: bindings |}
+        let tail = invoke list_tail {| list: bindings |}
+        let n = invoke nl {| |}
+        let rv = invoke emit_expr {| node: head.value, counter: counter |}
+        let cn = invoke c_name {| name: head.name |}
+        let s1 = invoke concat {| a: rv.code, b: "Value* " |}
+        let s2 = invoke concat {| a: s1, b: cn |}
+        let s3 = invoke concat {| a: s2, b: " = " |}
+        let s4 = invoke concat {| a: s3, b: rv.var |}
+        let s5 = invoke concat {| a: s4, b: ";" |}
+        let line = invoke concat {| a: s5, b: n |}
+        let new_code = invoke concat {| a: code_acc, b: line |}
+        let new_names = invoke cons {| head: head.name, tail: names_acc |}
+        invoke emit_let_bindings_loop {| bindings: tail, counter: rv.counter, code_acc: new_code, names_acc: new_names |}
+    seal
+seal
+
+rite emit_let_in
+  given {| node, counter |} =>
+    let chain = invoke collect_let_chain {| node: node |}
+    let empty = invoke nil {| |}
+    let br = invoke emit_let_bindings_loop {| bindings: chain.bindings, counter: counter, code_acc: "", names_acc: empty |}
+    let rb = invoke emit_expr {| node: chain.body, counter: br.counter |}
+    let release = invoke gen_release_code {| names: br.names |}
+    let s1 = invoke concat {| a: br.code, b: rb.code |}
+    let code = invoke concat {| a: s1, b: release |}
+    {| code: code, var: rb.var, counter: rb.counter |}
+seal
+
+-- ============================================================
+-- Code Generation: Pattern Matching
+-- ============================================================
+-- Returns {| cond: String, bindings: String |}
+
+-- Match a single record field pattern
+-- Returns {| cond: String, bindings: String |}
+rite emit_rec_field_match
+  given {| var, field |} =>
+    let n = invoke nl {| |}
+    let cs = invoke c_string {| s: field.name |}
+    let tmp = invoke concat {| a: "_f_", b: field.name |}
+    -- Value* _f_NAME = record_field(var, "NAME");
+    let b1 = invoke concat {| a: "Value* ", b: tmp |}
+    let b2 = invoke concat {| a: b1, b: " = record_field(" |}
+    let b3 = invoke concat {| a: b2, b: var |}
+    let b4 = invoke concat {| a: b3, b: ", " |}
+    let b5 = invoke concat {| a: b4, b: cs |}
+    let b6 = invoke concat {| a: b5, b: ");" |}
+    let binding1 = invoke concat {| a: b6, b: n |}
+    -- Value* bl_NAME = _f_NAME;
+    let cn = invoke c_name {| name: field.name |}
+    let b7 = invoke concat {| a: "Value* ", b: cn |}
+    let b8 = invoke concat {| a: b7, b: " = " |}
+    let b9 = invoke concat {| a: b8, b: tmp |}
+    let b10 = invoke concat {| a: b9, b: ";" |}
+    let binding2 = invoke concat {| a: b10, b: n |}
+    let both_bindings = invoke concat {| a: binding1, b: binding2 |}
+    -- Null check is always needed
+    let null_check = invoke concat {| a: tmp, b: " != NULL" |}
+    divine field.pat.tag
+      given "pat_none" =>
+        {| cond: null_check, bindings: both_bindings |}
+      given "pat_var" =>
+        {| cond: null_check, bindings: both_bindings |}
+      given "pat_int" =>
+        let c1 = invoke concat {| a: null_check, b: " && " |}
+        let c2 = invoke concat {| a: c1, b: tmp |}
+        let c3 = invoke concat {| a: c2, b: "->tag == TAG_INT && " |}
+        let c4 = invoke concat {| a: c3, b: tmp |}
+        let c5 = invoke concat {| a: c4, b: "->int_val == " |}
+        let cond = invoke concat {| a: c5, b: field.pat.value |}
+        {| cond: cond, bindings: both_bindings |}
+      given "pat_str" =>
+        let csv = invoke c_string {| s: field.pat.value |}
+        let c1 = invoke concat {| a: null_check, b: " && " |}
+        let c2 = invoke concat {| a: c1, b: tmp |}
+        let c3 = invoke concat {| a: c2, b: "->tag == TAG_STR && strcmp(" |}
+        let c4 = invoke concat {| a: c3, b: tmp |}
+        let c5 = invoke concat {| a: c4, b: "->str_val, " |}
+        let c6 = invoke concat {| a: c5, b: csv |}
+        let cond = invoke concat {| a: c6, b: ") == 0" |}
+        {| cond: cond, bindings: both_bindings |}
+      given "pat_wild" =>
+        {| cond: null_check, bindings: binding1 |}
+    seal
+seal
+
+-- Loop over record pattern fields, accumulating conditions and bindings
+rite emit_rec_pat_loop
+  given {| var, fields, cond_acc, bind_acc |} =>
+    divine invoke is_nil {| list: fields |}
+      given 1 => {| cond: cond_acc, bindings: bind_acc |}
+      given 0 =>
+        let head = invoke list_head {| list: fields |}
+        let tail = invoke list_tail {| list: fields |}
+        let r = invoke emit_rec_field_match {| var: var, field: head |}
+        -- Combine conditions with &&
+        let new_cond = divine invoke str_eq {| a: cond_acc, b: "" |}
+          given 1 => r.cond
+          given 0 =>
+            let c1 = invoke concat {| a: cond_acc, b: " && " |}
+            invoke concat {| a: c1, b: r.cond |}
+        seal
+        let new_bind = invoke concat {| a: bind_acc, b: r.bindings |}
+        invoke emit_rec_pat_loop {| var: var, fields: tail, cond_acc: new_cond, bind_acc: new_bind |}
+    seal
+seal
+
+-- Central pattern match dispatcher
+-- Returns {| cond: String, bindings: String |}
+rite emit_pat_match
+  given {| var, pat |} =>
+    let n = invoke nl {| |}
+    divine pat.tag
+      given "pat_wild" =>
+        {| cond: "1", bindings: "" |}
+      given "pat_var" =>
+        let cn = invoke c_name {| name: pat.name |}
+        let b1 = invoke concat {| a: "Value* ", b: cn |}
+        let b2 = invoke concat {| a: b1, b: " = " |}
+        let b3 = invoke concat {| a: b2, b: var |}
+        let b4 = invoke concat {| a: b3, b: ";" |}
+        let bindings = invoke concat {| a: b4, b: n |}
+        {| cond: "1", bindings: bindings |}
+      given "pat_int" =>
+        let c1 = invoke concat {| a: var, b: "->tag == TAG_INT && " |}
+        let c2 = invoke concat {| a: c1, b: var |}
+        let c3 = invoke concat {| a: c2, b: "->int_val == " |}
+        let cond = invoke concat {| a: c3, b: pat.value |}
+        {| cond: cond, bindings: "" |}
+      given "pat_str" =>
+        let cs = invoke c_string {| s: pat.value |}
+        let c1 = invoke concat {| a: var, b: "->tag == TAG_STR && strcmp(" |}
+        let c2 = invoke concat {| a: c1, b: var |}
+        let c3 = invoke concat {| a: c2, b: "->str_val, " |}
+        let c4 = invoke concat {| a: c3, b: cs |}
+        let cond = invoke concat {| a: c4, b: ") == 0" |}
+        {| cond: cond, bindings: "" |}
+      given "pat_rec" =>
+        let r = invoke emit_rec_pat_loop {| var: var, fields: pat.fields, cond_acc: "", bind_acc: "" |}
+        -- Prepend TAG_RECORD check
+        let rec_check = invoke concat {| a: var, b: "->tag == TAG_RECORD" |}
+        let cond = divine invoke str_eq {| a: r.cond, b: "" |}
+          given 1 => rec_check
+          given 0 =>
+            let c1 = invoke concat {| a: rec_check, b: " && " |}
+            invoke concat {| a: c1, b: r.cond |}
+        seal
+        {| cond: cond, bindings: r.bindings |}
+    seal
+seal
+
+-- Extract bound variable names from a pattern (for retain/release)
+rite extract_field_bound_names
+  given {| field |} =>
+    divine field.pat.tag
+      given "pat_none" =>
+        invoke cons {| head: field.name, tail: invoke nil {| |} |}
+      given "pat_var" =>
+        invoke cons {| head: field.name, tail: invoke nil {| |} |}
+      given "pat_int" =>
+        invoke cons {| head: field.name, tail: invoke nil {| |} |}
+      given "pat_str" =>
+        invoke cons {| head: field.name, tail: invoke nil {| |} |}
+      given _ => invoke nil {| |}
+    seal
+seal
+
+rite extract_bound_names_loop
+  given {| fields, acc |} =>
+    divine invoke is_nil {| list: fields |}
+      given 1 => acc
+      given 0 =>
+        let head = invoke list_head {| list: fields |}
+        let tail = invoke list_tail {| list: fields |}
+        let names = invoke extract_field_bound_names {| field: head |}
+        -- Append names to acc
+        let new_acc = divine invoke is_nil {| list: names |}
+          given 1 => acc
+          given 0 =>
+            let name = invoke list_head {| list: names |}
+            invoke cons {| head: name, tail: acc |}
+        seal
+        invoke extract_bound_names_loop {| fields: tail, acc: new_acc |}
+    seal
+seal
+
+rite extract_bound_names
+  given {| pat |} =>
+    divine pat.tag
+      given "pat_var" =>
+        invoke cons {| head: pat.name, tail: invoke nil {| |} |}
+      given "pat_rec" =>
+        let empty = invoke nil {| |}
+        invoke extract_bound_names_loop {| fields: pat.fields, acc: empty |}
+      given _ => invoke nil {| |}
+    seal
+seal
+
+-- Generate retain code for a list of bound names
+rite gen_retain_code
+  given {| names |} =>
+    let n = invoke nl {| |}
+    divine invoke is_nil {| list: names |}
+      given 1 => ""
+      given 0 =>
+        let head = invoke list_head {| list: names |}
+        let tail = invoke list_tail {| list: names |}
+        let cn = invoke c_name {| name: head |}
+        let s1 = invoke concat {| a: "rc_retain(", b: cn |}
+        let s2 = invoke concat {| a: s1, b: ");" |}
+        let s3 = invoke concat {| a: s2, b: n |}
+        let rest = invoke gen_retain_code {| names: tail |}
+        invoke concat {| a: s3, b: rest |}
+    seal
+seal
+
+-- Generate release code for a list of bound names
+rite gen_release_code
+  given {| names |} =>
+    let n = invoke nl {| |}
+    divine invoke is_nil {| list: names |}
+      given 1 => ""
+      given 0 =>
+        let head = invoke list_head {| list: names |}
+        let tail = invoke list_tail {| list: names |}
+        let cn = invoke c_name {| name: head |}
+        let s1 = invoke concat {| a: "rc_release(", b: cn |}
+        let s2 = invoke concat {| a: s1, b: ");" |}
+        let s3 = invoke concat {| a: s2, b: n |}
+        let rest = invoke gen_release_code {| names: tail |}
+        invoke concat {| a: s3, b: rest |}
+    seal
+seal
+
+-- ============================================================
+-- Code Generation: Divine Expression
+-- ============================================================
+
+-- Emit a single divine clause
+rite emit_divine_clause
+  given {| scr, dvn, lbl, clause, counter |} =>
+    let n = invoke nl {| |}
+    let pm = invoke emit_pat_match {| var: scr, pat: clause.pat |}
+    let bound = invoke extract_bound_names {| pat: clause.pat |}
+    let rb = invoke emit_expr {| node: clause.body, counter: counter |}
+    let retain = invoke gen_retain_code {| names: bound |}
+    let release = invoke gen_release_code {| names: bound |}
+    let s1 = invoke concat {| a: "{", b: n |}
+    let s2 = invoke concat {| a: s1, b: pm.bindings |}
+    let s3 = invoke concat {| a: s2, b: "if (" |}
+    let s4 = invoke concat {| a: s3, b: pm.cond |}
+    let s5 = invoke concat {| a: s4, b: ") {" |}
+    let s6 = invoke concat {| a: s5, b: n |}
+    let s7 = invoke concat {| a: s6, b: retain |}
+    let s8 = invoke concat {| a: s7, b: rb.code |}
+    let s9 = invoke concat {| a: s8, b: release |}
+    let s10 = invoke concat {| a: s9, b: dvn |}
+    let s11 = invoke concat {| a: s10, b: " = " |}
+    let s12 = invoke concat {| a: s11, b: rb.var |}
+    let s13 = invoke concat {| a: s12, b: ";" |}
+    let s14 = invoke concat {| a: s13, b: n |}
+    let s15 = invoke concat {| a: s14, b: "goto " |}
+    let s16 = invoke concat {| a: s15, b: lbl |}
+    let s17 = invoke concat {| a: s16, b: ";" |}
+    let s18 = invoke concat {| a: s17, b: n |}
+    let s19 = invoke concat {| a: s18, b: "}" |}
+    let s20 = invoke concat {| a: s19, b: n |}
+    let s21 = invoke concat {| a: s20, b: "}" |}
+    let code = invoke concat {| a: s21, b: n |}
+    {| code: code, counter: rb.counter |}
+seal
+
+-- Loop over divine clauses
+rite emit_divine_clauses_loop
+  given {| scr, dvn, lbl, clauses, counter, acc |} =>
+    divine invoke is_nil {| list: clauses |}
+      given 1 => {| code: acc, counter: counter |}
+      given 0 =>
+        let head = invoke list_head {| list: clauses |}
+        let tail = invoke list_tail {| list: clauses |}
+        let r = invoke emit_divine_clause {| scr: scr, dvn: dvn, lbl: lbl, clause: head, counter: counter |}
+        let new_acc = invoke concat {| a: acc, b: r.code |}
+        invoke emit_divine_clauses_loop {| scr: scr, dvn: dvn, lbl: lbl, clauses: tail, counter: r.counter, acc: new_acc |}
+    seal
+seal
+
+-- Emit a divine expression
+rite emit_divine
+  given {| node, counter |} =>
+    let n = invoke nl {| |}
+    let rs = invoke emit_expr {| node: node.scrutinee, counter: counter |}
+    let fdvn = invoke fresh_var {| prefix: "_dvn", counter: rs.counter |}
+    let fscr = invoke fresh_var {| prefix: "_scr", counter: fdvn.counter |}
+    let flbl = invoke fresh_var {| prefix: "_done", counter: fscr.counter |}
+    let rc = invoke emit_divine_clauses_loop {| scr: fscr.name, dvn: fdvn.name, lbl: flbl.name, clauses: node.clauses, counter: flbl.counter, acc: "" |}
+    let s1 = invoke concat {| a: rs.code, b: "Value* " |}
+    let s2 = invoke concat {| a: s1, b: fdvn.name |}
+    let s3 = invoke concat {| a: s2, b: ";" |}
+    let s4 = invoke concat {| a: s3, b: n |}
+    let s5 = invoke concat {| a: s4, b: "Value* " |}
+    let s6 = invoke concat {| a: s5, b: fscr.name |}
+    let s7 = invoke concat {| a: s6, b: " = " |}
+    let s8 = invoke concat {| a: s7, b: rs.var |}
+    let s9 = invoke concat {| a: s8, b: ";" |}
+    let s10 = invoke concat {| a: s9, b: n |}
+    let s11 = invoke concat {| a: s10, b: rc.code |}
+    let bslash = invoke bsl {| |}
+    let bsn = invoke concat {| a: bslash, b: "n" |}
+    let divine_err = invoke concat {| a: "Pattern match failure in divine", b: bsn |}
+    let divine_err_c = invoke c_string {| s: divine_err |}
+    let s12 = invoke concat {| a: s11, b: "fprintf(stderr, " |}
+    let s13 = invoke concat {| a: s12, b: divine_err_c |}
+    let s14 = invoke concat {| a: s13, b: "); exit(1);" |}
+    let s15 = invoke concat {| a: s14, b: n |}
+    let s16 = invoke concat {| a: s15, b: flbl.name |}
+    let s17 = invoke concat {| a: s16, b: ":;" |}
+    let s18 = invoke concat {| a: s17, b: n |}
+    let s19 = invoke concat {| a: s18, b: "rc_release(" |}
+    let s20 = invoke concat {| a: s19, b: fscr.name |}
+    let s21 = invoke concat {| a: s20, b: ");" |}
+    let code = invoke concat {| a: s21, b: n |}
+    {| code: code, var: fdvn.name, counter: rc.counter |}
+seal
+
+-- Central expression dispatcher
+rite emit_expr
+  given {| node, counter |} =>
+    divine node.tag
+      given "int_lit" => invoke emit_int_lit {| node: node, counter: counter |}
+      given "str_lit" => invoke emit_str_lit {| node: node, counter: counter |}
+      given "var" => invoke emit_var {| node: node, counter: counter |}
+      given "binop" => invoke emit_binop {| node: node, counter: counter |}
+      given "unop" => invoke emit_unop {| node: node, counter: counter |}
+      given "field_access" => invoke emit_field_access {| node: node, counter: counter |}
+      given "record" => invoke emit_record {| node: node, counter: counter |}
+      given "summon" => invoke emit_record {| node: {| tag: "record", fields: node.fields |}, counter: counter |}
+      given "invoke" => invoke emit_invoke_expr {| node: node, counter: counter |}
+      given "hearken" => invoke emit_hearken {| counter: counter |}
+      given "scry" => invoke emit_scry {| counter: counter |}
+      given "let_in" => invoke emit_let_in {| node: node, counter: counter |}
+      given "divine" => invoke emit_divine {| node: node, counter: counter |}
+    seal
+seal
+
+-- ============================================================
+-- Code Generation: Rite (Function) Emission
+-- ============================================================
+
+-- Emit a single given clause inside a rite
+rite emit_clause
+  given {| clause, counter |} =>
+    let n = invoke nl {| |}
+    let pm = invoke emit_pat_match {| var: "arg", pat: clause.pat |}
+    let bound = invoke extract_bound_names {| pat: clause.pat |}
+    let rb = invoke emit_expr {| node: clause.body, counter: counter |}
+    let retain = invoke gen_retain_code {| names: bound |}
+    let release = invoke gen_release_code {| names: bound |}
+    let s1 = invoke concat {| a: "{", b: n |}
+    let s2 = invoke concat {| a: s1, b: pm.bindings |}
+    let s3 = invoke concat {| a: s2, b: "if (" |}
+    let s4 = invoke concat {| a: s3, b: pm.cond |}
+    let s5 = invoke concat {| a: s4, b: ") {" |}
+    let s6 = invoke concat {| a: s5, b: n |}
+    let s7 = invoke concat {| a: s6, b: retain |}
+    let s8 = invoke concat {| a: s7, b: rb.code |}
+    let s9 = invoke concat {| a: s8, b: release |}
+    let s10 = invoke concat {| a: s9, b: "return " |}
+    let s11 = invoke concat {| a: s10, b: rb.var |}
+    let s12 = invoke concat {| a: s11, b: ";" |}
+    let s13 = invoke concat {| a: s12, b: n |}
+    let s14 = invoke concat {| a: s13, b: "}" |}
+    let s15 = invoke concat {| a: s14, b: n |}
+    let s16 = invoke concat {| a: s15, b: "}" |}
+    let code = invoke concat {| a: s16, b: n |}
+    {| code: code, counter: rb.counter |}
+seal
+
+-- Loop over clauses in a rite
+rite emit_clauses_loop
+  given {| clauses, counter, acc |} =>
+    divine invoke is_nil {| list: clauses |}
+      given 1 => {| code: acc, counter: counter |}
+      given 0 =>
+        let head = invoke list_head {| list: clauses |}
+        let tail = invoke list_tail {| list: clauses |}
+        let r = invoke emit_clause {| clause: head, counter: counter |}
+        let new_acc = invoke concat {| a: acc, b: r.code |}
+        invoke emit_clauses_loop {| clauses: tail, counter: r.counter, acc: new_acc |}
+    seal
+seal
+
+-- Emit a rite definition
+rite emit_rite
+  given {| name, clauses, counter |} =>
+    let n = invoke nl {| |}
+    let rc = invoke emit_clauses_loop {| clauses: clauses, counter: counter, acc: "" |}
+    let s1 = invoke concat {| a: "static Value* rite_", b: name |}
+    let s2 = invoke concat {| a: s1, b: "(Value* arg) {" |}
+    let s3 = invoke concat {| a: s2, b: n |}
+    let s4 = invoke concat {| a: s3, b: rc.code |}
+    let s5 = invoke concat {| a: s4, b: "fprintf(stderr, " |}
+    let bslash = invoke bsl {| |}
+    let bsn = invoke concat {| a: bslash, b: "n" |}
+    let err_msg = invoke concat {| a: "Pattern match failure in rite '", b: name |}
+    let err_msg2 = invoke concat {| a: err_msg, b: "'" |}
+    let err_msg3 = invoke concat {| a: err_msg2, b: bsn |}
+    let s6 = invoke concat {| a: s5, b: invoke c_string {| s: err_msg3 |} |}
+    let s7 = invoke concat {| a: s6, b: ");" |}
+    let s8 = invoke concat {| a: s7, b: n |}
+    let s9 = invoke concat {| a: s8, b: "exit(1);" |}
+    let s10 = invoke concat {| a: s9, b: n |}
+    let s11 = invoke concat {| a: s10, b: "}" |}
+    let s12 = invoke concat {| a: s11, b: n |}
+    let code = invoke concat {| a: s12, b: n |}
+    {| code: code, counter: rc.counter |}
+seal
+
+-- Emit a forward declaration for a rite
+rite emit_forward_decl
+  given {| name |} =>
+    let n = invoke nl {| |}
+    divine invoke is_builtin_rite {| name: name |}
+      given 1 => ""
+      given 0 =>
+        let s1 = invoke concat {| a: "static Value* rite_", b: name |}
+        let s2 = invoke concat {| a: s1, b: "(Value* arg);" |}
+        invoke concat {| a: s2, b: n |}
+    seal
+seal
+
+-- Loop over declarations to emit forward declarations
+rite emit_forward_decls_loop
+  given {| decls, acc |} =>
+    divine invoke is_nil {| list: decls |}
+      given 1 => acc
+      given 0 =>
+        let head = invoke list_head {| list: decls |}
+        let tail = invoke list_tail {| list: decls |}
+        let new_acc = divine invoke str_eq {| a: head.tag, b: "decl_rite" |}
+          given 1 =>
+            let fd = invoke emit_forward_decl {| name: head.name |}
+            invoke concat {| a: acc, b: fd |}
+          given 0 => acc
+        seal
+        invoke emit_forward_decls_loop {| decls: tail, acc: new_acc |}
+    seal
+seal
+
+-- ============================================================
+-- Code Generation: Statement & Main Emission
+-- ============================================================
+
+-- Emit a single statement
+rite emit_stmt
+  given {| stmt, counter |} =>
+    let n = invoke nl {| |}
+    divine stmt.tag
+      given "stmt_let" =>
+        let r = invoke emit_expr {| node: stmt.value, counter: counter |}
+        let cn = invoke c_name {| name: stmt.name |}
+        let s1 = invoke concat {| a: r.code, b: "Value* " |}
+        let s2 = invoke concat {| a: s1, b: cn |}
+        let s3 = invoke concat {| a: s2, b: " = " |}
+        let s4 = invoke concat {| a: s3, b: r.var |}
+        let s5 = invoke concat {| a: s4, b: ";" |}
+        let code = invoke concat {| a: s5, b: n |}
+        {| code: code, counter: r.counter |}
+      given "stmt_utter" =>
+        let r = invoke emit_expr {| node: stmt.value, counter: counter |}
+        let s1 = invoke concat {| a: r.code, b: "utter(" |}
+        let s2 = invoke concat {| a: s1, b: r.var |}
+        let s3 = invoke concat {| a: s2, b: ");" |}
+        let s4 = invoke concat {| a: s3, b: n |}
+        let s5 = invoke concat {| a: s4, b: "rc_release(" |}
+        let s6 = invoke concat {| a: s5, b: r.var |}
+        let s7 = invoke concat {| a: s6, b: ");" |}
+        let code = invoke concat {| a: s7, b: n |}
+        {| code: code, counter: r.counter |}
+      given "stmt_whisper" =>
+        let r = invoke emit_expr {| node: stmt.value, counter: counter |}
+        let s1 = invoke concat {| a: r.code, b: "whisper(" |}
+        let s2 = invoke concat {| a: s1, b: r.var |}
+        let s3 = invoke concat {| a: s2, b: ");" |}
+        let s4 = invoke concat {| a: s3, b: n |}
+        let s5 = invoke concat {| a: s4, b: "rc_release(" |}
+        let s6 = invoke concat {| a: s5, b: r.var |}
+        let s7 = invoke concat {| a: s6, b: ");" |}
+        let code = invoke concat {| a: s7, b: n |}
+        {| code: code, counter: r.counter |}
+      given "stmt_expr" =>
+        let r = invoke emit_expr {| node: stmt.value, counter: counter |}
+        let s1 = invoke concat {| a: r.code, b: "rc_release(" |}
+        let s2 = invoke concat {| a: s1, b: r.var |}
+        let s3 = invoke concat {| a: s2, b: ");" |}
+        let code = invoke concat {| a: s3, b: n |}
+        {| code: code, counter: r.counter |}
+    seal
+seal
+
+-- Loop over statements, threading the counter
+rite emit_stmts_loop
+  given {| stmts, counter, acc |} =>
+    divine invoke is_nil {| list: stmts |}
+      given 1 => {| code: acc, counter: counter |}
+      given 0 =>
+        let head = invoke list_head {| list: stmts |}
+        let tail = invoke list_tail {| list: stmts |}
+        let r = invoke emit_stmt {| stmt: head, counter: counter |}
+        let new_acc = invoke concat {| a: acc, b: r.code |}
+        invoke emit_stmts_loop {| stmts: tail, counter: r.counter, acc: new_acc |}
+    seal
+seal
+
+-- Collect let-bound names from statements (for cleanup at end of main)
+rite collect_let_names
+  given {| stmts, acc |} =>
+    divine invoke is_nil {| list: stmts |}
+      given 1 => acc
+      given 0 =>
+        let head = invoke list_head {| list: stmts |}
+        let tail = invoke list_tail {| list: stmts |}
+        let new_acc = divine invoke str_eq {| a: head.tag, b: "stmt_let" |}
+          given 1 => invoke cons {| head: head.name, tail: acc |}
+          given 0 => acc
+        seal
+        invoke collect_let_names {| stmts: tail, acc: new_acc |}
+    seal
+seal
+
+-- Find the main ritual in declarations
+rite find_ritual
+  given {| decls, name |} =>
+    divine invoke is_nil {| list: decls |}
+      given 1 => {| tag: "none" |}
+      given 0 =>
+        let head = invoke list_head {| list: decls |}
+        let tail = invoke list_tail {| list: decls |}
+        divine invoke str_eq {| a: head.tag, b: "decl_ritual" |}
+          given 1 =>
+            divine invoke str_eq {| a: head.name, b: name |}
+              given 1 => {| tag: "some", stmts: head.stmts |}
+              given 0 => invoke find_ritual {| decls: tail, name: name |}
+            seal
+          given 0 => invoke find_ritual {| decls: tail, name: name |}
+        seal
+    seal
+seal
+
+-- Emit the main function
+rite emit_main_fn
+  given {| decls, counter |} =>
+    let n = invoke nl {| |}
+    let rit = invoke find_ritual {| decls: decls, name: "main" |}
+    divine rit.tag
+      given "none" =>
+        let code = invoke concat {| a: "int main(int argc, char** argv) {", b: n |}
+        let c2 = invoke concat {| a: code, b: "g_argc = argc;" |}
+        let c3 = invoke concat {| a: c2, b: n |}
+        let c4 = invoke concat {| a: c3, b: "g_argv = argv;" |}
+        let c5 = invoke concat {| a: c4, b: n |}
+        let c6 = invoke concat {| a: c5, b: "return 0;" |}
+        let c7 = invoke concat {| a: c6, b: n |}
+        let c8 = invoke concat {| a: c7, b: "}" |}
+        invoke concat {| a: c8, b: n |}
+      given "some" =>
+        let rs = invoke emit_stmts_loop {| stmts: rit.stmts, counter: counter, acc: "" |}
+        let empty = invoke nil {| |}
+        let let_names = invoke collect_let_names {| stmts: rit.stmts, acc: empty |}
+        let rel = invoke gen_release_code {| names: let_names |}
+        let s1 = invoke concat {| a: "int main(int argc, char** argv) {", b: n |}
+        let s2 = invoke concat {| a: s1, b: "g_argc = argc;" |}
+        let s3 = invoke concat {| a: s2, b: n |}
+        let s4 = invoke concat {| a: s3, b: "g_argv = argv;" |}
+        let s5 = invoke concat {| a: s4, b: n |}
+        let s6 = invoke concat {| a: s5, b: rs.code |}
+        let s7 = invoke concat {| a: s6, b: rel |}
+        let s8 = invoke concat {| a: s7, b: "return 0;" |}
+        let s9 = invoke concat {| a: s8, b: n |}
+        let s10 = invoke concat {| a: s9, b: "}" |}
+        invoke concat {| a: s10, b: n |}
+    seal
+seal
+
+-- ============================================================
+-- Code Generation: Top-Level Pipeline
+-- ============================================================
+
+-- Loop over declarations, emitting rite definitions
+rite emit_decls_loop
+  given {| decls, counter, acc |} =>
+    divine invoke is_nil {| list: decls |}
+      given 1 => {| code: acc, counter: counter |}
+      given 0 =>
+        let head = invoke list_head {| list: decls |}
+        let tail = invoke list_tail {| list: decls |}
+        let r = divine invoke str_eq {| a: head.tag, b: "decl_rite" |}
+          given 1 =>
+            divine invoke is_builtin_rite {| name: head.name |}
+              given 1 => {| code: "", counter: counter |}
+              given 0 => invoke emit_rite {| name: head.name, clauses: head.clauses, counter: counter |}
+            seal
+          given 0 => {| code: "", counter: counter |}
+        seal
+        let new_acc = invoke concat {| a: acc, b: r.code |}
+        invoke emit_decls_loop {| decls: tail, counter: r.counter, acc: new_acc |}
+    seal
+seal
+
+-- Assemble the complete C source file
+rite emit_c
+  given {| decls |} =>
+    let n = invoke nl {| |}
+    -- Load the C runtime from file
+    let runtime = invoke unearth {| path: "runtime.c" |}
+    -- Forward declarations
+    let fwd_decls = invoke emit_forward_decls_loop {| decls: decls, acc: "" |}
+    -- Rite definitions
+    let rite_defs = invoke emit_decls_loop {| decls: decls, counter: 0, acc: "" |}
+    -- Main function
+    let main_fn = invoke emit_main_fn {| decls: decls, counter: rite_defs.counter |}
+    -- Assemble
+    let s1 = invoke concat {| a: runtime, b: n |}
+    let s2 = invoke concat {| a: s1, b: "/* -- forward declarations -- */" |}
+    let s3 = invoke concat {| a: s2, b: n |}
+    let s4 = invoke concat {| a: s3, b: n |}
+    let s5 = invoke concat {| a: s4, b: fwd_decls |}
+    let s6 = invoke concat {| a: s5, b: n |}
+    let s7 = invoke concat {| a: s6, b: "/* -- rite definitions -- */" |}
+    let s8 = invoke concat {| a: s7, b: n |}
+    let s9 = invoke concat {| a: s8, b: n |}
+    let s10 = invoke concat {| a: s9, b: rite_defs.code |}
+    let s11 = invoke concat {| a: s10, b: n |}
+    let s12 = invoke concat {| a: s11, b: "/* -- entry point -- */" |}
+    let s13 = invoke concat {| a: s12, b: n |}
+    let s14 = invoke concat {| a: s13, b: n |}
+    invoke concat {| a: s14, b: main_fn |}
+seal
+
+-- ============================================================
+-- Main Ritual: Compiler Pipeline
+-- ============================================================
+
+ritual main
+  let src = invoke unearth {| path: invoke argv {| n: 1 |} |}
+  let tokens = invoke tokenize {| src: src |}
+  let decls = invoke parse_program {| tokens: tokens |}
+  let output = invoke emit_c {| decls: decls |}
+  let out_path = invoke argv {| n: 2 |}
+  invoke inscribe {| path: out_path, content: output |}
+seal

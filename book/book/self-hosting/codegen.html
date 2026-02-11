@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Let Bindings - The Badlang Book</title>
+        <title>Code Generation - The Badlang Book</title>
 
 
         <!-- Custom HTML head -->
@@ -174,63 +174,145 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="let-bindings"><a class="header" href="#let-bindings">Let Bindings</a></h1>
-<p><code>let</code> introduces a local variable by binding a name to an expression’s value.</p>
-<h2 id="in-rite-bodies"><a class="header" href="#in-rite-bodies">In Rite Bodies</a></h2>
-<p>Inside a <code>given</code> clause body, <code>let</code> bindings precede the final expression:</p>
-<pre><code>rite hypotenuse_sq
-  given {| a, b |} =&gt;
-    let a_sq = a * a
-    let b_sq = b * b
-    a_sq + b_sq
-seal
+                        <h1 id="code-generation"><a class="header" href="#code-generation">Code Generation</a></h1>
+<p>The code emitter translates AST nodes into C code. It generates
+reference-counted <code>Value*</code> operations that work with the shared <code>runtime.c</code>.</p>
+<h2 id="the-emitter-pattern"><a class="header" href="#the-emitter-pattern">The Emitter Pattern</a></h2>
+<p>Every emitter rite follows the same convention. It takes an AST node and a
+<code>counter</code> (for generating unique variable names), and returns:</p>
+<pre><code>{| code: String, var: String, counter: Int |}
 </code></pre>
-<p>Each <code>let</code> binding is visible to all subsequent bindings and to the final
-return expression. The last expression in the body (without a <code>let</code>) is the
-return value.</p>
-<h2 id="in-rituals"><a class="header" href="#in-rituals">In Rituals</a></h2>
-<p>In a ritual, <code>let</code> bindings introduce variables for subsequent statements:</p>
-<pre><code>ritual main
-  let x = 5
-  let y = x * 2
-  utter y
-seal
+<ul>
+<li><strong><code>code</code></strong> — C statements that set up the computation (variable declarations,
+function calls, etc.)</li>
+<li><strong><code>var</code></strong> — the name of the C variable holding the result</li>
+<li><strong><code>counter</code></strong> — the updated counter for the next fresh variable</li>
+</ul>
+<p>The counter is <strong>threaded</strong> through every emitter call: each rite receives
+the counter, may allocate fresh variables (incrementing it), and passes the
+updated counter to the next call. This ensures all generated variable names
+are globally unique.</p>
+<h2 id="fresh-variables"><a class="header" href="#fresh-variables">Fresh Variables</a></h2>
+<p>The <code>fresh_var</code> rite generates unique C identifiers:</p>
+<pre><code>invoke fresh_var {| prefix: "_t", counter: 0 |}
+→ {| name: "_t0", counter: 1 |}
 </code></pre>
-<h2 id="shadowing"><a class="header" href="#shadowing">Shadowing</a></h2>
-<p>A <code>let</code> binding can shadow a previous binding of the same name:</p>
-<pre><code>rite example
-  given {| n |} =&gt;
-    let n = n + 1
-    let n = n * 2
-    n
-seal
+<p>Generated names include <code>_t0</code>, <code>_t1</code>, … for temporaries, <code>_scr0</code> for
+scrutinees, <code>_dvn0</code> for divine results, and <code>_done0</code> for goto labels.</p>
+<h2 id="identifier-mangling"><a class="header" href="#identifier-mangling">Identifier Mangling</a></h2>
+<p>The <code>c_name</code> rite prefixes badlang identifiers with <code>bl_</code> to avoid collisions
+with C keywords. The special name <code>arg</code> (the rite parameter) is left unmangled
+since it matches the generated C function signature.</p>
+<h2 id="expression-emission"><a class="header" href="#expression-emission">Expression Emission</a></h2>
+<p>The central dispatcher <code>emit_expr</code> pattern-matches on the AST node’s <code>tag</code>
+field and delegates to specialized emitters:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>AST Tag</th><th>Emitter</th><th>Generated C</th></tr>
+</thead>
+<tbody>
+<tr><td><code>int_lit</code></td><td><code>emit_int_lit</code></td><td><code>make_int(42)</code></td></tr>
+<tr><td><code>str_lit</code></td><td><code>emit_str_lit</code></td><td><code>make_str("hello")</code></td></tr>
+<tr><td><code>var</code></td><td><code>emit_var</code></td><td><code>bl_x; rc_retain(bl_x)</code></td></tr>
+<tr><td><code>binop</code></td><td><code>emit_binop</code></td><td>Emit both sides, apply op, release operands</td></tr>
+<tr><td><code>unop</code></td><td><code>emit_unop</code></td><td>Emit operand, negate</td></tr>
+<tr><td><code>field_access</code></td><td><code>emit_field_access</code></td><td><code>record_field(obj, "name")</code> + retain</td></tr>
+<tr><td><code>record</code></td><td><code>emit_record</code></td><td><code>make_record(n, "f1", v1, ...)</code></td></tr>
+<tr><td><code>invoke</code></td><td><code>emit_invoke_expr</code></td><td><code>rite_name(arg)</code></td></tr>
+<tr><td><code>let_in</code></td><td><code>emit_let_in</code></td><td>Flat sequential bindings (see below)</td></tr>
+<tr><td><code>divine</code></td><td><code>emit_divine</code></td><td>Cascading if-chains with goto</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="let-binding-chains"><a class="header" href="#let-binding-chains">Let Binding Chains</a></h3>
+<p>The emitter flattens chains of nested <code>let_in</code> nodes into sequential C
+variable declarations. The <code>collect_let_chain</code> rite walks the nested structure
+and extracts all bindings and the final body. Then <code>emit_let_bindings_loop</code>
+emits each binding as a flat <code>Value*</code> declaration, and all bound variables are
+released in reverse order after the body:</p>
+<pre><code class="language-c">// let x = 1
+// let y = x + 1
+// x * y
+Value* bl_x = make_int(1);
+Value* bl_y = make_int(bl_x-&gt;int_val + make_int(1)-&gt;int_val);
+/* ... body code ... */
+rc_release(bl_y);
+rc_release(bl_x);
 </code></pre>
-<p>Here, <code>invoke example {| n: 5 |}</code> evaluates to <code>12</code>: the original <code>n</code> (5) is
-shadowed by <code>n + 1</code> (6), which is shadowed by <code>n * 2</code> (12).</p>
-<h2 id="let-in-expressions"><a class="header" href="#let-in-expressions">let in Expressions</a></h2>
-<p><code>let</code> bindings can appear anywhere a multi-line expression is expected,
-including inside <code>divine</code> bodies:</p>
-<pre><code>rite classify
-  given {| n |} =&gt;
-    let positive = n &gt; 0
-    divine positive
-      given 1 =&gt;
-        let doubled = n * 2
-        doubled
-      given 0 =&gt; 0
-    seal
-seal
+<p>This avoids nested <code>{ }</code> blocks, keeping the generated C flat regardless of how
+many sequential <code>let</code> bindings appear.</p>
+<h3 id="record-emission"><a class="header" href="#record-emission">Record Emission</a></h3>
+<p>Records are emitted as variadic <code>make_record</code> calls. The emitter loops over the
+field list, emitting each value expression and collecting the field names and
+result variables into an argument string:</p>
+<pre><code class="language-c">make_record(2, "x", _t0, "y", _t1)
 </code></pre>
+<p><code>make_record</code> <strong>adopts</strong> the field values — it takes ownership without
+incrementing their reference counts.</p>
+<h2 id="pattern-matching"><a class="header" href="#pattern-matching">Pattern Matching</a></h2>
+<p>Pattern matching emission produces two things:</p>
+<ul>
+<li><strong><code>cond</code></strong> — a C condition expression (e.g., <code>_f_x != NULL &amp;&amp; _f_x-&gt;int_val == 0</code>)</li>
+<li><strong><code>bindings</code></strong> — C variable declarations extracting matched values</li>
+</ul>
+<h3 id="record-patterns"><a class="header" href="#record-patterns">Record Patterns</a></h3>
+<p>For each field in a record pattern, the emitter generates:</p>
+<pre><code class="language-c">Value* _f_x = record_field(arg, "x");
+Value* bl_x = _f_x;
+</code></pre>
+<p>The condition checks that <code>_f_x != NULL</code> (the field exists). For literal
+sub-patterns, it additionally checks the value:</p>
+<pre><code class="language-c">_f_n != NULL &amp;&amp; _f_n-&gt;tag == TAG_INT &amp;&amp; _f_n-&gt;int_val == 0
+</code></pre>
+<h3 id="divine-expressions"><a class="header" href="#divine-expressions">Divine Expressions</a></h3>
+<p><code>divine</code> compiles to a local result variable, a scrutinee, and a series of
+if-blocks with a shared <code>goto</code> label:</p>
+<pre><code class="language-c">Value* _dvn0;
+Value* _scr0 = /* scrutinee */;
+/* clause 1: */ if (condition) { ... _dvn0 = result; goto _done0; }
+/* clause 2: */ if (condition) { ... _dvn0 = result; goto _done0; }
+fprintf(stderr, "Pattern match failure\n"); exit(1);
+_done0:;
+rc_release(_scr0);
+</code></pre>
+<p>Each clause retains pattern-bound variables on entry and releases them before
+the <code>goto</code>.</p>
+<h2 id="rite-definitions"><a class="header" href="#rite-definitions">Rite Definitions</a></h2>
+<p>Each rite compiles to a static C function:</p>
+<pre><code class="language-c">static Value* rite_factorial(Value* arg) {
+    /* clause 1 */
+    /* clause 2 */
+    fprintf(stderr, "Pattern match failure in rite 'factorial'\n");
+    exit(1);
+}
+</code></pre>
+<p>Clauses are emitted as cascading if-blocks. On a successful match, the body is
+evaluated, pattern-bound variables are released, and the result is returned.</p>
+<h2 id="built-in-rites"><a class="header" href="#built-in-rites">Built-in Rites</a></h2>
+<p>Certain rites (<code>unearth</code>, <code>inscribe</code>, <code>concat</code>, <code>strlen</code>, <code>char_at</code>, <code>substr</code>,
+<code>strcmp</code>, <code>int_to_str</code>, <code>char_of_int</code>, <code>argc</code>, <code>argv</code>) are implemented in
+<code>runtime.c</code> rather than generated. The emitter checks <code>is_builtin_rite</code> and
+skips code generation for these — they are available as C functions at link
+time.</p>
+<h2 id="assembling-the-output"><a class="header" href="#assembling-the-output">Assembling the Output</a></h2>
+<p>The top-level <code>emit_c</code> rite assembles the complete C file by concatenating:</p>
+<ol>
+<li>The contents of <code>runtime.c</code> (read via <code>unearth</code>)</li>
+<li>Forward declarations for all non-builtin rites</li>
+<li>Rite definitions</li>
+<li>The <code>main()</code> function (from the <code>ritual main</code> declaration)</li>
+</ol>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../expressions/invoke-summon.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../self-hosting/parser.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../expressions/field-access.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../self-hosting/bootstrapping.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -240,11 +322,11 @@ seal
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../expressions/invoke-summon.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../self-hosting/parser.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../expressions/field-access.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../self-hosting/bootstrapping.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

@@ -91,7 +91,7 @@ data Expr
 
 -- | Binary operators.
 data BinOp
-  = Add | Sub | Mul | Div
+  = Add | Sub | Mul | Div | Mod
   | Eq | Neq | Lt | Gt | Lte | Gte
   | And | Or
   deriving (Show, Eq)

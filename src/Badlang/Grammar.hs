@@ -602,7 +602,7 @@ textToOp "+"  = Add
 textToOp "-"  = Sub
 textToOp "*"  = Mul
 textToOp "/"  = Div
-textToOp "%"  = Div  -- reuse for now
+textToOp "%"  = Mod
 textToOp "==" = Eq
 textToOp "!=" = Neq
 textToOp "<"  = Lt

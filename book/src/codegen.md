@@ -138,20 +138,23 @@ Value* record_field(Value* rec, const char* name) {
 
 The caller must `rc_retain` the result if it needs to outlive the record.
 
-### let ... in → Block Scoping
+### let ... in → Flat Sequential Statements
 
-Let bindings use C block scoping with a result variable declared outside:
+Chains of `let` bindings are flattened into sequential C variable declarations.
+The compiler collects consecutive `let` bindings and emits them without nesting,
+then releases all bound variables in reverse declaration order after the body:
 
 ```c
-Value* _t5;
-{
-    Value* bl_x = /* evaluated value */;
-    /* body that may reference bl_x */
-    _t5 = /* body result */;
-    rc_release(bl_x);
-}
-/* _t5 is the result */
+Value* bl_x = /* evaluated value for x */;
+Value* bl_y = /* evaluated value for y */;
+/* body code that may reference bl_x, bl_y */
+/* body result is used directly */
+rc_release(bl_y);
+rc_release(bl_x);
 ```
+
+This avoids O(N) nesting depth for N sequential bindings, keeping the generated
+C flat regardless of how many `let` bindings appear in a row.
 
 ### divine → Local Variable + goto
 
