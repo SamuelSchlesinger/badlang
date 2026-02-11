@@ -6,26 +6,33 @@ import System.Exit (exitFailure, exitWith, ExitCode(..))
 import System.Process (rawSystem)
 import Badlang.Grammar (parseProgram)
 import Badlang.Types (typeCheck)
-import Badlang.Emit (emitC)
+import Badlang.Lower (lowerProgram)
+import Badlang.EmitC (emitCFromIR)
+import Badlang.EmitAArch64 (emitAArch64)
+import Badlang.Runtime (runtimeSource)
 
 main :: IO ()
 main = do
   args <- getArgs
   case args of
-    ["--run", file] -> compileAndRun file
-    [file]          -> compile file
-    _               -> do
+    ["--native", "--run", file] -> compileNativeAndRun file
+    ["--native", file]          -> compileNative file
+    ["--run", file]             -> compileAndRun file
+    [file]                      -> compile file
+    _                           -> do
       hPutStrLn stderr "badlang — the language of rites and glyphs"
       hPutStrLn stderr ""
       hPutStrLn stderr "Usage:"
-      hPutStrLn stderr "  badlang <source.bad>       Compile to C"
-      hPutStrLn stderr "  badlang --run <source.bad>  Compile to C, build, and run"
+      hPutStrLn stderr "  badlang <source.bad>                Compile to C"
+      hPutStrLn stderr "  badlang --run <source.bad>          Compile to C, build, and run"
+      hPutStrLn stderr "  badlang --native <source.bad>       Compile to native (aarch64)"
+      hPutStrLn stderr "  badlang --native --run <source.bad> Compile native and run"
       exitFailure
 
 compile :: FilePath -> IO ()
 compile path = do
   src <- readFile path
-  case pipeline src of
+  case pipelineC src of
     Left err -> do
       hPutStrLn stderr err
       exitFailure
@@ -37,12 +44,12 @@ compile path = do
 compileAndRun :: FilePath -> IO ()
 compileAndRun path = do
   src <- readFile path
-  case pipeline src of
+  case pipelineC src of
     Left err -> do
       hPutStrLn stderr err
       exitFailure
     Right cCode -> do
-      let cPath  = replaceExtension path ".c"
+      let cPath   = replaceExtension path ".c"
           binPath = replaceExtension path ""
       writeFile cPath cCode
       exitCode <- rawSystem "cc" ["-o", binPath, cPath]
@@ -54,11 +61,62 @@ compileAndRun path = do
           hPutStrLn stderr $ "C compilation failed (exit " ++ show n ++ ")"
           exitFailure
 
-pipeline :: String -> Either String String
-pipeline src = do
+compileNative :: FilePath -> IO ()
+compileNative path = do
+  src <- readFile path
+  case pipelineNative src of
+    Left err -> do
+      hPutStrLn stderr err
+      exitFailure
+    Right (asmCode, rtCode) -> do
+      let asmPath = replaceExtension path ".s"
+          rtPath  = replaceExtension path "_rt.c"
+          binPath = replaceExtension path ""
+      writeFile asmPath asmCode
+      writeFile rtPath rtCode
+      exitCode <- rawSystem "cc" ["-o", binPath, asmPath, rtPath]
+      case exitCode of
+        ExitSuccess ->
+          putStrLn $ "Compiled to " ++ binPath
+        ExitFailure n -> do
+          hPutStrLn stderr $ "Native compilation failed (exit " ++ show n ++ ")"
+          exitFailure
+
+compileNativeAndRun :: FilePath -> IO ()
+compileNativeAndRun path = do
+  src <- readFile path
+  case pipelineNative src of
+    Left err -> do
+      hPutStrLn stderr err
+      exitFailure
+    Right (asmCode, rtCode) -> do
+      let asmPath = replaceExtension path ".s"
+          rtPath  = replaceExtension path "_rt.c"
+          binPath = replaceExtension path ""
+      writeFile asmPath asmCode
+      writeFile rtPath rtCode
+      exitCode <- rawSystem "cc" ["-o", binPath, asmPath, rtPath]
+      case exitCode of
+        ExitSuccess -> do
+          rc <- rawSystem binPath []
+          exitWith rc
+        ExitFailure n -> do
+          hPutStrLn stderr $ "Native compilation failed (exit " ++ show n ++ ")"
+          exitFailure
+
+pipelineC :: String -> Either String String
+pipelineC src = do
   ast     <- parseProgram src
   checked <- typeCheck ast
-  return (emitC checked)
+  let ir = lowerProgram checked
+  return (emitCFromIR ir)
+
+pipelineNative :: String -> Either String (String, String)
+pipelineNative src = do
+  ast     <- parseProgram src
+  checked <- typeCheck ast
+  let ir = lowerProgram checked
+  return (emitAArch64 ir, runtimeSource)
 
 replaceExtension :: FilePath -> String -> FilePath
 replaceExtension path newExt =

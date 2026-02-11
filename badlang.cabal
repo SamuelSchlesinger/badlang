@@ -18,7 +18,11 @@ library
         Badlang.AST
         Badlang.Grammar
         Badlang.Types
-        Badlang.Emit
+        Badlang.IR
+        Badlang.Lower
+        Badlang.EmitC
+        Badlang.EmitAArch64
+        Badlang.Runtime
     build-depends:
         base       ^>=4.18.3.0,
         containers >= 0.6,

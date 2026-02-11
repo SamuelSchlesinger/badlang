@@ -52,10 +52,6 @@ import qualified Data.Map.Strict as Map
 -- The Grammar
 -- ---------------------------------------------------------------------------
 
--- ---------------------------------------------------------------------------
--- The Grammar
--- ---------------------------------------------------------------------------
-
 -- | Reserved keywords — identifiers must not match these.
 keywords :: [String]
 keywords = [ "altar", "rite", "ritual", "given", "seal"

@@ -6,10 +6,13 @@ dist-newstyle/
 *.c
 !src/**/*.c
 !examples/compiler/runtime.c
+!runtime/*.c
 *.exe
 .claude/
 
-# Generated binaries in examples/
+# Generated artifacts in examples/
+*.s
+*_rt.c
 examples/hello
 examples/subtyping
 examples/divine
