@@ -1,0 +1,104 @@
+-- path.stele
+-- Path manipulation helpers (POSIX-style separators).
+
+fn path_last_index_char_loop
+  case {| s, pos, target, last |} =>
+    let slen = strlen {| s: s |}
+    match pos >= slen
+      case 1 => last
+      case 0 =>
+        let ch = char_at {| s: s, n: pos |}
+        match ch == target
+          case 1 =>
+            path_last_index_char_loop {| s: s, pos: pos + 1, target: target, last: pos |}
+          case 0 =>
+            path_last_index_char_loop {| s: s, pos: pos + 1, target: target, last: last |}
+        end
+    end
+end
+
+fn path_basename
+  case {| path |} =>
+    let plen = strlen {| s: path |}
+    let slash = path_last_index_char_loop {| s: path, pos: 0, target: 47, last: 0 - 1 |}
+    let start = slash + 1
+    substr {| s: path, start: start, len: plen - start |}
+end
+
+fn path_ext
+  case {| path |} =>
+    let base = path_basename {| path: path |}
+    let blen = strlen {| s: base |}
+    let dot = path_last_index_char_loop {| s: base, pos: 0, target: 46, last: 0 - 1 |}
+    match dot > 0
+      case 1 => substr {| s: base, start: dot + 1, len: blen - dot - 1 |}
+      case 0 => ""
+    end
+end
+
+fn path_basename_no_ext
+  case {| path |} =>
+    let base = path_basename {| path: path |}
+    let dot = path_last_index_char_loop {| s: base, pos: 0, target: 46, last: 0 - 1 |}
+    match dot > 0
+      case 1 => substr {| s: base, start: 0, len: dot |}
+      case 0 => base
+    end
+end
+
+fn path_dirname
+  case {| path |} =>
+    let slash = path_last_index_char_loop {| s: path, pos: 0, target: 47, last: 0 - 1 |}
+    match slash >= 0
+      case 1 =>
+        match slash == 0
+          case 1 => "/"
+          case 0 => substr {| s: path, start: 0, len: slash |}
+        end
+      case 0 => "."
+    end
+end
+
+fn path_is_abs
+  case {| path |} =>
+    let plen = strlen {| s: path |}
+    match plen > 0
+      case 1 =>
+        let first = char_at {| s: path, n: 0 |}
+        first == 47
+      case 0 => 0
+    end
+end
+
+fn path_join
+  case {| a, b |} =>
+    let alen = strlen {| s: a |}
+    let blen = strlen {| s: b |}
+    match alen == 0
+      case 1 => b
+      case 0 =>
+        match blen == 0
+          case 1 => a
+          case 0 =>
+            let a_last = char_at {| s: a, n: alen - 1 |}
+            let b_first = char_at {| s: b, n: 0 |}
+            match a_last == 47
+              case 1 =>
+                match b_first == 47
+                  case 1 =>
+                    let b_trim = substr {| s: b, start: 1, len: blen - 1 |}
+                    concat {| a: a, b: b_trim |}
+                  case 0 => concat {| a: a, b: b |}
+                end
+              case 0 =>
+                match b_first == 47
+                  case 1 => concat {| a: a, b: b |}
+                  case 0 =>
+                    let x = concat {| a: a, b: "/" |}
+                    concat {| a: x, b: b |}
+                end
+            end
+        end
+    end
+end
+

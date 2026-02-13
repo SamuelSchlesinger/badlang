@@ -1,0 +1,45 @@
+-- concurrency_test.stele
+-- Test target for stdlib/concurrency.stele
+
+fn assert_eq
+  case {| actual, expected, code |} =>
+    match actual == expected
+      case 1 => 0
+      case 0 =>
+        let ignored = terminate {| code: code |}
+        0
+    end
+end
+
+fn assert_ne
+  case {| actual, unexpected, code |} =>
+    match actual != unexpected
+      case 1 => 0
+      case 0 =>
+        let ignored = terminate {| code: code |}
+        0
+    end
+end
+
+do main
+  let p1 = conc_spawn {| command: "true" |}
+  let r1 = conc_await {| pid: p1 |}
+  let t1 = assert_eq {| actual: r1, expected: 0, code: 40 |}
+
+  let p2 = conc_spawn {| command: "false" |}
+  let r2 = conc_await {| pid: p2 |}
+  let t2 = assert_ne {| actual: r2, unexpected: 0, code: 41 |}
+
+  let p3 = conc_parallel2 {| command_a: "true", command_b: "false" |}
+  let t3 = assert_eq {| actual: p3.a, expected: 0, code: 42 |}
+  let t4 = assert_ne {| actual: p3.b, unexpected: 0, code: 43 |}
+
+  let p4 = conc_parallel3 {| command_a: "true", command_b: "true", command_c: "true" |}
+  let t5 = assert_eq {| actual: p4.a, expected: 0, code: 44 |}
+  let t6 = assert_eq {| actual: p4.b, expected: 0, code: 45 |}
+  let t7 = assert_eq {| actual: p4.c, expected: 0, code: 46 |}
+
+  let t8 = conc_sleep_ms {| ms: 1 |}
+  print 1
+end
+

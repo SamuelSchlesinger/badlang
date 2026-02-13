@@ -1,0 +1,18 @@
+-- path_test.stele
+-- Test target for stdlib/path.stele
+
+do main
+  let t1 = assert_eq_str {| actual: path_basename {| path: "/tmp/foo.txt" |}, expected: "foo.txt", code: 80 |}
+  let t2 = assert_eq_str {| actual: path_basename_no_ext {| path: "/tmp/foo.txt" |}, expected: "foo", code: 81 |}
+  let t3 = assert_eq_str {| actual: path_ext {| path: "/tmp/foo.txt" |}, expected: "txt", code: 82 |}
+  let t4 = assert_eq_str {| actual: path_dirname {| path: "/tmp/foo.txt" |}, expected: "/tmp", code: 83 |}
+  let t5 = assert_eq_str {| actual: path_dirname {| path: "foo.txt" |}, expected: ".", code: 84 |}
+  let t6 = assert_eq_int {| actual: path_is_abs {| path: "/tmp" |}, expected: 1, code: 85 |}
+  let t7 = assert_eq_int {| actual: path_is_abs {| path: "tmp" |}, expected: 0, code: 86 |}
+  let t8 = assert_eq_str {| actual: path_join {| a: "/tmp", b: "file" |}, expected: "/tmp/file", code: 87 |}
+  let t9 = assert_eq_str {| actual: path_join {| a: "/tmp/", b: "file" |}, expected: "/tmp/file", code: 88 |}
+  let t10 = assert_eq_str {| actual: path_join {| a: "/tmp/", b: "/file" |}, expected: "/tmp/file", code: 89 |}
+  let t11 = assert_eq_str {| actual: path_join {| a: "tmp", b: "file" |}, expected: "tmp/file", code: 90 |}
+  print 1
+end
+

@@ -1,0 +1,29 @@
+-- math_test.stele
+-- Test target for stdlib/math.stele
+
+fn assert_eq
+  case {| actual, expected, code |} =>
+    match actual == expected
+      case 1 => 0
+      case 0 =>
+        let ignored = terminate {| code: code |}
+        0
+    end
+end
+
+do main
+  let t1 = assert_eq {| actual: math_abs {| n: 0 - 7 |}, expected: 7, code: 20 |}
+  let t2 = assert_eq {| actual: math_min {| a: 3, b: 5 |}, expected: 3, code: 21 |}
+  let t3 = assert_eq {| actual: math_max {| a: 3, b: 5 |}, expected: 5, code: 22 |}
+  let t4 = assert_eq {| actual: math_clamp {| n: 20, lo: 0, hi: 10 |}, expected: 10, code: 23 |}
+  let t5 = assert_eq {| actual: math_is_even {| n: 4 |}, expected: 1, code: 24 |}
+  let t6 = assert_eq {| actual: math_is_odd {| n: 4 |}, expected: 0, code: 25 |}
+  let t7 = assert_eq {| actual: math_pow {| base: 2, exp: 10 |}, expected: 1024, code: 26 |}
+  let t8 = assert_eq {| actual: math_pow {| base: 2, exp: 0 - 1 |}, expected: 0, code: 27 |}
+  let t9 = assert_eq {| actual: math_gcd {| a: 54, b: 24 |}, expected: 6, code: 28 |}
+  let t10 = assert_eq {| actual: math_lcm {| a: 6, b: 8 |}, expected: 24, code: 29 |}
+  let t11 = assert_eq {| actual: math_factorial {| n: 5 |}, expected: 120, code: 30 |}
+  let t12 = assert_eq {| actual: math_factorial {| n: 0 - 1 |}, expected: 0, code: 31 |}
+  print 1
+end
+

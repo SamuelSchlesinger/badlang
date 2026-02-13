@@ -181,10 +181,22 @@ if [ -f "$STELA_SRC" ]; then
     compile_generated "$WORK_DIR/stela.$EXT" "$WORK_DIR/stela"
     STELA_RUN_DIR="$WORK_DIR/stela-run"
     mkdir -p "$STELA_RUN_DIR"
+    mkdir -p "$STELA_RUN_DIR/runtime"
     cp "$SCRIPT_DIR/runtime.c" "$STELA_RUN_DIR/runtime.c"
+    cp "$RUNTIME_AARCH64" "$STELA_RUN_DIR/runtime/runtime_aarch64.c"
+    cp "$RUNTIME_X86_64" "$STELA_RUN_DIR/runtime/runtime_x86_64.c"
     cp "$STDLIB_DIR/cli.stele" "$STELA_RUN_DIR/cli.stele"
     cp "$STDLIB_DIR/math.stele" "$STELA_RUN_DIR/math.stele"
     cp "$STDLIB_DIR/concurrency.stele" "$STELA_RUN_DIR/concurrency.stele"
+    cp "$STDLIB_DIR/assert.stele" "$STELA_RUN_DIR/assert.stele"
+    cp "$STDLIB_DIR/strings.stele" "$STELA_RUN_DIR/strings.stele"
+    cp "$STDLIB_DIR/path.stele" "$STELA_RUN_DIR/path.stele"
+    cp "$STDLIB_DIR/tests/assert_test.stele" "$STELA_RUN_DIR/assert_test.stele"
+    cp "$STDLIB_DIR/tests/cli_test.stele" "$STELA_RUN_DIR/cli_test.stele"
+    cp "$STDLIB_DIR/tests/math_test.stele" "$STELA_RUN_DIR/math_test.stele"
+    cp "$STDLIB_DIR/tests/concurrency_test.stele" "$STELA_RUN_DIR/concurrency_test.stele"
+    cp "$STDLIB_DIR/tests/strings_test.stele" "$STELA_RUN_DIR/strings_test.stele"
+    cp "$STDLIB_DIR/tests/path_test.stele" "$STELA_RUN_DIR/path_test.stele"
     cat > "$STELA_RUN_DIR/app.stele" <<'EOF'
 do main
   let argc_now = cli_argc {| |}
@@ -197,13 +209,22 @@ end
 EOF
     (
       cd "$STELA_RUN_DIR" && \
-      "$WORK_DIR/stela" check "$HELLO_SRC" --compiler "$WORK_DIR/gen${N}" --mode c --no-sandbox >/dev/null && \
+      "$WORK_DIR/stela" check "$HELLO_SRC" --compiler "$WORK_DIR/gen${N}" --mode "$MODE" --no-sandbox >/dev/null && \
       "$WORK_DIR/stela" package-lib cli.stele --name cli >/dev/null && \
       "$WORK_DIR/stela" package-lib math.stele --name math >/dev/null && \
       "$WORK_DIR/stela" package-lib concurrency.stele --name concurrency >/dev/null && \
-      "$WORK_DIR/stela" test app.stele --lib cli --lib math --lib concurrency --compiler "$WORK_DIR/gen${N}" --mode c --no-sandbox >/dev/null
+      "$WORK_DIR/stela" package-lib assert.stele --name assert >/dev/null && \
+      "$WORK_DIR/stela" package-lib strings.stele --name strings >/dev/null && \
+      "$WORK_DIR/stela" package-lib path.stele --name path >/dev/null && \
+      "$WORK_DIR/stela" test assert_test.stele --lib assert --compiler "$WORK_DIR/gen${N}" --mode "$MODE" --no-sandbox >/dev/null && \
+      "$WORK_DIR/stela" test cli_test.stele --lib cli --compiler "$WORK_DIR/gen${N}" --mode "$MODE" --no-sandbox >/dev/null && \
+      "$WORK_DIR/stela" test math_test.stele --lib math --compiler "$WORK_DIR/gen${N}" --mode "$MODE" --no-sandbox >/dev/null && \
+      "$WORK_DIR/stela" test concurrency_test.stele --lib concurrency --compiler "$WORK_DIR/gen${N}" --mode "$MODE" --no-sandbox >/dev/null && \
+      "$WORK_DIR/stela" test strings_test.stele --lib assert --lib strings --compiler "$WORK_DIR/gen${N}" --mode "$MODE" --no-sandbox >/dev/null && \
+      "$WORK_DIR/stela" test path_test.stele --lib assert --lib path --compiler "$WORK_DIR/gen${N}" --mode "$MODE" --no-sandbox >/dev/null && \
+      "$WORK_DIR/stela" test app.stele --lib cli --lib math --lib concurrency --compiler "$WORK_DIR/gen${N}" --mode "$MODE" --no-sandbox >/dev/null
     )
-    echo "stela self-hosted targets/libs/stdlib: OK"
+    echo "stela self-hosted targets/libs/stdlib/tests: OK"
 else
     echo "Skipped (stela.stele not found)"
 fi

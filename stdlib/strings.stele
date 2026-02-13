@@ -1,0 +1,135 @@
+-- strings.stele
+-- String helper functions built on top of built-in string operations.
+
+fn strings_eq
+  case {| a, b |} =>
+    match strcmp {| a: a, b: b |}
+      case 0 => 1
+      case _ => 0
+    end
+end
+
+fn strings_ne
+  case {| a, b |} =>
+    strings_eq {| a: a, b: b |} == 0
+end
+
+fn strings_starts_with
+  case {| s, prefix |} =>
+    let plen = strlen {| s: prefix |}
+    let slen = strlen {| s: s |}
+    match slen >= plen
+      case 0 => 0
+      case 1 =>
+        let sub = substr {| s: s, start: 0, len: plen |}
+        strings_eq {| a: sub, b: prefix |}
+    end
+end
+
+fn strings_ends_with
+  case {| s, suffix |} =>
+    let xlen = strlen {| s: suffix |}
+    let slen = strlen {| s: s |}
+    match slen >= xlen
+      case 0 => 0
+      case 1 =>
+        let start = slen - xlen
+        let sub = substr {| s: s, start: start, len: xlen |}
+        strings_eq {| a: sub, b: suffix |}
+    end
+end
+
+fn strings_index_of_loop
+  case {| s, needle, i, slen, nlen |} =>
+    match i + nlen > slen
+      case 1 => 0 - 1
+      case 0 =>
+        let sub = substr {| s: s, start: i, len: nlen |}
+        match strings_eq {| a: sub, b: needle |}
+          case 1 => i
+          case 0 =>
+            strings_index_of_loop {| s: s, needle: needle, i: i + 1, slen: slen, nlen: nlen |}
+        end
+    end
+end
+
+fn strings_index_of
+  case {| s, needle |} =>
+    let nlen = strlen {| s: needle |}
+    match nlen == 0
+      case 1 => 0
+      case 0 =>
+        let slen = strlen {| s: s |}
+        strings_index_of_loop {| s: s, needle: needle, i: 0, slen: slen, nlen: nlen |}
+    end
+end
+
+fn strings_contains
+  case {| s, needle |} =>
+    let idx = strings_index_of {| s: s, needle: needle |}
+    idx >= 0
+end
+
+fn strings_join2
+  case {| a, b, sep |} =>
+    let x = concat {| a: a, b: sep |}
+    concat {| a: x, b: b |}
+end
+
+fn strings_is_space_char
+  case {| ch |} =>
+    (ch == 32) || (ch == 9) || (ch == 10) || (ch == 13)
+end
+
+fn strings_trim_left_loop
+  case {| s, i, slen |} =>
+    match i >= slen
+      case 1 => ""
+      case 0 =>
+        let ch = char_at {| s: s, n: i |}
+        match strings_is_space_char {| ch: ch |}
+          case 1 =>
+            strings_trim_left_loop {| s: s, i: i + 1, slen: slen |}
+          case 0 =>
+            substr {| s: s, start: i, len: slen - i |}
+        end
+    end
+end
+
+fn strings_trim_left
+  case {| s |} =>
+    let slen = strlen {| s: s |}
+    strings_trim_left_loop {| s: s, i: 0, slen: slen |}
+end
+
+fn strings_trim_right_scan
+  case {| s, i, slen, last_non_space |} =>
+    match i >= slen
+      case 1 => last_non_space
+      case 0 =>
+        let ch = char_at {| s: s, n: i |}
+        match strings_is_space_char {| ch: ch |}
+          case 1 =>
+            strings_trim_right_scan {| s: s, i: i + 1, slen: slen, last_non_space: last_non_space |}
+          case 0 =>
+            strings_trim_right_scan {| s: s, i: i + 1, slen: slen, last_non_space: i |}
+        end
+    end
+end
+
+fn strings_trim_right
+  case {| s |} =>
+    let slen = strlen {| s: s |}
+    let last = strings_trim_right_scan {| s: s, i: 0, slen: slen, last_non_space: 0 - 1 |}
+    match last >= 0
+      case 1 => substr {| s: s, start: 0, len: last + 1 |}
+      case 0 => ""
+    end
+end
+
+fn strings_trim
+  case {| s |} =>
+    let left = strings_trim_left {| s: s |}
+    strings_trim_right {| s: left |}
+end
+

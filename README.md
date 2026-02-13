@@ -97,6 +97,18 @@ Bundled standard libraries live under `stdlib/`:
 - `stdlib/cli.stele`: CLI helpers for `argc/argv`, flags, and key/value options
 - `stdlib/math.stele`: integer math helpers (`abs`, `clamp`, `gcd`, `lcm`, etc.)
 - `stdlib/concurrency.stele`: process-level helpers over `spawn/await/sleep_ms`
+- `stdlib/assert.stele`: assertion helpers for test targets
+- `stdlib/strings.stele`: string helpers (`starts_with`, `ends_with`, `trim`, etc.)
+- `stdlib/path.stele`: POSIX-style path helpers (`basename`, `dirname`, `join`, etc.)
+
+Stdlib test targets live under `stdlib/tests/`:
+
+- `stdlib/tests/cli_test.stele`
+- `stdlib/tests/math_test.stele`
+- `stdlib/tests/concurrency_test.stele`
+- `stdlib/tests/assert_test.stele`
+- `stdlib/tests/strings_test.stele`
+- `stdlib/tests/path_test.stele`
 
 Example packaging flow:
 
@@ -105,6 +117,13 @@ Example packaging flow:
 (cd examples/compiler && ./stela package-lib ../../stdlib/math.stele --name math)
 (cd examples/compiler && ./stela package-lib ../../stdlib/concurrency.stele --name concurrency)
 (cd examples/compiler && ./stela run app.stele --lib cli --lib math --lib concurrency --compiler ./compiler --mode c)
+```
+
+Run stdlib test targets across the supported mode matrix (`c`, `asm`, `x86`,
+and `x86-linux` where host toolchain support exists):
+
+```bash
+./stdlib/tests/run.sh
 ```
 
 Options: `--mode c|asm|x86|x86-linux`, `--sandbox`, `--no-sandbox`, `--lib <name>`, `--name <name>`.

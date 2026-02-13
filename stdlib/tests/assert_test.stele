@@ -1,0 +1,14 @@
+-- assert_test.stele
+-- Test target for stdlib/assert.stele
+
+do main
+  let t1 = assert_true {| cond: 1, code: 50 |}
+  let t2 = assert_false {| cond: 0, code: 51 |}
+  let t3 = assert_eq_int {| actual: 10, expected: 10, code: 52 |}
+  let t4 = assert_ne_int {| actual: 10, unexpected: 11, code: 53 |}
+  let t5 = assert_eq_str {| actual: "abc", expected: "abc", code: 54 |}
+  let t6 = assert_ne_str {| actual: "abc", unexpected: "abd", code: 55 |}
+  let t7 = assert_nonempty_str {| actual: "x", code: 56 |}
+  print 1
+end
+

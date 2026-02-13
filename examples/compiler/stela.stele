@@ -114,11 +114,32 @@ fn mode_is_valid
     (str_eq {| a: mode, b: "x86-linux" |})
 end
 
+fn file_exists
+  case {| path |} =>
+    let c1 = concat {| a: "test -f ", b: path |}
+    let rc = sh {| command: c1 |}
+    rc == 0
+end
+
+fn resolve_runtime_path
+  case {| primary, fallback |} =>
+    match file_exists {| path: primary |}
+      case 1 => primary
+      case 0 =>
+        match file_exists {| path: fallback |}
+          case 1 => fallback
+          case 0 => primary
+        end
+    end
+end
+
 fn runtime_for_mode
   case {| mode |} =>
     match str_eq {| a: mode, b: "asm" |}
-      case 1 => "runtime/runtime_aarch64.c"
-      case 0 => "runtime/runtime_x86_64.c"
+      case 1 =>
+        resolve_runtime_path {| primary: "runtime/runtime_aarch64.c", fallback: "../../runtime/runtime_aarch64.c" |}
+      case 0 =>
+        resolve_runtime_path {| primary: "runtime/runtime_x86_64.c", fallback: "../../runtime/runtime_x86_64.c" |}
     end
 end
 

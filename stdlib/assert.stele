@@ -1,0 +1,52 @@
+-- assert.stele
+-- Assertion helpers for test targets.
+
+fn assert_true
+  case {| cond, code |} =>
+    match cond == 1
+      case 1 => 0
+      case 0 =>
+        let ignored = terminate {| code: code |}
+        0
+    end
+end
+
+fn assert_false
+  case {| cond, code |} =>
+    assert_true {| cond: cond == 0, code: code |}
+end
+
+fn assert_eq_int
+  case {| actual, expected, code |} =>
+    assert_true {| cond: actual == expected, code: code |}
+end
+
+fn assert_ne_int
+  case {| actual, unexpected, code |} =>
+    assert_true {| cond: actual != unexpected, code: code |}
+end
+
+fn assert_eq_str
+  case {| actual, expected, code |} =>
+    let eq = strcmp {| a: actual, b: expected |}
+    assert_true {| cond: eq == 0, code: code |}
+end
+
+fn assert_ne_str
+  case {| actual, unexpected, code |} =>
+    let eq = strcmp {| a: actual, b: unexpected |}
+    assert_true {| cond: eq != 0, code: code |}
+end
+
+fn assert_nonempty_str
+  case {| actual, code |} =>
+    let n = strlen {| s: actual |}
+    assert_true {| cond: n > 0, code: code |}
+end
+
+fn assert_fail
+  case {| code |} =>
+    let ignored = terminate {| code: code |}
+    0
+end
+
