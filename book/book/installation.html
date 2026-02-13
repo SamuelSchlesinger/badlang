@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Installation - The Badlang Book</title>
+        <title>Installation - The Stele Book</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-114a12be.js";
+            window.path_to_searchindex_js = "searchindex-babbe00e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-e4e73581.js"></script>
+        <script src="toc-29fcd749.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -137,7 +137,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">The Badlang Book</h1>
+                    <h1 class="menu-title">The Stele Book</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -176,7 +176,7 @@
                     <main>
                         <h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
 <h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
-<p>To build the badlang compiler, you need:</p>
+<p>To build the Stele compiler, you need:</p>
 <ul>
 <li><strong>GHC</strong> 9.6 or later (the Glasgow Haskell Compiler)</li>
 <li><strong>Cabal</strong> 3.10 or later (the Haskell build tool)</li>
@@ -192,16 +192,16 @@
 <h2 id="building-the-compiler"><a class="header" href="#building-the-compiler">Building the Compiler</a></h2>
 <p>Clone the repository and build:</p>
 <pre><code class="language-bash">git clone &lt;repository-url&gt;
-cd badlang
+cd Stele
 cabal build
 </code></pre>
-<p>This compiles the badlang compiler. You can verify it works:</p>
-<pre><code class="language-bash">cabal run badlang
+<p>This compiles the Stele compiler. You can verify it works:</p>
+<pre><code class="language-bash">cabal run stele
 </code></pre>
 <p>This prints usage information if no arguments are case.</p>
 <h2 id="compiling-programs"><a class="header" href="#compiling-programs">Compiling Programs</a></h2>
-<p>To compile a <code>.bad</code> source file to C:</p>
-<pre><code class="language-bash">cabal run badlang -- examples/hello.bad
+<p>To compile a <code>.stele</code> source file to C:</p>
+<pre><code class="language-bash">cabal run stele -- examples/hello.bad
 </code></pre>
 <p>This produces <code>examples/hello.c</code>. You can then compile it manually:</p>
 <pre><code class="language-bash">cc examples/hello.c -o hello
@@ -210,7 +210,7 @@ cabal build
 <h2 id="compile-and-run"><a class="header" href="#compile-and-run">Compile and Run</a></h2>
 <p>The <code>--run</code> flag compiles to C, invokes the C compiler, and runs the
 resulting binary in one step:</p>
-<pre><code class="language-bash">cabal run badlang -- --run examples/hello.bad
+<pre><code class="language-bash">cabal run stele -- --run examples/hello.bad
 </code></pre>
 <p>Output:</p>
 <pre><code>25

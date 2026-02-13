@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>The Badlang Book</title>
+        <title>The Stele Book</title>
         <meta name="robots" content="noindex">
 
 
@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-114a12be.js";
+            window.path_to_searchindex_js = "searchindex-babbe00e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-e4e73581.js"></script>
+        <script src="toc-29fcd749.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">The Badlang Book</h1>
+                    <h1 class="menu-title">The Stele Book</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -176,14 +176,14 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
-<p><strong>badlang</strong> is an experimental programming language built on structural pattern matching.</p>
+<p><strong>Stele</strong> is an experimental programming language built on structural pattern matching.</p>
 <p>It is built from first principles — parser generator, grammar, type system, and
 C code generation — all implemented in Haskell with no external parsing
-libraries. badlang draws from pattern calculus and structural subtyping to
+libraries. Stele draws from pattern calculus and structural subtyping to
 create a language where <strong>pattern matching is the fundamental operation</strong> and
 all functions accept structural records.</p>
 <h2 id="philosophy"><a class="header" href="#philosophy">Philosophy</a></h2>
-<p>badlang is designed around a few core ideas:</p>
+<p>Stele is designed around a few core ideas:</p>
 <ul>
 <li>
 <p><strong>Records are the universal data structure.</strong> Every function takes a single
@@ -202,7 +202,7 @@ destructuring mechanism.</p>
 what other fields are present. Types are inferred, not declared.</p>
 </li>
 <li>
-<p><strong>Compilation to C and native code.</strong> badlang compiles to readable,
+<p><strong>Compilation to C and native code.</strong> Stele compiles to readable,
 self-contained C99 or directly to AArch64 assembly (Apple Silicon). The
 generated code can be inspected, debugged, and compiled with any C compiler.</p>
 </li>
@@ -225,20 +225,20 @@ effectful entry point. Functions are called by placing an argument after the
 function name. <code>print</code> prints a value. <code>{| ... |}</code> are record literals — the
 “pillars” that hold the language together.</p>
 <h2 id="what-this-book-covers"><a class="header" href="#what-this-book-covers">What This Book Covers</a></h2>
-<p>This book is a complete guide to the badlang language. It covers:</p>
+<p>This book is a complete guide to the Stele language. It covers:</p>
 <ul>
 <li>How to install the compiler and run your first program</li>
 <li>Every syntactic construct in the language</li>
 <li>The type system and how structural subtyping works</li>
 <li>Input and output: reading from stdin, writing files, command-line arguments</li>
-<li>Patterns and techniques for writing idiomatic badlang</li>
+<li>Patterns and techniques for writing idiomatic Stele</li>
 <li>How the compilation pipeline works under the hood</li>
 <li>A complete reference for all keywords, operators, and built-in functions</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
 <h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
-<p>To build the badlang compiler, you need:</p>
+<p>To build the Stele compiler, you need:</p>
 <ul>
 <li><strong>GHC</strong> 9.6 or later (the Glasgow Haskell Compiler)</li>
 <li><strong>Cabal</strong> 3.10 or later (the Haskell build tool)</li>
@@ -254,16 +254,16 @@ function name. <code>print</code> prints a value. <code>{| ... |}</code> are rec
 <h2 id="building-the-compiler"><a class="header" href="#building-the-compiler">Building the Compiler</a></h2>
 <p>Clone the repository and build:</p>
 <pre><code class="language-bash">git clone &lt;repository-url&gt;
-cd badlang
+cd Stele
 cabal build
 </code></pre>
-<p>This compiles the badlang compiler. You can verify it works:</p>
-<pre><code class="language-bash">cabal run badlang
+<p>This compiles the Stele compiler. You can verify it works:</p>
+<pre><code class="language-bash">cabal run stele
 </code></pre>
 <p>This prints usage information if no arguments are case.</p>
 <h2 id="compiling-programs"><a class="header" href="#compiling-programs">Compiling Programs</a></h2>
-<p>To compile a <code>.bad</code> source file to C:</p>
-<pre><code class="language-bash">cabal run badlang -- examples/hello.bad
+<p>To compile a <code>.stele</code> source file to C:</p>
+<pre><code class="language-bash">cabal run stele -- examples/hello.bad
 </code></pre>
 <p>This produces <code>examples/hello.c</code>. You can then compile it manually:</p>
 <pre><code class="language-bash">cc examples/hello.c -o hello
@@ -272,7 +272,7 @@ cabal build
 <h2 id="compile-and-run"><a class="header" href="#compile-and-run">Compile and Run</a></h2>
 <p>The <code>--run</code> flag compiles to C, invokes the C compiler, and runs the
 resulting binary in one step:</p>
-<pre><code class="language-bash">cabal run badlang -- --run examples/hello.bad
+<pre><code class="language-bash">cabal run stele -- --run examples/hello.bad
 </code></pre>
 <p>Output:</p>
 <pre><code>25
@@ -280,16 +280,16 @@ resulting binary in one step:</p>
 </code></pre>
 <p>This is the most convenient way to work during development.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="hello-badlang"><a class="header" href="#hello-badlang">Hello, Badlang</a></h1>
+<h1 id="hello-stele"><a class="header" href="#hello-stele">Hello, Stele</a></h1>
 <p>Let’s walk through a complete program to get a feel for the language.</p>
 <h2 id="your-first-program"><a class="header" href="#your-first-program">Your First Program</a></h2>
-<p>Create a file called <code>first.bad</code>:</p>
+<p>Create a file called <code>first.stele</code>:</p>
 <pre><code>do main
   print "Hello, world!"
 end
 </code></pre>
 <p>Compile and run it:</p>
-<pre><code class="language-bash">cabal run badlang -- --run first.bad
+<pre><code class="language-bash">cabal run stele -- --run first.bad
 </code></pre>
 <p>Output:</p>
 <pre><code>Hello, world!
@@ -354,7 +354,7 @@ end
 <pre><code>3628800
 </code></pre>
 <p>The first <code>case</code> clause matches when <code>n</code> is literally <code>0</code>. The second matches
-any other <code>n</code> and recurses. This is how all branching works in badlang — there
+any other <code>n</code> and recurses. This is how all branching works in Stele — there
 is no <code>if</code>/<code>else</code>, only pattern matching.</p>
 <h2 id="comments"><a class="header" href="#comments">Comments</a></h2>
 <p>Line comments start with <code>--</code>:</p>
@@ -368,7 +368,7 @@ end
 the three kinds of declarations.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="declarations"><a class="header" href="#declarations">Declarations</a></h1>
-<p>A badlang program is a sequence of top-level declarations. There are exactly
+<p>A Stele program is a sequence of top-level declarations. There are exactly
 three kinds:</p>
 <div class="table-wrapper">
 <table>
@@ -564,7 +564,7 @@ at work.</p>
 end
 </code></pre>
 <h2 id="the-main-do-block"><a class="header" href="#the-main-do-block">The Main Do Block</a></h2>
-<p>Every executable badlang program must have a <code>do main</code>:</p>
+<p>Every executable Stele program must have a <code>do main</code>:</p>
 <pre><code>do main
   print "Hello, world!"
 end
@@ -625,7 +625,7 @@ end
 </code></pre>
 <h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
 <pre><code>do main
-  print "=== badlang IO demo ==="
+  print "=== Stele IO demo ==="
 
   print "What is your name?"
   write "&gt; "
@@ -643,7 +643,7 @@ end
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="expressions"><a class="header" href="#expressions">Expressions</a></h1>
-<p>Expressions are the building blocks of computation in badlang. Everything that
+<p>Expressions are the building blocks of computation in Stele. Everything that
 produces a value is an expression — arithmetic, record construction, function
 calls, pattern matching, and I/O reads.</p>
 <p>This chapter covers each kind of expression. The subsections go into detail on:</p>
@@ -710,7 +710,7 @@ match   readln   readint      write
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="records"><a class="header" href="#records">Records</a></h1>
-<p>Records are the universal data structure in badlang. They are collections of
+<p>Records are the universal data structure in Stele. They are collections of
 named fields, each holding a value. Every function argument is a record. Every
 structured value is a record.</p>
 <h2 id="record-literals"><a class="header" href="#record-literals">Record Literals</a></h2>
@@ -733,7 +733,7 @@ meaningful arguments.</p>
 <pre><code>{| origin: {| x: 0, y: 0 |}, direction: {| x: 1, y: 0 |} |}
 </code></pre>
 <h2 id="records-are-structural"><a class="header" href="#records-are-structural">Records Are Structural</a></h2>
-<p>Records in badlang are <strong>structural</strong>, not nominal. Two records with the same
+<p>Records in Stele are <strong>structural</strong>, not nominal. Two records with the same
 fields and types are the same type, regardless of how they were created:</p>
 <pre><code>fn add_xy
   case {| x, y |} =&gt; x + y
@@ -766,7 +766,7 @@ end
 lightweight and flexible, but field access is linear in the number of fields.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="operators"><a class="header" href="#operators">Operators</a></h1>
-<p>badlang supports arithmetic, comparison, and boolean operators. All binary
+<p>Stele supports arithmetic, comparison, and boolean operators. All binary
 operators are infix and left-associative.</p>
 <h2 id="arithmetic-operators"><a class="header" href="#arithmetic-operators">Arithmetic Operators</a></h2>
 <div class="table-wrapper">
@@ -852,7 +852,7 @@ operands must be <code>Int</code>.</p>
     end
 end
 </code></pre>
-<p>This is the idiomatic way to write conditional logic in badlang.</p>
+<p>This is the idiomatic way to write conditional logic in Stele.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="function-calls-and-construction"><a class="header" href="#function-calls-and-construction">Function Calls and Construction</a></h1>
 <h2 id="calling-a-function"><a class="header" href="#calling-a-function">Calling a Function</a></h2>
@@ -1008,7 +1008,7 @@ end
 field, using row polymorphism to allow extra fields.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="pattern-matching"><a class="header" href="#pattern-matching">Pattern Matching</a></h1>
-<p>Pattern matching is the fundamental operation in badlang. It is the only way
+<p>Pattern matching is the fundamental operation in Stele. It is the only way
 to inspect values, the only way to branch, and the primary way to destructure
 records.</p>
 <p>There are two places patterns appear:</p>
@@ -1097,7 +1097,7 @@ end
 <p>If you put the general pattern <code>{| n |}</code> first, the literal patterns would
 never be reached.</p>
 <h2 id="width-subtyping-in-patterns"><a class="header" href="#width-subtyping-in-patterns">Width Subtyping in Patterns</a></h2>
-<p>A key feature of badlang’s pattern matching is that record patterns only
+<p>A key feature of Stele’s pattern matching is that record patterns only
 specify the <strong>minimum required fields</strong>. A pattern <code>{| x, y |}</code> matches any
 record with at least <code>x</code> and <code>y</code>, regardless of additional fields:</p>
 <pre><code>fn magnitude_sq
@@ -1130,7 +1130,7 @@ within a single expression context.</p>
 end
 </code></pre>
 <h2 id="why-match"><a class="header" href="#why-match">Why match?</a></h2>
-<p>badlang has no <code>if</code>/<code>else</code>. Instead, <code>match</code> fills that role and more. Since
+<p>Stele has no <code>if</code>/<code>else</code>. Instead, <code>match</code> fills that role and more. Since
 comparison operators return integers (<code>1</code> for true, <code>0</code> for false), you can
 use <code>match</code> to branch on conditions:</p>
 <pre><code>fn abs
@@ -1200,7 +1200,7 @@ difference is scope:</p>
 function. Use <code>match</code> when you need to branch partway through a computation.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="sum-types"><a class="header" href="#sum-types">Sum Types</a></h1>
-<p>badlang supports sum types via the <code>oneof</code> declaration. A sum type defines a
+<p>Stele supports sum types via the <code>oneof</code> declaration. A sum type defines a
 closed set of variants, each of which may carry named fields (like a struct) or
 be nullary (carrying no data).</p>
 <h2 id="declaring-a-sum-type"><a class="header" href="#declaring-a-sum-type">Declaring a Sum Type</a></h2>
@@ -1264,7 +1264,7 @@ simply <code>{| __tag: "Red" |}</code>. For a variant with fields like
 matching machinery inspects the <code>__tag</code> field to determine which branch to take.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="structural-subtyping-1"><a class="header" href="#structural-subtyping-1">Structural Subtyping</a></h1>
-<p>Structural subtyping is one of badlang’s defining features. It means that a
+<p>Structural subtyping is one of Stele’s defining features. It means that a
 function accepting <code>{| x, y |}</code> will work with <em>any</em> record that has at least
 those fields — regardless of what other fields are present.</p>
 <h2 id="the-core-idea"><a class="header" href="#the-core-idea">The Core Idea</a></h2>
@@ -1370,7 +1370,7 @@ end
 <p>The <code>extra</code> field is accepted and ignored. No struct declaration needed.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="the-type-system"><a class="header" href="#the-type-system">The Type System</a></h1>
-<p>badlang uses type inference — you almost never write type annotations. The
+<p>Stele uses type inference — you almost never write type annotations. The
 compiler figures out the types of all expressions automatically and reports
 errors when things don’t line up.</p>
 <h2 id="primitive-types"><a class="header" href="#primitive-types">Primitive Types</a></h2>
@@ -1393,7 +1393,7 @@ errors when things don’t line up.</p>
 {| |}
 </code></pre>
 <h2 id="open-record-types-row-polymorphism"><a class="header" href="#open-record-types-row-polymorphism">Open Record Types (Row Polymorphism)</a></h2>
-<p>The key insight of badlang’s type system is that record types can be <strong>open</strong>.
+<p>The key insight of Stele’s type system is that record types can be <strong>open</strong>.
 When a fn pattern-matches on <code>{| x, y |}</code>, the inferred type is:</p>
 <pre><code>{| x: Int, y: Int | r |}
 </code></pre>
@@ -1425,7 +1425,7 @@ automatically.</p>
 </table>
 </div>
 <h2 id="how-inference-works"><a class="header" href="#how-inference-works">How Inference Works</a></h2>
-<p>badlang uses <strong>Algorithm W</strong> — the classic Hindley-Milner type inference
+<p>Stele uses <strong>Algorithm W</strong> — the classic Hindley-Milner type inference
 algorithm — extended with <strong>Remy-style row types</strong> for records.</p>
 <p>The process:</p>
 <ol>
@@ -1493,7 +1493,7 @@ inferred. There is no syntax for writing type annotations on expressions or
 function signatures.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="input-and-output"><a class="header" href="#input-and-output">Input and Output</a></h1>
-<p>badlang provides built-in facilities for console I/O, file I/O, and
+<p>Stele provides built-in facilities for console I/O, file I/O, and
 command-line argument access.</p>
 <h2 id="console-output"><a class="header" href="#console-output">Console Output</a></h2>
 <h3 id="print--print-with-newline-1"><a class="header" href="#print--print-with-newline-1">print — Print with Newline</a></h3>
@@ -1546,7 +1546,7 @@ end
 <h2 id="file-io"><a class="header" href="#file-io">File I/O</a></h2>
 <h3 id="inscribe--write-to-a-file"><a class="header" href="#inscribe--write-to-a-file">inscribe — Write to a File</a></h3>
 <p><code>inscribe</code> writes a string to a file, creating or overwriting it:</p>
-<pre><code>inscribe {| path: "output.txt", content: "Written by badlang!" |}
+<pre><code>inscribe {| path: "output.txt", content: "Written by Stele!" |}
 </code></pre>
 <p>The argument is a record with fields <code>path</code> (the file path) and <code>content</code>
 (the string to write).</p>
@@ -1571,7 +1571,7 @@ print argv {| n: 1 |}   -- first argument
 <p>The argument is a record with field <code>n</code> (the zero-based index).</p>
 <h2 id="complete-io-example"><a class="header" href="#complete-io-example">Complete I/O Example</a></h2>
 <pre><code>do main
-  print "=== badlang IO demo ==="
+  print "=== Stele IO demo ==="
 
   -- Console I/O
   print "What is your name?"
@@ -1595,7 +1595,7 @@ print argv {| n: 1 |}   -- first argument
   print argv {| n: 0 |}
 
   -- File I/O
-  inscribe {| path: "io_test.txt", content: "Written by badlang!" |}
+  inscribe {| path: "io_test.txt", content: "Written by Stele!" |}
   print "Wrote io_test.txt"
 
   let contents = unearth {| path: "io_test.txt" |}
@@ -1605,7 +1605,7 @@ end
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="recursion-2"><a class="header" href="#recursion-2">Recursion</a></h1>
-<p>Since badlang has no loops, recursion is the only way to repeat computation.
+<p>Since Stele has no loops, recursion is the only way to repeat computation.
 This chapter covers common recursion patterns.</p>
 <h2 id="simple-recursion"><a class="header" href="#simple-recursion">Simple Recursion</a></h2>
 <p>The classic factorial:</p>
@@ -1710,7 +1710,7 @@ end
 </code></pre>
 <p>Three clauses, each matching a different combination of base cases and
 recursive cases. The nested call in the third clause demonstrates how
-badlang handles deeply recursive computations.</p>
+Stele handles deeply recursive computations.</p>
 <h2 id="evenodd-via-mutual-recursion"><a class="header" href="#evenodd-via-mutual-recursion">Even/Odd via Mutual Recursion</a></h2>
 <p>A simple but illustrative example:</p>
 <pre><code>fn is_even
@@ -1732,14 +1732,14 @@ the most common termination condition.</li>
 <li><strong>Use the accumulator pattern</strong> when you’re building up a result
 incrementally. Thread an <code>acc</code> field through the recursive calls.</li>
 <li><strong>Pattern order matters.</strong> Put base cases first, recursive cases second.</li>
-<li><strong>Keep recursion depth reasonable.</strong> badlang compiles to C without tail-call
+<li><strong>Keep recursion depth reasonable.</strong> Stele compiles to C without tail-call
 optimization, so very deep recursion (millions of frames) will overflow the
 stack.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="worked-examples"><a class="header" href="#worked-examples">Worked Examples</a></h1>
 <p>This chapter walks through several complete programs that demonstrate how
-badlang’s features combine in practice.</p>
+Stele’s features combine in practice.</p>
 <h2 id="fizzbuzz"><a class="header" href="#fizzbuzz">FizzBuzz</a></h2>
 <p>The classic interview problem: for a number n, return “fizzbuzz” if divisible
 by both 3 and 5, “fizz” if only by 3, “buzz” if only by 5, or empty
@@ -1927,17 +1927,17 @@ end
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="the-compilation-pipeline"><a class="header" href="#the-compilation-pipeline">The Compilation Pipeline</a></h1>
-<p>badlang compiles source code to standalone executables through two backends:
+<p>Stele compiles source code to standalone executables through two backends:
 a portable <strong>C backend</strong> and a native <strong>AArch64 backend</strong> (Apple Silicon).
 Both share a common front end and intermediate representation.</p>
-<pre><code>Source (.bad) → PEG Parse → AST → Type Check → IR → Backend → cc → Binary
+<pre><code>Source (.stele) → PEG Parse → AST → Type Check → IR → Backend → cc → Binary
                                                       │
                                                       ├─ C Backend     → .c file
                                                       └─ AArch64 Backend → .s file + runtime
 </code></pre>
 <p>Each stage is implemented as a separate Haskell module.</p>
 <h2 id="stage-1-peg-parsing"><a class="header" href="#stage-1-peg-parsing">Stage 1: PEG Parsing</a></h2>
-<p><strong>Module:</strong> <code>Badlang.PEG</code></p>
+<p><strong>Module:</strong> <code>Stele.PEG</code></p>
 <p>The parser is built entirely from first principles — no Megaparsec, no Happy,
 no Alex. It implements a <strong>Parsing Expression Grammar (PEG)</strong> engine with:</p>
 <ul>
@@ -1957,10 +1957,10 @@ maps a rule name to a parsing expression. The combinators include:</p>
 </ul>
 <p>The parser produces a parse tree, which is then transformed into an AST.</p>
 <h2 id="stage-2-ast-construction"><a class="header" href="#stage-2-ast-construction">Stage 2: AST Construction</a></h2>
-<p><strong>Module:</strong> <code>Badlang.Grammar</code> + <code>Badlang.AST</code></p>
-<p>The grammar module defines the badlang grammar using the PEG combinator EDSL
+<p><strong>Module:</strong> <code>Stele.Grammar</code> + <code>Stele.AST</code></p>
+<p>The grammar module defines the Stele grammar using the PEG combinator EDSL
 and provides functions to convert parse trees into typed AST nodes.</p>
-<p>The AST types (defined in <code>Badlang.AST</code>) include:</p>
+<p>The AST types (defined in <code>Stele.AST</code>) include:</p>
 <ul>
 <li><code>Program</code> — a list of declarations</li>
 <li><code>Decl</code> — struct, fn, or do</li>
@@ -1969,7 +1969,7 @@ and provides functions to convert parse trees into typed AST nodes.</p>
 <li><code>Stmt</code> — do statements (print, write, let, expression)</li>
 </ul>
 <h2 id="stage-3-type-checking"><a class="header" href="#stage-3-type-checking">Stage 3: Type Checking</a></h2>
-<p><strong>Module:</strong> <code>Badlang.Types</code></p>
+<p><strong>Module:</strong> <code>Stele.Types</code></p>
 <p>The type checker implements <strong>Algorithm W</strong> extended with <strong>Remy-style row
 types</strong>. It works in two passes:</p>
 <ol>
@@ -1992,7 +1992,7 @@ pairwise</li>
 </ul>
 <p>Type errors are reported with the expression that caused the mismatch.</p>
 <h2 id="stage-4-lowering-to-ir"><a class="header" href="#stage-4-lowering-to-ir">Stage 4: Lowering to IR</a></h2>
-<p><strong>Module:</strong> <code>Badlang.IR</code> + <code>Badlang.Lower</code></p>
+<p><strong>Module:</strong> <code>Stele.IR</code> + <code>Stele.Lower</code></p>
 <p>The lowering pass transforms the typed AST into an explicit intermediate
 representation with basic blocks, named temporaries, and flat instructions.
 Pattern matching, match expressions, and let-in chains are all resolved at
@@ -2010,20 +2010,20 @@ result variable written by whichever branch succeeds.</li>
 </ul>
 <h2 id="stage-5-code-generation"><a class="header" href="#stage-5-code-generation">Stage 5: Code Generation</a></h2>
 <h3 id="c-backend"><a class="header" href="#c-backend">C Backend</a></h3>
-<p><strong>Module:</strong> <code>Badlang.EmitC</code></p>
+<p><strong>Module:</strong> <code>Stele.EmitC</code></p>
 <p>The C backend translates the IR into a single, self-contained C99 source file
 with an embedded runtime. Each IR instruction maps to one or two lines of C,
 and basic blocks become labeled sections with <code>goto</code>. See the
 <a href="#c-code-generation">C Code Generation</a> chapter for details.</p>
 <h3 id="aarch64-backend"><a class="header" href="#aarch64-backend">AArch64 Backend</a></h3>
-<p><strong>Module:</strong> <code>Badlang.EmitAArch64</code></p>
+<p><strong>Module:</strong> <code>Stele.EmitAArch64</code></p>
 <p>The AArch64 backend emits Apple Silicon assembly (<code>.s</code> files). All IR
 variables are stored on the stack using a fixed-size frame per function.
 The generated assembly links against a separate C runtime
 (<code>runtime_aarch64.c</code>) that provides the same value representation and
 reference counting as the embedded C runtime.</p>
 <h2 id="stage-6-assembling-and-linking"><a class="header" href="#stage-6-assembling-and-linking">Stage 6: Assembling and Linking</a></h2>
-<p>The badlang CLI invokes the system C compiler (<code>cc</code>) to compile the generated
+<p>The Stele CLI invokes the system C compiler (<code>cc</code>) to compile the generated
 output into a binary:</p>
 <ul>
 <li><strong>C mode</strong> (default): <code>cc -o prog prog.c</code></li>
@@ -2037,21 +2037,21 @@ output into a binary:</p>
 <tr><th>Module</th><th>Role</th></tr>
 </thead>
 <tbody>
-<tr><td><code>Badlang.PEG</code></td><td>PEG parser generator — packrat parsing from scratch</td></tr>
-<tr><td><code>Badlang.AST</code></td><td>Abstract syntax tree data types</td></tr>
-<tr><td><code>Badlang.Grammar</code></td><td>Grammar definition + parse tree → AST</td></tr>
-<tr><td><code>Badlang.Types</code></td><td>Type inference with row polymorphism</td></tr>
-<tr><td><code>Badlang.IR</code></td><td>Intermediate representation (basic blocks + flat instructions)</td></tr>
-<tr><td><code>Badlang.Lower</code></td><td>AST → IR lowering pass</td></tr>
-<tr><td><code>Badlang.EmitC</code></td><td>C code generation from IR</td></tr>
-<tr><td><code>Badlang.EmitAArch64</code></td><td>AArch64 assembly generation from IR</td></tr>
-<tr><td><code>Badlang.Runtime</code></td><td>C runtime source for the native backend</td></tr>
+<tr><td><code>Stele.PEG</code></td><td>PEG parser generator — packrat parsing from scratch</td></tr>
+<tr><td><code>Stele.AST</code></td><td>Abstract syntax tree data types</td></tr>
+<tr><td><code>Stele.Grammar</code></td><td>Grammar definition + parse tree → AST</td></tr>
+<tr><td><code>Stele.Types</code></td><td>Type inference with row polymorphism</td></tr>
+<tr><td><code>Stele.IR</code></td><td>Intermediate representation (basic blocks + flat instructions)</td></tr>
+<tr><td><code>Stele.Lower</code></td><td>AST → IR lowering pass</td></tr>
+<tr><td><code>Stele.EmitC</code></td><td>C code generation from IR</td></tr>
+<tr><td><code>Stele.EmitAArch64</code></td><td>AArch64 assembly generation from IR</td></tr>
+<tr><td><code>Stele.Runtime</code></td><td>C runtime source for the native backend</td></tr>
 </tbody>
 </table>
 </div>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="c-code-generation"><a class="header" href="#c-code-generation">C Code Generation</a></h1>
-<p>badlang compiles to readable, self-contained C. Understanding the generated
+<p>Stele compiles to readable, self-contained C. Understanding the generated
 code can help with debugging and with understanding the language’s runtime
 behavior.</p>
 <h2 id="runtime-representation-1"><a class="header" href="#runtime-representation-1">Runtime Representation</a></h2>
@@ -2088,7 +2088,7 @@ value is freed:</p>
 is freed, then the <code>Value</code>.</li>
 <li><code>TAG_INT</code> / <code>TAG_VOID</code> — the <code>Value</code> is freed directly.</li>
 </ul>
-<p>Because badlang values are <strong>immutable</strong> and there are <strong>no closures or
+<p>Because Stele values are <strong>immutable</strong> and there are <strong>no closures or
 first-class functions</strong>, reference cycles are impossible and reference counting
 is a complete solution — no garbage collector is needed.</p>
 <h3 id="ownership-convention"><a class="header" href="#ownership-convention">Ownership Convention</a></h3>
@@ -2120,14 +2120,14 @@ end
 <p>Compiles to something like:</p>
 <pre><code class="language-c">static Value* fn_square(Value* arg) {
     Value* _f_n = record_field(arg, "n");
-    Value* bl_n = _f_n;
+    Value* stele_n = _f_n;
     if (_f_n != NULL) {
-        rc_retain(bl_n);
-        Value* _t0 = bl_n; rc_retain(_t0);
-        Value* _t1 = bl_n; rc_retain(_t1);
+        rc_retain(stele_n);
+        Value* _t0 = stele_n; rc_retain(_t0);
+        Value* _t1 = stele_n; rc_retain(_t1);
         Value* _t2 = make_int(_t0-&gt;int_val * _t1-&gt;int_val);
         rc_release(_t0); rc_release(_t1);
-        rc_release(bl_n);
+        rc_release(stele_n);
         return _t2;
     }
     // ...pattern match failure...
@@ -2166,12 +2166,12 @@ incrementing their reference counts.</p>
 <p>Chains of <code>let</code> bindings are flattened into sequential C variable declarations.
 The compiler collects consecutive <code>let</code> bindings and emits them without nesting,
 then releases all bound variables in reverse declaration order after the body:</p>
-<pre><code class="language-c">Value* bl_x = /* evaluated value for x */;
-Value* bl_y = /* evaluated value for y */;
-/* body code that may reference bl_x, bl_y */
+<pre><code class="language-c">Value* stele_x = /* evaluated value for x */;
+Value* stele_y = /* evaluated value for y */;
+/* body code that may reference stele_x, stele_y */
 /* body result is used directly */
-rc_release(bl_y);
-rc_release(bl_x);
+rc_release(stele_y);
+rc_release(stele_x);
 </code></pre>
 <p>This avoids O(N) nesting depth for N sequential bindings, keeping the generated
 C flat regardless of how many <code>let</code> bindings appear in a row.</p>
@@ -2189,17 +2189,17 @@ print(_t0);
 rc_release(_t0);
 </code></pre>
 <h2 id="identifier-mangling"><a class="header" href="#identifier-mangling">Identifier Mangling</a></h2>
-<p>To avoid collisions with C keywords, badlang identifiers are prefixed with
-<code>bl_</code>:</p>
+<p>To avoid collisions with C keywords, Stele identifiers are prefixed with
+<code>stele_</code>:</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>badlang</th><th>C</th></tr>
+<tr><th>Stele</th><th>C</th></tr>
 </thead>
 <tbody>
-<tr><td><code>x</code></td><td><code>bl_x</code></td></tr>
-<tr><td><code>name</code></td><td><code>bl_name</code></td></tr>
-<tr><td><code>result</code></td><td><code>bl_result</code></td></tr>
+<tr><td><code>x</code></td><td><code>stele_x</code></td></tr>
+<tr><td><code>name</code></td><td><code>stele_name</code></td></tr>
+<tr><td><code>result</code></td><td><code>stele_result</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -2211,42 +2211,42 @@ unit.</p>
 <code>__builtin_va_arg</code> for <code>make_record</code>’s variadic interface. These are supported
 by both GCC and Clang. No statement expressions (<code>({ ... })</code>) are used.</p>
 <h2 id="the-aarch64-backend"><a class="header" href="#the-aarch64-backend">The AArch64 Backend</a></h2>
-<p>In addition to C, badlang can compile directly to AArch64 (Apple Silicon)
-assembly. The native backend (<code>Badlang.EmitAArch64</code>) consumes the same IR as
+<p>In addition to C, Stele can compile directly to AArch64 (Apple Silicon)
+assembly. The native backend (<code>Stele.EmitAArch64</code>) consumes the same IR as
 the C backend but emits <code>.s</code> files linked against a separate C runtime.</p>
-<pre><code class="language-bash">cabal run badlang -- --native examples/hello.bad
+<pre><code class="language-bash">cabal run stele -- --native examples/hello.bad
 # =&gt; Writes examples/hello.s + examples/hello_rt.c, links to examples/hello
 
-cabal run badlang -- --native --run examples/hello.bad
+cabal run stele -- --native --run examples/hello.bad
 # =&gt; Compiles and runs immediately
 </code></pre>
 <p>The strategy is straightforward: all IR variables are stored on the stack in
 a fixed-size frame. String literals are collected into a <code>.section __TEXT,__cstring</code> data section. Function calls use the standard Apple AArch64
 calling convention (x0 for first argument / return value, x29/x30 for frame
 and link registers).</p>
-<p>The self-hosting compiler in <code>examples/compiler/compiler.bad</code> also has its own
+<p>The self-hosting compiler in <code>examples/compiler/compiler.stele</code> also has its own
 AArch64 backend and can emit assembly when invoked with the <code>asm</code> flag.</p>
 <h2 id="inspecting-generated-code"><a class="header" href="#inspecting-generated-code">Inspecting Generated Code</a></h2>
 <p>To see the generated C without running it:</p>
-<pre><code class="language-bash">cabal run badlang -- examples/hello.bad
+<pre><code class="language-bash">cabal run stele -- examples/hello.bad
 cat examples/hello.c
 </code></pre>
 <p>To see the generated assembly:</p>
-<pre><code class="language-bash">cabal run badlang -- --native examples/hello.bad
+<pre><code class="language-bash">cabal run stele -- --native examples/hello.bad
 cat examples/hello.s
 </code></pre>
 <p>The output is intentionally readable. It’s a useful learning tool for
 understanding how high-level constructs map to low-level code.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="the-self-hosting-compiler"><a class="header" href="#the-self-hosting-compiler">The Self-Hosting Compiler</a></h1>
-<p>badlang is <strong>self-hosting</strong>: the file <code>examples/compiler/compiler.bad</code> is a
-complete badlang compiler written in badlang itself. It implements the full
+<p>Stele is <strong>self-hosting</strong>: the file <code>examples/compiler/compiler.stele</code> is a
+complete Stele compiler written in Stele itself. It implements the full
 compilation pipeline — tokenizer, parser, C code emitter, and AArch64 native
 code generator — and can compile itself.</p>
 <h2 id="why-self-hosting"><a class="header" href="#why-self-hosting">Why Self-Hosting?</a></h2>
 <p>A self-hosting compiler is the ultimate test of a language’s expressiveness. If
 a language can implement its own compiler, it demonstrates that the language is
-powerful enough for real-world systems programming. For badlang, it also
+powerful enough for real-world systems programming. For Stele, it also
 serves as:</p>
 <ul>
 <li><strong>A stress test</strong> of every language feature: records, pattern matching,
@@ -2254,13 +2254,13 @@ recursion, structural subtyping, and I/O all get a serious workout.</li>
 <li><strong>A correctness proof</strong> via bootstrapping: when the compiler compiles itself
 and produces identical output across generations, we know it faithfully
 implements its own semantics.</li>
-<li><strong>The largest badlang program</strong>, exercising the compiler at scale (~3000
+<li><strong>The largest Stele program</strong>, exercising the compiler at scale (~3000
 lines).</li>
 </ul>
 <h2 id="architecture-at-a-glance"><a class="header" href="#architecture-at-a-glance">Architecture at a Glance</a></h2>
 <p>The self-hosting compiler follows the same pipeline as the Haskell reference
 compiler, minus the type checker:</p>
-<pre><code>Source (.bad) → Tokenize → Parse → Emit C or AArch64 → Write File
+<pre><code>Source (.stele) → Tokenize → Parse → Emit C or AArch64 → Write File
 </code></pre>
 <p>The compiler reads a source file, tokenizes it, parses the token stream into
 an AST, and generates either C code or AArch64 assembly depending on the mode.
@@ -2269,8 +2269,8 @@ that provides the value representation, reference counting, and built-in
 functions for file I/O and string manipulation.</p>
 <p>The compiler selects its output mode via command-line arguments:</p>
 <ul>
-<li><code>compiler source.bad output.c</code> — emit C (default)</li>
-<li><code>compiler source.bad output.s asm</code> — emit AArch64 assembly</li>
+<li><code>compiler source.stele output.c</code> — emit C (default)</li>
+<li><code>compiler source.stele output.s asm</code> — emit AArch64 assembly</li>
 </ul>
 <p>The entire compiler is a single file organized into clear sections:</p>
 <div class="table-wrapper">
@@ -2292,7 +2292,7 @@ functions for file I/O and string manipulation.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="data-structures-and-utilities"><a class="header" href="#data-structures-and-utilities">Data Structures and Utilities</a></h1>
 <p>Before the compiler can tokenize or parse anything, it needs basic data
-structures. badlang has no built-in lists, so the compiler builds them from
+structures. Stele has no built-in lists, so the compiler builds them from
 records.</p>
 <h2 id="linked-lists-from-records"><a class="header" href="#linked-lists-from-records">Linked Lists from Records</a></h2>
 <p>The compiler implements linked lists using tagged records:</p>
@@ -2360,7 +2360,7 @@ order. This pattern appears in the tokenizer, the parser, and the code emitter.<
 <p>These operate on integer character codes obtained via <code>char_at</code> — one of the
 built-in string functions provided by the runtime.</p>
 <h2 id="string-helpers"><a class="header" href="#string-helpers">String Helpers</a></h2>
-<p>Since badlang strings are immutable and there is no character type, string
+<p>Since Stele strings are immutable and there is no character type, string
 manipulation uses the built-in functions <code>strlen</code>, <code>char_at</code>, <code>substr</code>, and
 <code>concat</code>. The compiler adds convenience wrappers like:</p>
 <ul>
@@ -2576,7 +2576,7 @@ are globally unique.</p>
 <p>Generated names include <code>_t0</code>, <code>_t1</code>, … for temporaries, <code>_scr0</code> for
 scrutinees, <code>_dvn0</code> for match results, and <code>_done0</code> for goto labels.</p>
 <h2 id="identifier-mangling-1"><a class="header" href="#identifier-mangling-1">Identifier Mangling</a></h2>
-<p>The <code>c_name</code> fn prefixes badlang identifiers with <code>bl_</code> to avoid collisions
+<p>The <code>c_name</code> fn prefixes Stele identifiers with <code>stele_</code> to avoid collisions
 with C keywords. The special name <code>arg</code> (the fn parameter) is left unmangled
 since it matches the generated C function signature.</p>
 <h2 id="expression-emission"><a class="header" href="#expression-emission">Expression Emission</a></h2>
@@ -2590,7 +2590,7 @@ field and delegates to specialized emitters:</p>
 <tbody>
 <tr><td><code>int_lit</code></td><td><code>emit_int_lit</code></td><td><code>make_int(42)</code></td></tr>
 <tr><td><code>str_lit</code></td><td><code>emit_str_lit</code></td><td><code>make_str("hello")</code></td></tr>
-<tr><td><code>var</code></td><td><code>emit_var</code></td><td><code>bl_x; rc_retain(bl_x)</code></td></tr>
+<tr><td><code>var</code></td><td><code>emit_var</code></td><td><code>stele_x; rc_retain(stele_x)</code></td></tr>
 <tr><td><code>binop</code></td><td><code>emit_binop</code></td><td>Emit both sides, apply op, release operands</td></tr>
 <tr><td><code>unop</code></td><td><code>emit_unop</code></td><td>Emit operand, negate</td></tr>
 <tr><td><code>field_access</code></td><td><code>emit_field_access</code></td><td><code>record_field(obj, "name")</code> + retain</td></tr>
@@ -2610,11 +2610,11 @@ released in reverse order after the body:</p>
 <pre><code class="language-c">// let x = 1
 // let y = x + 1
 // x * y
-Value* bl_x = make_int(1);
-Value* bl_y = make_int(bl_x-&gt;int_val + make_int(1)-&gt;int_val);
+Value* stele_x = make_int(1);
+Value* stele_y = make_int(stele_x-&gt;int_val + make_int(1)-&gt;int_val);
 /* ... body code ... */
-rc_release(bl_y);
-rc_release(bl_x);
+rc_release(stele_y);
+rc_release(stele_x);
 </code></pre>
 <p>This avoids nested <code>{ }</code> blocks, keeping the generated C flat regardless of how
 many sequential <code>let</code> bindings appear.</p>
@@ -2635,7 +2635,7 @@ incrementing their reference counts.</p>
 <h3 id="record-patterns"><a class="header" href="#record-patterns">Record Patterns</a></h3>
 <p>For each field in a record pattern, the emitter generates:</p>
 <pre><code class="language-c">Value* _f_x = record_field(arg, "x");
-Value* bl_x = _f_x;
+Value* stele_x = _f_x;
 </code></pre>
 <p>The condition checks that <code>_f_x != NULL</code> (the field exists). For literal
 sub-patterns, it additionally checks the value:</p>
@@ -2682,7 +2682,7 @@ functions at link time.</p>
 <h2 id="the-aarch64-code-generator"><a class="header" href="#the-aarch64-code-generator">The AArch64 Code Generator</a></h2>
 <p>The self-hosting compiler also includes an AArch64 native code generator,
 activated by passing <code>asm</code> as the third command-line argument:</p>
-<pre><code>compiler source.bad output.s asm
+<pre><code>compiler source.stele output.s asm
 </code></pre>
 <h3 id="emitter-state"><a class="header" href="#emitter-state">Emitter State</a></h3>
 <p>Where the C emitter threads a simple <code>counter</code> through each call, the AArch64
@@ -2720,22 +2720,22 @@ uses a <code>match</code> on the mode to select between <code>emit_c</code> and 
 needs a compiler. Bootstrapping is the process of resolving this by using an
 existing compiler to get things started.</p>
 <h2 id="the-bootstrap-chain"><a class="header" href="#the-bootstrap-chain">The Bootstrap Chain</a></h2>
-<p>badlang’s bootstrap process uses the Haskell reference compiler as the seed:</p>
+<p>Stele’s bootstrap process uses the Haskell reference compiler as the seed:</p>
 <pre><code>                    Haskell compiler
                          |
-compiler.bad ──────► gen0 binary
+compiler.stele ──────► gen0 binary
                          |
-compiler.bad ──────► gen1.c ──► gen1 binary
+compiler.stele ──────► gen1.c ──► gen1 binary
                                     |
-compiler.bad ───────────────► gen2.c ──► gen2 binary
+compiler.stele ───────────────► gen2.c ──► gen2 binary
                                             |
-compiler.bad ─────────────────────────► gen3.c
+compiler.stele ─────────────────────────► gen3.c
 </code></pre>
 <ol>
-<li><strong>gen0</strong>: The Haskell compiler compiles <code>compiler.bad</code> to C, which is
+<li><strong>gen0</strong>: The Haskell compiler compiles <code>compiler.stele</code> to C, which is
 compiled to a native binary.</li>
-<li><strong>gen1</strong>: The gen0 binary compiles <code>compiler.bad</code>, producing <code>gen1.c</code>.</li>
-<li><strong>gen2</strong>: The gen1 binary compiles <code>compiler.bad</code>, producing <code>gen2.c</code>.</li>
+<li><strong>gen1</strong>: The gen0 binary compiles <code>compiler.stele</code>, producing <code>gen1.c</code>.</li>
+<li><strong>gen2</strong>: The gen1 binary compiles <code>compiler.stele</code>, producing <code>gen2.c</code>.</li>
 <li><strong>gen3</strong>: And so on.</li>
 </ol>
 <h2 id="the-fixed-point"><a class="header" href="#the-fixed-point">The Fixed Point</a></h2>
@@ -2745,7 +2745,7 @@ of which generation compiled it.</p>
 <p>Why does gen0’s output differ? Because gen0 was compiled by the <em>Haskell</em>
 compiler, which may generate slightly different C code (different variable
 numbering, different formatting). But once the self-hosting compiler compiles
-itself (gen1), its output is determined entirely by <code>compiler.bad</code> — and since
+itself (gen1), its output is determined entirely by <code>compiler.stele</code> — and since
 gen1 and gen2 are the same binary (they came from identical C), they produce
 identical output.</p>
 <p>This fixed-point property is a strong correctness argument: the compiler
@@ -2761,30 +2761,30 @@ modes: <strong>C</strong> (default) and <strong>ASM</strong> (AArch64 native).</
 <ul>
 <li>Each generation compiles successfully</li>
 <li>gen1 through gen3 output files are all identical</li>
-<li>The final generation can compile <code>hello.bad</code> and produce correct output</li>
+<li>The final generation can compile <code>hello.stele</code> and produce correct output</li>
 </ul>
 <p>In C mode, gen0 is always built using the Haskell reference compiler. In ASM
 mode, gen0 is still built via C (since the Haskell compiler is the seed), but
 subsequent generations emit <code>.s</code> files and link against <code>runtime_aarch64.c</code>.</p>
 <p>A successful C-mode run looks like:</p>
-<pre><code>=== Badlang Bootstrap Test ===
+<pre><code>=== Stele Bootstrap Test ===
 Generations: 3
 Mode: c
 
-[gen0] Compiling compiler.bad with Haskell compiler...
+[gen0] Compiling compiler.stele with Haskell compiler...
 [gen0] OK
-[gen1] Compiling compiler.bad with gen0...
+[gen1] Compiling compiler.stele with gen0...
 [gen1] OK
-[gen2] Compiling compiler.bad with gen1...
+[gen2] Compiling compiler.stele with gen1...
 [gen2] OK
-[gen3] Compiling compiler.bad with gen2...
+[gen3] Compiling compiler.stele with gen2...
 [gen3] OK
 
 === Verifying Fixed Point ===
 [gen1.c == gen2.c] OK
 [gen1.c == gen3.c] OK
 
-=== Smoke Test (gen3 compiles hello.bad) ===
+=== Smoke Test (gen3 compiles hello.stele) ===
 Output matches expected: OK
 
 === BOOTSTRAP SUCCESS ===
@@ -2805,7 +2805,7 @@ bootstrap and checking that the fixed point is preserved.</li>
 </ol>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="keyword-reference"><a class="header" href="#keyword-reference">Keyword Reference</a></h1>
-<p>All reserved keywords in badlang.</p>
+<p>All reserved keywords in Stele.</p>
 <h2 id="declaration-keywords"><a class="header" href="#declaration-keywords">Declaration Keywords</a></h2>
 <div class="table-wrapper">
 <table>
@@ -2964,7 +2964,7 @@ be <code>Int</code>.</p>
 <p>Use parentheses to override precedence: <code>(a + b) * c</code>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="built-in-functions-1"><a class="header" href="#built-in-functions-1">Built-in Functions</a></h1>
-<p>badlang provides several built-in functions for I/O and system interaction.
+<p>Stele provides several built-in functions for I/O and system interaction.
 These are implemented in the C runtime and available in every program.</p>
 <h2 id="console-io"><a class="header" href="#console-io">Console I/O</a></h2>
 <h3 id="readln"><a class="header" href="#readln">readln</a></h3>
@@ -3006,7 +3006,7 @@ print contents
 <li><strong>Returns:</strong> <code>Void</code></li>
 <li><strong>Behavior:</strong> Creates or overwrites the file with the case content.</li>
 </ul>
-<pre><code>inscribe {| path: "output.txt", content: "Hello from badlang!" |}
+<pre><code>inscribe {| path: "output.txt", content: "Hello from Stele!" |}
 </code></pre>
 <h2 id="command-line-arguments-1"><a class="header" href="#command-line-arguments-1">Command-Line Arguments</a></h2>
 <h3 id="argc"><a class="header" href="#argc">argc</a></h3>

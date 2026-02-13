@@ -1,6 +1,6 @@
 # Recursion
 
-Since badlang has no loops, recursion is the only way to repeat computation.
+Since Stele has no loops, recursion is the only way to repeat computation.
 This chapter covers common recursion patterns.
 
 ## Simple Recursion
@@ -138,7 +138,7 @@ end
 
 Three clauses, each matching a different combination of base cases and
 recursive cases. The nested call in the third clause demonstrates how
-badlang handles deeply recursive computations.
+Stele handles deeply recursive computations.
 
 ## Even/Odd via Mutual Recursion
 
@@ -166,6 +166,6 @@ at each step until the base case is reached.
 - **Use the accumulator pattern** when you're building up a result
   incrementally. Thread an `acc` field through the recursive calls.
 - **Pattern order matters.** Put base cases first, recursive cases second.
-- **Keep recursion depth reasonable.** badlang compiles to C without tail-call
+- **Keep recursion depth reasonable.** Stele compiles to C without tail-call
   optimization, so very deep recursion (millions of frames) will overflow the
   stack.

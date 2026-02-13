@@ -1,6 +1,6 @@
 # Records
 
-Records are the universal data structure in badlang. They are collections of
+Records are the universal data structure in Stele. They are collections of
 named fields, each holding a value. Every function argument is a record. Every
 structured value is a record.
 
@@ -40,7 +40,7 @@ Field values can be any expression, including nested records:
 
 ## Records Are Structural
 
-Records in badlang are **structural**, not nominal. Two records with the same
+Records in Stele are **structural**, not nominal. Two records with the same
 fields and types are the same type, regardless of how they were created:
 
 ```

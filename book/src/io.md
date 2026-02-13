@@ -1,6 +1,6 @@
 # Input and Output
 
-badlang provides built-in facilities for console I/O, file I/O, and
+Stele provides built-in facilities for console I/O, file I/O, and
 command-line argument access.
 
 ## Console Output
@@ -83,7 +83,7 @@ end
 `inscribe` writes a string to a file, creating or overwriting it:
 
 ```
-inscribe {| path: "output.txt", content: "Written by badlang!" |}
+inscribe {| path: "output.txt", content: "Written by Stele!" |}
 ```
 
 The argument is a record with fields `path` (the file path) and `content`
@@ -128,7 +128,7 @@ The argument is a record with field `n` (the zero-based index).
 
 ```
 do main
-  print "=== badlang IO demo ==="
+  print "=== Stele IO demo ==="
 
   -- Console I/O
   print "What is your name?"
@@ -152,7 +152,7 @@ do main
   print argv {| n: 0 |}
 
   -- File I/O
-  inscribe {| path: "io_test.txt", content: "Written by badlang!" |}
+  inscribe {| path: "io_test.txt", content: "Written by Stele!" |}
   print "Wrote io_test.txt"
 
   let contents = unearth {| path: "io_test.txt" |}

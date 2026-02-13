@@ -1,6 +1,6 @@
 # The Type System
 
-badlang uses type inference — you almost never write type annotations. The
+Stele uses type inference — you almost never write type annotations. The
 compiler figures out the types of all expressions automatically and reports
 errors when things don't line up.
 
@@ -24,7 +24,7 @@ Records have types determined by their fields:
 
 ## Open Record Types (Row Polymorphism)
 
-The key insight of badlang's type system is that record types can be **open**.
+The key insight of Stele's type system is that record types can be **open**.
 When a fn pattern-matches on `{| x, y |}`, the inferred type is:
 
 ```
@@ -58,7 +58,7 @@ The type checker follows these rules:
 
 ## How Inference Works
 
-badlang uses **Algorithm W** — the classic Hindley-Milner type inference
+Stele uses **Algorithm W** — the classic Hindley-Milner type inference
 algorithm — extended with **Remy-style row types** for records.
 
 The process:

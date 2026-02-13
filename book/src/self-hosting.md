@@ -1,7 +1,7 @@
 # The Self-Hosting Compiler
 
-badlang is **self-hosting**: the file `examples/compiler/compiler.bad` is a
-complete badlang compiler written in badlang itself. It implements the full
+Stele is **self-hosting**: the file `examples/compiler/compiler.stele` is a
+complete Stele compiler written in Stele itself. It implements the full
 compilation pipeline — tokenizer, parser, C code emitter, and AArch64 native
 code generator — and can compile itself.
 
@@ -9,7 +9,7 @@ code generator — and can compile itself.
 
 A self-hosting compiler is the ultimate test of a language's expressiveness. If
 a language can implement its own compiler, it demonstrates that the language is
-powerful enough for real-world systems programming. For badlang, it also
+powerful enough for real-world systems programming. For Stele, it also
 serves as:
 
 - **A stress test** of every language feature: records, pattern matching,
@@ -17,7 +17,7 @@ serves as:
 - **A correctness proof** via bootstrapping: when the compiler compiles itself
   and produces identical output across generations, we know it faithfully
   implements its own semantics.
-- **The largest badlang program**, exercising the compiler at scale (~3000
+- **The largest Stele program**, exercising the compiler at scale (~3000
   lines).
 
 ## Architecture at a Glance
@@ -26,7 +26,7 @@ The self-hosting compiler follows the same pipeline as the Haskell reference
 compiler, minus the type checker:
 
 ```
-Source (.bad) → Tokenize → Parse → Emit C or AArch64 → Write File
+Source (.stele) → Tokenize → Parse → Emit C or AArch64 → Write File
 ```
 
 The compiler reads a source file, tokenizes it, parses the token stream into
@@ -36,8 +36,8 @@ that provides the value representation, reference counting, and built-in
 functions for file I/O and string manipulation.
 
 The compiler selects its output mode via command-line arguments:
-- `compiler source.bad output.c` — emit C (default)
-- `compiler source.bad output.s asm` — emit AArch64 assembly
+- `compiler source.stele output.c` — emit C (default)
+- `compiler source.stele output.s asm` — emit AArch64 assembly
 
 The entire compiler is a single file organized into clear sections:
 

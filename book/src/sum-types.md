@@ -1,6 +1,6 @@
 # Sum Types
 
-badlang supports sum types via the `oneof` declaration. A sum type defines a
+Stele supports sum types via the `oneof` declaration. A sum type defines a
 closed set of variants, each of which may carry named fields (like a struct) or
 be nullary (carrying no data).
 

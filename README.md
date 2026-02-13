@@ -1,12 +1,16 @@
-# badlang
+# Stele
+
+<p align="center">
+  <img src="logo.svg" alt="Stele logo" width="100"/>
+</p>
 
 A structural pattern-matching language.
 
-badlang is an experiment in the limits of agentic programming. The entire
+Stele is an experiment in the limits of agentic programming. The entire
 language — parser generator, grammar, type system, C code generation, AArch64
 native code generation, and a self-hosting compiler — was built collaboratively
-with AI. We pushed the experiment as far as writing a complete badlang compiler
-*in badlang itself*, one that bootstraps and reaches a fixed point in both C
+with AI. We pushed the experiment as far as writing a complete Stele compiler
+*in Stele itself*, one that bootstraps and reaches a fixed point in both C
 and native assembly output.
 
 The language is built from first principles in Haskell. It draws from pattern
@@ -20,20 +24,20 @@ is the fundamental operation and all functions accept structural records.
 cabal build
 
 # Compile a program to C
-cabal run badlang -- examples/hello.bad
+cabal run stele -- examples/hello.stele
 # => Compiled to examples/hello.c
 
 # Compile and run in one step
-cabal run badlang -- --run examples/hello.bad
+cabal run stele -- --run examples/hello.stele
 # => 25
 # => 3628800
 
 # Compile to native AArch64 assembly (Apple Silicon)
-cabal run badlang -- --native examples/hello.bad
+cabal run stele -- --native examples/hello.stele
 # => Compiled to examples/hello
 
 # Compile native and run
-cabal run badlang -- --native --run examples/hello.bad
+cabal run stele -- --native --run examples/hello.stele
 ```
 
 ## The Language
@@ -56,7 +60,7 @@ cabal run badlang -- --native --run examples/hello.bad
 | `let`     | Bind a local variable                           |
 | `{\| \|}` | Record literal delimiters (the "pillars")       |
 
-### Hello, Badlang
+### Hello, Stele
 
 ```
 struct Point
@@ -181,11 +185,11 @@ end
 
 ## Architecture
 
-badlang is implemented as a nine-module Haskell library plus a thin CLI
+Stele is implemented as a nine-module Haskell library plus a thin CLI
 driver. The compilation pipeline is:
 
 ```
-Source (.bad) → PEG Parse → AST → Type Check → IR → Backend → cc → Binary
+Source (.stele) → PEG Parse → AST → Type Check → IR → Backend → cc → Binary
                                                       │
                                                       ├─ C Backend     → .c file
                                                       └─ AArch64 Backend → .s file + runtime
@@ -195,15 +199,15 @@ Source (.bad) → PEG Parse → AST → Type Check → IR → Backend → cc →
 
 | Module               | Purpose                                        |
 |----------------------|------------------------------------------------|
-| `Badlang.PEG`        | PEG parser generator, built from scratch       |
-| `Badlang.AST`        | Abstract syntax tree types                     |
-| `Badlang.Grammar`    | Grammar definition + parse tree to AST         |
-| `Badlang.Types`      | Type inference with row polymorphism           |
-| `Badlang.IR`         | Intermediate representation (basic blocks)     |
-| `Badlang.Lower`      | AST to IR lowering pass                        |
-| `Badlang.EmitC`      | C code generation from IR                      |
-| `Badlang.EmitAArch64`| AArch64 assembly generation from IR            |
-| `Badlang.Runtime`    | C runtime source for the native backend        |
+| `Stele.PEG`          | PEG parser generator, built from scratch       |
+| `Stele.AST`          | Abstract syntax tree types                     |
+| `Stele.Grammar`      | Grammar definition + parse tree to AST         |
+| `Stele.Types`        | Type inference with row polymorphism           |
+| `Stele.IR`           | Intermediate representation (basic blocks)     |
+| `Stele.Lower`        | AST to IR lowering pass                        |
+| `Stele.EmitC`        | C code generation from IR                      |
+| `Stele.EmitAArch64`  | AArch64 assembly generation from IR            |
+| `Stele.Runtime`      | C runtime source for the native backend        |
 
 ### PEG Parser Generator
 
@@ -237,7 +241,7 @@ backends are purely mechanical translations.
 
 **C backend.** The C emitter produces self-contained C with an embedded
 runtime. All values are reference-counted tagged unions allocated with
-`malloc`. Because badlang values are immutable and there are no closures,
+`malloc`. Because Stele values are immutable and there are no closures,
 cycles are impossible and reference counting is sufficient. The generated code
 is readable and can be compiled with any C compiler.
 
@@ -250,18 +254,18 @@ provides the same value representation and reference counting.
 
 | Example             | Demonstrates                                     |
 |---------------------|--------------------------------------------------|
-| `examples/hello.bad`     | Structs, functions, construction, postfix calls, pattern matching |
-| `examples/subtyping.bad` | Width subtyping, anonymous records              |
-| `examples/match.bad`     | Inline pattern matching with fizzbuzz            |
-| `examples/mutual.bad`    | Mutual recursion, Ackermann, Collatz, GCD, Fibonacci |
-| `examples/oneof.bad`     | Sum types with variants                          |
-| `examples/io.bad`        | IO operations                                    |
-| `examples/compiler/compiler.bad` | Self-hosting compiler (badlang written in badlang) |
+| `examples/hello.stele`     | Structs, functions, construction, postfix calls, pattern matching |
+| `examples/subtyping.stele` | Width subtyping, anonymous records              |
+| `examples/match.stele`     | Inline pattern matching with fizzbuzz            |
+| `examples/mutual.stele`    | Mutual recursion, Ackermann, Collatz, GCD, Fibonacci |
+| `examples/oneof.stele`     | Sum types with variants                          |
+| `examples/io.stele`        | IO operations                                    |
+| `examples/compiler/compiler.stele` | Self-hosting compiler (Stele written in Stele) |
 
 ### Self-Hosting Compiler
 
-badlang is self-hosting: `examples/compiler/compiler.bad` is a complete
-badlang compiler written in badlang itself. It implements the full pipeline
+Stele is self-hosting: `examples/compiler/compiler.stele` is a complete
+Stele compiler written in Stele itself. It implements the full pipeline
 — tokenizer, parser, C code emitter, and AArch64 native code generator — and
 can compile itself. A bootstrap test verifies that the compiler reaches a
 fixed point in both modes:
@@ -271,7 +275,7 @@ examples/compiler/bootstrap.sh 3        # C mode
 examples/compiler/bootstrap.sh 3 asm    # AArch64 native mode
 ```
 
-This compiles `compiler.bad` through three generations and confirms each
+This compiles `compiler.stele` through three generations and confirms each
 produces identical output.
 
 ## Building
@@ -281,7 +285,7 @@ Requirements: GHC 9.6+ and Cabal 3.10+.
 ```bash
 cabal build         # Build the compiler
 cabal haddock       # Generate API documentation
-cabal run badlang   # Run the compiler (shows usage)
+cabal run stele     # Run the compiler (shows usage)
 ```
 
 ## License

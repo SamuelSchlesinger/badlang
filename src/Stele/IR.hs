@@ -1,4 +1,4 @@
--- | Intermediate representation for badlang.
+-- | Intermediate representation for Stele.
 --
 -- The IR sits between the AST and code generation backends (C and AArch64).
 -- It uses explicit basic blocks with named temporaries. Pattern matching,
@@ -15,7 +15,7 @@
 --   flow graphs. Backends have zero pattern-matching logic.
 -- * __No SSA phi nodes__: Join points (match results) use a pre-declared
 --   result variable written by whichever branch succeeds.
-module Badlang.IR
+module Stele.IR
   ( -- * Program structure
     IRProgram(..)
   , IRDecl(..)
@@ -34,9 +34,9 @@ module Badlang.IR
   , UnOp(..)
   ) where
 
-import Badlang.AST (BinOp(..), UnOp(..))
+import Stele.AST (BinOp(..), UnOp(..))
 
--- | A variable name in the IR (e.g. @"_t0"@, @"bl_n"@, @"arg"@).
+-- | A variable name in the IR (e.g. @"_t0"@, @"stele_n"@, @"arg"@).
 type Var = String
 
 -- | A basic block label (e.g. @"entry"@, @"clause_0_test"@, @"done"@).
@@ -84,8 +84,8 @@ data Instr
   | IIntEq     Var Var Integer          -- ^ @var = (operand->int_val == n)@
   | IStrEq     Var Var String           -- ^ @var = strcmp(operand->str_val, s) == 0@
   -- IO
-  | IPrint     Var                      -- ^ @bl_print(var)@
-  | IWrite     Var                      -- ^ @bl_write(var)@
+  | IPrint     Var                      -- ^ @stele_print(var)@
+  | IWrite     Var                      -- ^ @stele_write(var)@
   | IReadLn    Var                      -- ^ @var = runtime_readln()@
   | IReadInt   Var                      -- ^ @var = runtime_readint()@
   -- Plumbing

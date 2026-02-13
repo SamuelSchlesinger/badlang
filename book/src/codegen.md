@@ -1,6 +1,6 @@
 # C Code Generation
 
-badlang compiles to readable, self-contained C. Understanding the generated
+Stele compiles to readable, self-contained C. Understanding the generated
 code can help with debugging and with understanding the language's runtime
 behavior.
 
@@ -44,7 +44,7 @@ value is freed:
   is freed, then the `Value`.
 - `TAG_INT` / `TAG_VOID` — the `Value` is freed directly.
 
-Because badlang values are **immutable** and there are **no closures or
+Because Stele values are **immutable** and there are **no closures or
 first-class functions**, reference cycles are impossible and reference counting
 is a complete solution — no garbage collector is needed.
 
@@ -80,14 +80,14 @@ Compiles to something like:
 ```c
 static Value* fn_square(Value* arg) {
     Value* _f_n = record_field(arg, "n");
-    Value* bl_n = _f_n;
+    Value* stele_n = _f_n;
     if (_f_n != NULL) {
-        rc_retain(bl_n);
-        Value* _t0 = bl_n; rc_retain(_t0);
-        Value* _t1 = bl_n; rc_retain(_t1);
+        rc_retain(stele_n);
+        Value* _t0 = stele_n; rc_retain(_t0);
+        Value* _t1 = stele_n; rc_retain(_t1);
         Value* _t2 = make_int(_t0->int_val * _t1->int_val);
         rc_release(_t0); rc_release(_t1);
-        rc_release(bl_n);
+        rc_release(stele_n);
         return _t2;
     }
     // ...pattern match failure...
@@ -145,12 +145,12 @@ The compiler collects consecutive `let` bindings and emits them without nesting,
 then releases all bound variables in reverse declaration order after the body:
 
 ```c
-Value* bl_x = /* evaluated value for x */;
-Value* bl_y = /* evaluated value for y */;
-/* body code that may reference bl_x, bl_y */
+Value* stele_x = /* evaluated value for x */;
+Value* stele_y = /* evaluated value for y */;
+/* body code that may reference stele_x, stele_y */
 /* body result is used directly */
-rc_release(bl_y);
-rc_release(bl_x);
+rc_release(stele_y);
+rc_release(stele_x);
 ```
 
 This avoids O(N) nesting depth for N sequential bindings, keeping the generated
@@ -177,14 +177,14 @@ rc_release(_t0);
 
 ## Identifier Mangling
 
-To avoid collisions with C keywords, badlang identifiers are prefixed with
-`bl_`:
+To avoid collisions with C keywords, Stele identifiers are prefixed with
+`stele_`:
 
-| badlang | C |
+| Stele | C |
 |---------|---|
-| `x` | `bl_x` |
-| `name` | `bl_name` |
-| `result` | `bl_result` |
+| `x` | `stele_x` |
+| `name` | `stele_name` |
+| `result` | `stele_result` |
 
 Generated temporaries use numbered prefixes like `_t0`, `_t1`, `_scr0`,
 `_dvn0`, `_done0`, etc., ensuring uniqueness across the entire compilation
@@ -198,15 +198,15 @@ by both GCC and Clang. No statement expressions (`({ ... })`) are used.
 
 ## The AArch64 Backend
 
-In addition to C, badlang can compile directly to AArch64 (Apple Silicon)
-assembly. The native backend (`Badlang.EmitAArch64`) consumes the same IR as
+In addition to C, Stele can compile directly to AArch64 (Apple Silicon)
+assembly. The native backend (`Stele.EmitAArch64`) consumes the same IR as
 the C backend but emits `.s` files linked against a separate C runtime.
 
 ```bash
-cabal run badlang -- --native examples/hello.bad
+cabal run stele -- --native examples/hello.bad
 # => Writes examples/hello.s + examples/hello_rt.c, links to examples/hello
 
-cabal run badlang -- --native --run examples/hello.bad
+cabal run stele -- --native --run examples/hello.bad
 # => Compiles and runs immediately
 ```
 
@@ -216,7 +216,7 @@ __TEXT,__cstring` data section. Function calls use the standard Apple AArch64
 calling convention (x0 for first argument / return value, x29/x30 for frame
 and link registers).
 
-The self-hosting compiler in `examples/compiler/compiler.bad` also has its own
+The self-hosting compiler in `examples/compiler/compiler.stele` also has its own
 AArch64 backend and can emit assembly when invoked with the `asm` flag.
 
 ## Inspecting Generated Code
@@ -224,14 +224,14 @@ AArch64 backend and can emit assembly when invoked with the `asm` flag.
 To see the generated C without running it:
 
 ```bash
-cabal run badlang -- examples/hello.bad
+cabal run stele -- examples/hello.bad
 cat examples/hello.c
 ```
 
 To see the generated assembly:
 
 ```bash
-cabal run badlang -- --native examples/hello.bad
+cabal run stele -- --native examples/hello.bad
 cat examples/hello.s
 ```
 

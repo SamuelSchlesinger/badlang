@@ -1,6 +1,6 @@
 # Expressions
 
-Expressions are the building blocks of computation in badlang. Everything that
+Expressions are the building blocks of computation in Stele. Everything that
 produces a value is an expression — arithmetic, record construction, function
 calls, pattern matching, and I/O reads.
 

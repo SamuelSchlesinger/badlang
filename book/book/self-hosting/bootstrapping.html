@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Bootstrapping - The Badlang Book</title>
+        <title>Bootstrapping - The Stele Book</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-114a12be.js";
+            window.path_to_searchindex_js = "../searchindex-babbe00e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-e4e73581.js"></script>
+        <script src="../toc-29fcd749.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -137,7 +137,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">The Badlang Book</h1>
+                    <h1 class="menu-title">The Stele Book</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -179,22 +179,22 @@
 needs a compiler. Bootstrapping is the process of resolving this by using an
 existing compiler to get things started.</p>
 <h2 id="the-bootstrap-chain"><a class="header" href="#the-bootstrap-chain">The Bootstrap Chain</a></h2>
-<p>badlang’s bootstrap process uses the Haskell reference compiler as the seed:</p>
+<p>Stele’s bootstrap process uses the Haskell reference compiler as the seed:</p>
 <pre><code>                    Haskell compiler
                          |
-compiler.bad ──────► gen0 binary
+compiler.stele ──────► gen0 binary
                          |
-compiler.bad ──────► gen1.c ──► gen1 binary
+compiler.stele ──────► gen1.c ──► gen1 binary
                                     |
-compiler.bad ───────────────► gen2.c ──► gen2 binary
+compiler.stele ───────────────► gen2.c ──► gen2 binary
                                             |
-compiler.bad ─────────────────────────► gen3.c
+compiler.stele ─────────────────────────► gen3.c
 </code></pre>
 <ol>
-<li><strong>gen0</strong>: The Haskell compiler compiles <code>compiler.bad</code> to C, which is
+<li><strong>gen0</strong>: The Haskell compiler compiles <code>compiler.stele</code> to C, which is
 compiled to a native binary.</li>
-<li><strong>gen1</strong>: The gen0 binary compiles <code>compiler.bad</code>, producing <code>gen1.c</code>.</li>
-<li><strong>gen2</strong>: The gen1 binary compiles <code>compiler.bad</code>, producing <code>gen2.c</code>.</li>
+<li><strong>gen1</strong>: The gen0 binary compiles <code>compiler.stele</code>, producing <code>gen1.c</code>.</li>
+<li><strong>gen2</strong>: The gen1 binary compiles <code>compiler.stele</code>, producing <code>gen2.c</code>.</li>
 <li><strong>gen3</strong>: And so on.</li>
 </ol>
 <h2 id="the-fixed-point"><a class="header" href="#the-fixed-point">The Fixed Point</a></h2>
@@ -204,7 +204,7 @@ of which generation compiled it.</p>
 <p>Why does gen0’s output differ? Because gen0 was compiled by the <em>Haskell</em>
 compiler, which may generate slightly different C code (different variable
 numbering, different formatting). But once the self-hosting compiler compiles
-itself (gen1), its output is determined entirely by <code>compiler.bad</code> — and since
+itself (gen1), its output is determined entirely by <code>compiler.stele</code> — and since
 gen1 and gen2 are the same binary (they came from identical C), they produce
 identical output.</p>
 <p>This fixed-point property is a strong correctness argument: the compiler
@@ -220,30 +220,30 @@ modes: <strong>C</strong> (default) and <strong>ASM</strong> (AArch64 native).</
 <ul>
 <li>Each generation compiles successfully</li>
 <li>gen1 through gen3 output files are all identical</li>
-<li>The final generation can compile <code>hello.bad</code> and produce correct output</li>
+<li>The final generation can compile <code>hello.stele</code> and produce correct output</li>
 </ul>
 <p>In C mode, gen0 is always built using the Haskell reference compiler. In ASM
 mode, gen0 is still built via C (since the Haskell compiler is the seed), but
 subsequent generations emit <code>.s</code> files and link against <code>runtime_aarch64.c</code>.</p>
 <p>A successful C-mode run looks like:</p>
-<pre><code>=== Badlang Bootstrap Test ===
+<pre><code>=== Stele Bootstrap Test ===
 Generations: 3
 Mode: c
 
-[gen0] Compiling compiler.bad with Haskell compiler...
+[gen0] Compiling compiler.stele with Haskell compiler...
 [gen0] OK
-[gen1] Compiling compiler.bad with gen0...
+[gen1] Compiling compiler.stele with gen0...
 [gen1] OK
-[gen2] Compiling compiler.bad with gen1...
+[gen2] Compiling compiler.stele with gen1...
 [gen2] OK
-[gen3] Compiling compiler.bad with gen2...
+[gen3] Compiling compiler.stele with gen2...
 [gen3] OK
 
 === Verifying Fixed Point ===
 [gen1.c == gen2.c] OK
 [gen1.c == gen3.c] OK
 
-=== Smoke Test (gen3 compiles hello.bad) ===
+=== Smoke Test (gen3 compiles hello.stele) ===
 Output matches expected: OK
 
 === BOOTSTRAP SUCCESS ===

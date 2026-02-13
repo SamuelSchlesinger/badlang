@@ -1,7 +1,7 @@
 # Data Structures and Utilities
 
 Before the compiler can tokenize or parse anything, it needs basic data
-structures. badlang has no built-in lists, so the compiler builds them from
+structures. Stele has no built-in lists, so the compiler builds them from
 records.
 
 ## Linked Lists from Records
@@ -74,7 +74,7 @@ built-in string functions provided by the runtime.
 
 ## String Helpers
 
-Since badlang strings are immutable and there is no character type, string
+Since Stele strings are immutable and there is no character type, string
 manipulation uses the built-in functions `strlen`, `char_at`, `substr`, and
 `concat`. The compiler adds convenience wrappers like:
 

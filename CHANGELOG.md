@@ -1,4 +1,4 @@
-# Revision history for badlang
+# Revision history for Stele
 
 ## 0.1.0.0 -- YYYY-mm-dd
 

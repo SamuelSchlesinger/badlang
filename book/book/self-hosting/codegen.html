@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Code Generation - The Badlang Book</title>
+        <title>Code Generation - The Stele Book</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-114a12be.js";
+            window.path_to_searchindex_js = "../searchindex-babbe00e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-e4e73581.js"></script>
+        <script src="../toc-29fcd749.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -137,7 +137,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">The Badlang Book</h1>
+                    <h1 class="menu-title">The Stele Book</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -200,7 +200,7 @@ are globally unique.</p>
 <p>Generated names include <code>_t0</code>, <code>_t1</code>, … for temporaries, <code>_scr0</code> for
 scrutinees, <code>_dvn0</code> for match results, and <code>_done0</code> for goto labels.</p>
 <h2 id="identifier-mangling"><a class="header" href="#identifier-mangling">Identifier Mangling</a></h2>
-<p>The <code>c_name</code> fn prefixes badlang identifiers with <code>bl_</code> to avoid collisions
+<p>The <code>c_name</code> fn prefixes Stele identifiers with <code>stele_</code> to avoid collisions
 with C keywords. The special name <code>arg</code> (the fn parameter) is left unmangled
 since it matches the generated C function signature.</p>
 <h2 id="expression-emission"><a class="header" href="#expression-emission">Expression Emission</a></h2>
@@ -214,7 +214,7 @@ field and delegates to specialized emitters:</p>
 <tbody>
 <tr><td><code>int_lit</code></td><td><code>emit_int_lit</code></td><td><code>make_int(42)</code></td></tr>
 <tr><td><code>str_lit</code></td><td><code>emit_str_lit</code></td><td><code>make_str("hello")</code></td></tr>
-<tr><td><code>var</code></td><td><code>emit_var</code></td><td><code>bl_x; rc_retain(bl_x)</code></td></tr>
+<tr><td><code>var</code></td><td><code>emit_var</code></td><td><code>stele_x; rc_retain(stele_x)</code></td></tr>
 <tr><td><code>binop</code></td><td><code>emit_binop</code></td><td>Emit both sides, apply op, release operands</td></tr>
 <tr><td><code>unop</code></td><td><code>emit_unop</code></td><td>Emit operand, negate</td></tr>
 <tr><td><code>field_access</code></td><td><code>emit_field_access</code></td><td><code>record_field(obj, "name")</code> + retain</td></tr>
@@ -234,11 +234,11 @@ released in reverse order after the body:</p>
 <pre><code class="language-c">// let x = 1
 // let y = x + 1
 // x * y
-Value* bl_x = make_int(1);
-Value* bl_y = make_int(bl_x-&gt;int_val + make_int(1)-&gt;int_val);
+Value* stele_x = make_int(1);
+Value* stele_y = make_int(stele_x-&gt;int_val + make_int(1)-&gt;int_val);
 /* ... body code ... */
-rc_release(bl_y);
-rc_release(bl_x);
+rc_release(stele_y);
+rc_release(stele_x);
 </code></pre>
 <p>This avoids nested <code>{ }</code> blocks, keeping the generated C flat regardless of how
 many sequential <code>let</code> bindings appear.</p>
@@ -259,7 +259,7 @@ incrementing their reference counts.</p>
 <h3 id="record-patterns"><a class="header" href="#record-patterns">Record Patterns</a></h3>
 <p>For each field in a record pattern, the emitter generates:</p>
 <pre><code class="language-c">Value* _f_x = record_field(arg, "x");
-Value* bl_x = _f_x;
+Value* stele_x = _f_x;
 </code></pre>
 <p>The condition checks that <code>_f_x != NULL</code> (the field exists). For literal
 sub-patterns, it additionally checks the value:</p>
@@ -306,7 +306,7 @@ functions at link time.</p>
 <h2 id="the-aarch64-code-generator"><a class="header" href="#the-aarch64-code-generator">The AArch64 Code Generator</a></h2>
 <p>The self-hosting compiler also includes an AArch64 native code generator,
 activated by passing <code>asm</code> as the third command-line argument:</p>
-<pre><code>compiler source.bad output.s asm
+<pre><code>compiler source.stele output.s asm
 </code></pre>
 <h3 id="emitter-state"><a class="header" href="#emitter-state">Emitter State</a></h3>
 <p>Where the C emitter threads a simple <code>counter</code> through each call, the AArch64

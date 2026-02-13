@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>The Type System - The Badlang Book</title>
+        <title>The Type System - The Stele Book</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-114a12be.js";
+            window.path_to_searchindex_js = "searchindex-babbe00e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-e4e73581.js"></script>
+        <script src="toc-29fcd749.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -137,7 +137,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">The Badlang Book</h1>
+                    <h1 class="menu-title">The Stele Book</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -175,7 +175,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="the-type-system"><a class="header" href="#the-type-system">The Type System</a></h1>
-<p>badlang uses type inference — you almost never write type annotations. The
+<p>Stele uses type inference — you almost never write type annotations. The
 compiler figures out the types of all expressions automatically and reports
 errors when things don’t line up.</p>
 <h2 id="primitive-types"><a class="header" href="#primitive-types">Primitive Types</a></h2>
@@ -198,7 +198,7 @@ errors when things don’t line up.</p>
 {| |}
 </code></pre>
 <h2 id="open-record-types-row-polymorphism"><a class="header" href="#open-record-types-row-polymorphism">Open Record Types (Row Polymorphism)</a></h2>
-<p>The key insight of badlang’s type system is that record types can be <strong>open</strong>.
+<p>The key insight of Stele’s type system is that record types can be <strong>open</strong>.
 When a fn pattern-matches on <code>{| x, y |}</code>, the inferred type is:</p>
 <pre><code>{| x: Int, y: Int | r |}
 </code></pre>
@@ -230,7 +230,7 @@ automatically.</p>
 </table>
 </div>
 <h2 id="how-inference-works"><a class="header" href="#how-inference-works">How Inference Works</a></h2>
-<p>badlang uses <strong>Algorithm W</strong> — the classic Hindley-Milner type inference
+<p>Stele uses <strong>Algorithm W</strong> — the classic Hindley-Milner type inference
 algorithm — extended with <strong>Remy-style row types</strong> for records.</p>
 <p>The process:</p>
 <ol>

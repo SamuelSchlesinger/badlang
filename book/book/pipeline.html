@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>The Compilation Pipeline - The Badlang Book</title>
+        <title>The Compilation Pipeline - The Stele Book</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-114a12be.js";
+            window.path_to_searchindex_js = "searchindex-babbe00e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-e4e73581.js"></script>
+        <script src="toc-29fcd749.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -137,7 +137,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">The Badlang Book</h1>
+                    <h1 class="menu-title">The Stele Book</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -175,17 +175,17 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="the-compilation-pipeline"><a class="header" href="#the-compilation-pipeline">The Compilation Pipeline</a></h1>
-<p>badlang compiles source code to standalone executables through two backends:
+<p>Stele compiles source code to standalone executables through two backends:
 a portable <strong>C backend</strong> and a native <strong>AArch64 backend</strong> (Apple Silicon).
 Both share a common front end and intermediate representation.</p>
-<pre><code>Source (.bad) → PEG Parse → AST → Type Check → IR → Backend → cc → Binary
+<pre><code>Source (.stele) → PEG Parse → AST → Type Check → IR → Backend → cc → Binary
                                                       │
                                                       ├─ C Backend     → .c file
                                                       └─ AArch64 Backend → .s file + runtime
 </code></pre>
 <p>Each stage is implemented as a separate Haskell module.</p>
 <h2 id="stage-1-peg-parsing"><a class="header" href="#stage-1-peg-parsing">Stage 1: PEG Parsing</a></h2>
-<p><strong>Module:</strong> <code>Badlang.PEG</code></p>
+<p><strong>Module:</strong> <code>Stele.PEG</code></p>
 <p>The parser is built entirely from first principles — no Megaparsec, no Happy,
 no Alex. It implements a <strong>Parsing Expression Grammar (PEG)</strong> engine with:</p>
 <ul>
@@ -205,10 +205,10 @@ maps a rule name to a parsing expression. The combinators include:</p>
 </ul>
 <p>The parser produces a parse tree, which is then transformed into an AST.</p>
 <h2 id="stage-2-ast-construction"><a class="header" href="#stage-2-ast-construction">Stage 2: AST Construction</a></h2>
-<p><strong>Module:</strong> <code>Badlang.Grammar</code> + <code>Badlang.AST</code></p>
-<p>The grammar module defines the badlang grammar using the PEG combinator EDSL
+<p><strong>Module:</strong> <code>Stele.Grammar</code> + <code>Stele.AST</code></p>
+<p>The grammar module defines the Stele grammar using the PEG combinator EDSL
 and provides functions to convert parse trees into typed AST nodes.</p>
-<p>The AST types (defined in <code>Badlang.AST</code>) include:</p>
+<p>The AST types (defined in <code>Stele.AST</code>) include:</p>
 <ul>
 <li><code>Program</code> — a list of declarations</li>
 <li><code>Decl</code> — struct, fn, or do</li>
@@ -217,7 +217,7 @@ and provides functions to convert parse trees into typed AST nodes.</p>
 <li><code>Stmt</code> — do statements (print, write, let, expression)</li>
 </ul>
 <h2 id="stage-3-type-checking"><a class="header" href="#stage-3-type-checking">Stage 3: Type Checking</a></h2>
-<p><strong>Module:</strong> <code>Badlang.Types</code></p>
+<p><strong>Module:</strong> <code>Stele.Types</code></p>
 <p>The type checker implements <strong>Algorithm W</strong> extended with <strong>Remy-style row
 types</strong>. It works in two passes:</p>
 <ol>
@@ -240,7 +240,7 @@ pairwise</li>
 </ul>
 <p>Type errors are reported with the expression that caused the mismatch.</p>
 <h2 id="stage-4-lowering-to-ir"><a class="header" href="#stage-4-lowering-to-ir">Stage 4: Lowering to IR</a></h2>
-<p><strong>Module:</strong> <code>Badlang.IR</code> + <code>Badlang.Lower</code></p>
+<p><strong>Module:</strong> <code>Stele.IR</code> + <code>Stele.Lower</code></p>
 <p>The lowering pass transforms the typed AST into an explicit intermediate
 representation with basic blocks, named temporaries, and flat instructions.
 Pattern matching, match expressions, and let-in chains are all resolved at
@@ -258,20 +258,20 @@ result variable written by whichever branch succeeds.</li>
 </ul>
 <h2 id="stage-5-code-generation"><a class="header" href="#stage-5-code-generation">Stage 5: Code Generation</a></h2>
 <h3 id="c-backend"><a class="header" href="#c-backend">C Backend</a></h3>
-<p><strong>Module:</strong> <code>Badlang.EmitC</code></p>
+<p><strong>Module:</strong> <code>Stele.EmitC</code></p>
 <p>The C backend translates the IR into a single, self-contained C99 source file
 with an embedded runtime. Each IR instruction maps to one or two lines of C,
 and basic blocks become labeled sections with <code>goto</code>. See the
 <a href="./codegen.html">C Code Generation</a> chapter for details.</p>
 <h3 id="aarch64-backend"><a class="header" href="#aarch64-backend">AArch64 Backend</a></h3>
-<p><strong>Module:</strong> <code>Badlang.EmitAArch64</code></p>
+<p><strong>Module:</strong> <code>Stele.EmitAArch64</code></p>
 <p>The AArch64 backend emits Apple Silicon assembly (<code>.s</code> files). All IR
 variables are stored on the stack using a fixed-size frame per function.
 The generated assembly links against a separate C runtime
 (<code>runtime_aarch64.c</code>) that provides the same value representation and
 reference counting as the embedded C runtime.</p>
 <h2 id="stage-6-assembling-and-linking"><a class="header" href="#stage-6-assembling-and-linking">Stage 6: Assembling and Linking</a></h2>
-<p>The badlang CLI invokes the system C compiler (<code>cc</code>) to compile the generated
+<p>The Stele CLI invokes the system C compiler (<code>cc</code>) to compile the generated
 output into a binary:</p>
 <ul>
 <li><strong>C mode</strong> (default): <code>cc -o prog prog.c</code></li>
@@ -285,15 +285,15 @@ output into a binary:</p>
 <tr><th>Module</th><th>Role</th></tr>
 </thead>
 <tbody>
-<tr><td><code>Badlang.PEG</code></td><td>PEG parser generator — packrat parsing from scratch</td></tr>
-<tr><td><code>Badlang.AST</code></td><td>Abstract syntax tree data types</td></tr>
-<tr><td><code>Badlang.Grammar</code></td><td>Grammar definition + parse tree → AST</td></tr>
-<tr><td><code>Badlang.Types</code></td><td>Type inference with row polymorphism</td></tr>
-<tr><td><code>Badlang.IR</code></td><td>Intermediate representation (basic blocks + flat instructions)</td></tr>
-<tr><td><code>Badlang.Lower</code></td><td>AST → IR lowering pass</td></tr>
-<tr><td><code>Badlang.EmitC</code></td><td>C code generation from IR</td></tr>
-<tr><td><code>Badlang.EmitAArch64</code></td><td>AArch64 assembly generation from IR</td></tr>
-<tr><td><code>Badlang.Runtime</code></td><td>C runtime source for the native backend</td></tr>
+<tr><td><code>Stele.PEG</code></td><td>PEG parser generator — packrat parsing from scratch</td></tr>
+<tr><td><code>Stele.AST</code></td><td>Abstract syntax tree data types</td></tr>
+<tr><td><code>Stele.Grammar</code></td><td>Grammar definition + parse tree → AST</td></tr>
+<tr><td><code>Stele.Types</code></td><td>Type inference with row polymorphism</td></tr>
+<tr><td><code>Stele.IR</code></td><td>Intermediate representation (basic blocks + flat instructions)</td></tr>
+<tr><td><code>Stele.Lower</code></td><td>AST → IR lowering pass</td></tr>
+<tr><td><code>Stele.EmitC</code></td><td>C code generation from IR</td></tr>
+<tr><td><code>Stele.EmitAArch64</code></td><td>AArch64 assembly generation from IR</td></tr>
+<tr><td><code>Stele.Runtime</code></td><td>C runtime source for the native backend</td></tr>
 </tbody>
 </table>
 </div>

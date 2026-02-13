@@ -34,14 +34,14 @@
 --   Left err    -> putStrLn ("Type error: " ++ err)
 --   Right prog  -> ...  -- proceed to code generation
 -- @
-module Badlang.Types
+module Stele.Types
   ( -- * Type Checking
     typeCheck
     -- * Error Type
   , TypeError
   ) where
 
-import           Badlang.AST
+import           Stele.AST
 import qualified Data.Map.Strict as Map
 import           Data.Map.Strict (Map)
 import           Data.IORef
@@ -54,7 +54,7 @@ import           System.IO.Unsafe (unsafePerformIO)
 -- | A human-readable type error message.
 type TypeError = String
 
--- | Types in badlang.
+-- | Types in Stele.
 data Type
   = TInt                              -- ^ Integer
   | TStr                              -- ^ String
@@ -546,7 +546,7 @@ inferStmts env (s:ss) = do
 -- Top-level type checking
 -- ---------------------------------------------------------------------------
 
--- | Type-check a complete badlang program.
+-- | Type-check a complete Stele program.
 --
 -- Validates all declarations: checks that fn bodies are consistent
 -- with their pattern types, struct fields are well-formed, and do

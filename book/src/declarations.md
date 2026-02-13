@@ -1,6 +1,6 @@
 # Declarations
 
-A badlang program is a sequence of top-level declarations. There are exactly
+A Stele program is a sequence of top-level declarations. There are exactly
 three kinds:
 
 | Declaration | Purpose |

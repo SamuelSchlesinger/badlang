@@ -1,15 +1,15 @@
 -- | Lowering pass: AST to IR.
 --
--- Transforms a typed badlang 'Program' into an 'IRProgram'. This pass
+-- Transforms a typed Stele 'Program' into an 'IRProgram'. This pass
 -- resolves all pattern matching, match expressions, and let-in chains
 -- into flat instructions and basic block control flow, so that backends
 -- (C and AArch64) are purely mechanical translations.
-module Badlang.Lower
+module Stele.Lower
   ( lowerProgram
   ) where
 
-import Badlang.AST
-import Badlang.IR
+import Stele.AST
+import Stele.IR
 
 import Control.Monad.Trans.State.Strict (State, evalState, get, modify')
 import qualified Data.Set as Set
@@ -73,14 +73,14 @@ collectBlocks = do
 
 cName :: String -> String
 cName "arg" = "arg"
-cName name  = "bl_" ++ name
+cName name  = "stele_" ++ name
 
 
 -- ---------------------------------------------------------------------------
 -- Program lowering
 -- ---------------------------------------------------------------------------
 
--- | Lower a complete badlang program to IR.
+-- | Lower a complete Stele program to IR.
 lowerProgram :: Program -> IRProgram
 lowerProgram (Program decls) = evalState go initState
   where

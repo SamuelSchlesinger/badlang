@@ -973,11 +973,11 @@ fn parse_stmt
       case "print" =>
         let rest1 = advance {| tokens: tokens |}
         let r = parse_expr {| tokens: rest1 |}
-        {| node: {| tag: "stmt_bl_print", value: r.node |}, rest: r.rest |}
+        {| node: {| tag: "stmt_stele_print", value: r.node |}, rest: r.rest |}
       case "write" =>
         let rest1 = advance {| tokens: tokens |}
         let r = parse_expr {| tokens: rest1 |}
-        {| node: {| tag: "stmt_bl_write", value: r.node |}, rest: r.rest |}
+        {| node: {| tag: "stmt_stele_write", value: r.node |}, rest: r.rest |}
       case _ =>
         let r = parse_expr {| tokens: tokens |}
         {| node: {| tag: "stmt_expr", value: r.node |}, rest: r.rest |}
@@ -1148,12 +1148,12 @@ fn c_string
     concat {| a: s1, b: q |}
 end
 
--- Mangle a badlang identifier for C (bl_ prefix, except "arg")
+-- Mangle a Stele identifier for C (stele_ prefix, except "arg")
 fn c_name
   case {| name |} =>
     match str_eq {| a: name, b: "arg" |}
       case 1 => "arg"
-      case 0 => concat {| a: "bl_", b: name |}
+      case 0 => concat {| a: "stele_", b: name |}
     end
 end
 
@@ -1906,9 +1906,9 @@ fn emit_stmt
         let s5 = concat {| a: s4, b: ";" |}
         let code = concat {| a: s5, b: n |}
         {| code: code, counter: r.counter |}
-      case "stmt_bl_print" =>
+      case "stmt_stele_print" =>
         let r = emit_expr {| node: stmt.value, counter: counter |}
-        let s1 = concat {| a: r.code, b: "bl_print(" |}
+        let s1 = concat {| a: r.code, b: "stele_print(" |}
         let s2 = concat {| a: s1, b: r.var |}
         let s3 = concat {| a: s2, b: ");" |}
         let s4 = concat {| a: s3, b: n |}
@@ -1917,9 +1917,9 @@ fn emit_stmt
         let s7 = concat {| a: s6, b: ");" |}
         let code = concat {| a: s7, b: n |}
         {| code: code, counter: r.counter |}
-      case "stmt_bl_write" =>
+      case "stmt_stele_write" =>
         let r = emit_expr {| node: stmt.value, counter: counter |}
-        let s1 = concat {| a: r.code, b: "bl_write(" |}
+        let s1 = concat {| a: r.code, b: "stele_write(" |}
         let s2 = concat {| a: s1, b: r.var |}
         let s3 = concat {| a: s2, b: ");" |}
         let s4 = concat {| a: s3, b: n |}
@@ -2870,7 +2870,7 @@ fn emit_match_asm
     let mf5 = concat {| a: mf4, b: mf_sr.label |}
     let mf6 = concat {| a: mf5, b: "@PAGEOFF" |}
     let mf7 = concat {| a: mf6, b: n |}
-    let mf8 = concat {| a: mf7, b: asm_ln {| s: "  bl _badlang_match_fail" |} |}
+    let mf8 = concat {| a: mf7, b: asm_ln {| s: "  bl _stele_match_fail" |} |}
     let rl = emit_load_slot {| slot: scr_r.slot, reg: "x0" |}
     let s1 = concat {| a: rs.code, b: ls |}
     let s2 = concat {| a: s1, b: ss |}
@@ -2969,7 +2969,7 @@ fn emit_fn_asm
     let mf5 = concat {| a: mf4, b: mf_sr.label |}
     let mf6 = concat {| a: mf5, b: "@PAGEOFF" |}
     let mf7 = concat {| a: mf6, b: n |}
-    let mf8 = concat {| a: mf7, b: asm_ln {| s: "  bl _badlang_match_fail" |} |}
+    let mf8 = concat {| a: mf7, b: asm_ln {| s: "  bl _stele_match_fail" |} |}
     let l1 = concat {| a: ".globl _fn_", b: name |}
     let l2 = concat {| a: l1, b: n |}
     let l3 = concat {| a: l2, b: "_fn_" |}
@@ -2997,22 +2997,22 @@ fn emit_stmt_asm
         let vs = lookup_slot {| name: r.var, slots: r.state.slots |}
         let ns = cons {| head: {| name: cn, slot: vs |}, tail: r.state.slots |}
         {| code: r.code, state: {| counter: r.state.counter, slot_counter: r.state.slot_counter, slots: ns, strs: r.state.strs |} |}
-      case "stmt_bl_print" =>
+      case "stmt_stele_print" =>
         let r = emit_expr_asm {| node: stmt.value, state: state |}
         let vs = lookup_slot {| name: r.var, slots: r.state.slots |}
         let load = emit_load_slot {| slot: vs, reg: "x0" |}
         let rload = emit_load_slot {| slot: vs, reg: "x0" |}
         let s1 = concat {| a: r.code, b: load |}
-        let s2 = concat {| a: s1, b: asm_ln {| s: "  bl _bl_print" |} |}
+        let s2 = concat {| a: s1, b: asm_ln {| s: "  bl _stele_print" |} |}
         let s3 = concat {| a: s2, b: rload |}
         {| code: concat {| a: s3, b: asm_ln {| s: "  bl _rc_release" |} |}, state: r.state |}
-      case "stmt_bl_write" =>
+      case "stmt_stele_write" =>
         let r = emit_expr_asm {| node: stmt.value, state: state |}
         let vs = lookup_slot {| name: r.var, slots: r.state.slots |}
         let load = emit_load_slot {| slot: vs, reg: "x0" |}
         let rload = emit_load_slot {| slot: vs, reg: "x0" |}
         let s1 = concat {| a: r.code, b: load |}
-        let s2 = concat {| a: s1, b: asm_ln {| s: "  bl _bl_write" |} |}
+        let s2 = concat {| a: s1, b: asm_ln {| s: "  bl _stele_write" |} |}
         let s3 = concat {| a: s2, b: rload |}
         {| code: concat {| a: s3, b: asm_ln {| s: "  bl _rc_release" |} |}, state: r.state |}
       case "stmt_expr" =>

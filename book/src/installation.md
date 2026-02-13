@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-To build the badlang compiler, you need:
+To build the Stele compiler, you need:
 
 - **GHC** 9.6 or later (the Glasgow Haskell Compiler)
 - **Cabal** 3.10 or later (the Haskell build tool)
@@ -26,24 +26,24 @@ Clone the repository and build:
 
 ```bash
 git clone <repository-url>
-cd badlang
+cd Stele
 cabal build
 ```
 
-This compiles the badlang compiler. You can verify it works:
+This compiles the Stele compiler. You can verify it works:
 
 ```bash
-cabal run badlang
+cabal run stele
 ```
 
 This prints usage information if no arguments are case.
 
 ## Compiling Programs
 
-To compile a `.bad` source file to C:
+To compile a `.stele` source file to C:
 
 ```bash
-cabal run badlang -- examples/hello.bad
+cabal run stele -- examples/hello.bad
 ```
 
 This produces `examples/hello.c`. You can then compile it manually:
@@ -59,7 +59,7 @@ The `--run` flag compiles to C, invokes the C compiler, and runs the
 resulting binary in one step:
 
 ```bash
-cabal run badlang -- --run examples/hello.bad
+cabal run stele -- --run examples/hello.bad
 ```
 
 Output:

@@ -14,7 +14,7 @@ end
 
 ## The Main Do Block
 
-Every executable badlang program must have a `do main`:
+Every executable Stele program must have a `do main`:
 
 ```
 do main
@@ -114,7 +114,7 @@ end
 
 ```
 do main
-  print "=== badlang IO demo ==="
+  print "=== Stele IO demo ==="
 
   print "What is your name?"
   write "> "

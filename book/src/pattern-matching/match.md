@@ -16,7 +16,7 @@ end
 
 ## Why match?
 
-badlang has no `if`/`else`. Instead, `match` fills that role and more. Since
+Stele has no `if`/`else`. Instead, `match` fills that role and more. Since
 comparison operators return integers (`1` for true, `0` for false), you can
 use `match` to branch on conditions:
 

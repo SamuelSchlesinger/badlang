@@ -1,6 +1,6 @@
 # Structural Subtyping
 
-Structural subtyping is one of badlang's defining features. It means that a
+Structural subtyping is one of Stele's defining features. It means that a
 function accepting `{| x, y |}` will work with *any* record that has at least
 those fields — regardless of what other fields are present.
 

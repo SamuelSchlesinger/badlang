@@ -1,10 +1,10 @@
--- | The grammar of badlang, defined as a first-class PEG value,
+-- | The grammar of Stele, defined as a first-class PEG value,
 -- and the machinery to transform concrete parse trees into typed ASTs.
 --
 -- = Grammar Overview
 --
--- The grammar is built using the combinator EDSL from "Badlang.PEG".
--- It defines the complete surface syntax of badlang:
+-- The grammar is built using the combinator EDSL from "Stele.PEG".
+-- It defines the complete surface syntax of Stele:
 --
 -- * __Declarations:__ @struct@, @fn@, @do@, @oneof@ (each terminated by @end@)
 -- * __Expressions:__ arithmetic, comparisons, boolean operators, records
@@ -19,13 +19,13 @@
 --
 -- = Parse Tree to AST
 --
--- The second half of this module converts the concrete 'Badlang.PEG.ParseTree'
--- produced by the PEG parser into the typed 'Badlang.AST.Program' AST.
+-- The second half of this module converts the concrete 'Stele.PEG.ParseTree'
+-- produced by the PEG parser into the typed 'Stele.AST.Program' AST.
 -- This conversion handles:
 --
 -- * Unwrapping labeled nodes and wrapper rules
--- * Building operator chains into left-associative 'Badlang.AST.BinOp' trees
--- * Desugaring sequential @let@ bindings into nested 'Badlang.AST.LetIn'
+-- * Building operator chains into left-associative 'Stele.AST.BinOp' trees
+-- * Desugaring sequential @let@ bindings into nested 'Stele.AST.LetIn'
 -- * Extracting record fields and pattern fields from their parse tree form
 --
 -- = Entry Point
@@ -37,15 +37,15 @@
 --   Left err  -> putStrLn ("Parse error: " ++ err)
 --   Right ast -> ...  -- proceed to type checking
 -- @
-module Badlang.Grammar
+module Stele.Grammar
   ( -- * Grammar
-    badlangGrammar
+    steleGrammar
     -- * Parsing
   , parseProgram
   ) where
 
-import           Badlang.PEG
-import           Badlang.AST
+import           Stele.PEG
+import           Stele.AST
 import qualified Data.Map.Strict as Map
 import           Data.Char (isUpper)
 
@@ -63,13 +63,13 @@ keywords = [ "struct", "fn", "do", "case", "end"
 kw :: String -> PExpr
 kw s = seq_ [lit s, notP letterOrDigit]
 
--- | The complete badlang grammar, expressed as a 'Grammar' value.
+-- | The complete Stele grammar, expressed as a 'Grammar' value.
 --
--- This is the single source of truth for badlang's surface syntax. Every
+-- This is the single source of truth for Stele's surface syntax. Every
 -- syntactic construct — from struct declarations to nested match expressions —
--- is defined here using the PEG combinator EDSL from "Badlang.PEG".
-badlangGrammar :: Grammar
-badlangGrammar = Map.fromList
+-- is defined here using the PEG combinator EDSL from "Stele.PEG".
+steleGrammar :: Grammar
+steleGrammar = Map.fromList
 
   -- ── Program ──────────────────────────────────────────────────────────
   [ ("program", ws <.> many (label "decl" (rule "decl") <.> ws))
@@ -342,15 +342,15 @@ badlangGrammar = Map.fromList
 -- Parse Tree → AST
 -- ---------------------------------------------------------------------------
 
--- | Parse a badlang source string into a typed AST.
+-- | Parse a Stele source string into a typed AST.
 --
 -- This is the main entry point for parsing. It runs the PEG parser with
--- 'badlangGrammar', then converts the resulting parse tree into a
+-- 'steleGrammar', then converts the resulting parse tree into a
 -- 'Program'. Returns 'Left' with an error message on parse failure or
 -- AST conversion failure.
 parseProgram :: String -> Either String Program
 parseProgram input = do
-  tree <- parse badlangGrammar input "program"
+  tree <- parse steleGrammar input "program"
   treeToProgram tree
 
 -- | Convert a parse tree to a Program.

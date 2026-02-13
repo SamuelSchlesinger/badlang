@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Recursion - The Badlang Book</title>
+        <title>Recursion - The Stele Book</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-114a12be.js";
+            window.path_to_searchindex_js = "searchindex-babbe00e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-e4e73581.js"></script>
+        <script src="toc-29fcd749.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -137,7 +137,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">The Badlang Book</h1>
+                    <h1 class="menu-title">The Stele Book</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -175,7 +175,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="recursion"><a class="header" href="#recursion">Recursion</a></h1>
-<p>Since badlang has no loops, recursion is the only way to repeat computation.
+<p>Since Stele has no loops, recursion is the only way to repeat computation.
 This chapter covers common recursion patterns.</p>
 <h2 id="simple-recursion"><a class="header" href="#simple-recursion">Simple Recursion</a></h2>
 <p>The classic factorial:</p>
@@ -280,7 +280,7 @@ end
 </code></pre>
 <p>Three clauses, each matching a different combination of base cases and
 recursive cases. The nested call in the third clause demonstrates how
-badlang handles deeply recursive computations.</p>
+Stele handles deeply recursive computations.</p>
 <h2 id="evenodd-via-mutual-recursion"><a class="header" href="#evenodd-via-mutual-recursion">Even/Odd via Mutual Recursion</a></h2>
 <p>A simple but illustrative example:</p>
 <pre><code>fn is_even
@@ -302,7 +302,7 @@ the most common termination condition.</li>
 <li><strong>Use the accumulator pattern</strong> when you’re building up a result
 incrementally. Thread an <code>acc</code> field through the recursive calls.</li>
 <li><strong>Pattern order matters.</strong> Put base cases first, recursive cases second.</li>
-<li><strong>Keep recursion depth reasonable.</strong> badlang compiles to C without tail-call
+<li><strong>Keep recursion depth reasonable.</strong> Stele compiles to C without tail-call
 optimization, so very deep recursion (millions of frames) will overflow the
 stack.</li>
 </ul>

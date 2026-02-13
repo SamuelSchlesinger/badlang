@@ -1,6 +1,6 @@
 # Operators
 
-badlang supports arithmetic, comparison, and boolean operators. All binary
+Stele supports arithmetic, comparison, and boolean operators. All binary
 operators are infix and left-associative.
 
 ## Arithmetic Operators
@@ -78,4 +78,4 @@ fn abs
 end
 ```
 
-This is the idiomatic way to write conditional logic in badlang.
+This is the idiomatic way to write conditional logic in Stele.

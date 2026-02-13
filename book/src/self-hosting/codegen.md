@@ -36,7 +36,7 @@ scrutinees, `_dvn0` for match results, and `_done0` for goto labels.
 
 ## Identifier Mangling
 
-The `c_name` fn prefixes badlang identifiers with `bl_` to avoid collisions
+The `c_name` fn prefixes Stele identifiers with `stele_` to avoid collisions
 with C keywords. The special name `arg` (the fn parameter) is left unmangled
 since it matches the generated C function signature.
 
@@ -49,7 +49,7 @@ field and delegates to specialized emitters:
 |---------|---------|-------------|
 | `int_lit` | `emit_int_lit` | `make_int(42)` |
 | `str_lit` | `emit_str_lit` | `make_str("hello")` |
-| `var` | `emit_var` | `bl_x; rc_retain(bl_x)` |
+| `var` | `emit_var` | `stele_x; rc_retain(stele_x)` |
 | `binop` | `emit_binop` | Emit both sides, apply op, release operands |
 | `unop` | `emit_unop` | Emit operand, negate |
 | `field_access` | `emit_field_access` | `record_field(obj, "name")` + retain |
@@ -70,11 +70,11 @@ released in reverse order after the body:
 // let x = 1
 // let y = x + 1
 // x * y
-Value* bl_x = make_int(1);
-Value* bl_y = make_int(bl_x->int_val + make_int(1)->int_val);
+Value* stele_x = make_int(1);
+Value* stele_y = make_int(stele_x->int_val + make_int(1)->int_val);
 /* ... body code ... */
-rc_release(bl_y);
-rc_release(bl_x);
+rc_release(stele_y);
+rc_release(stele_x);
 ```
 
 This avoids nested `{ }` blocks, keeping the generated C flat regardless of how
@@ -106,7 +106,7 @@ For each field in a record pattern, the emitter generates:
 
 ```c
 Value* _f_x = record_field(arg, "x");
-Value* bl_x = _f_x;
+Value* stele_x = _f_x;
 ```
 
 The condition checks that `_f_x != NULL` (the field exists). For literal
@@ -173,7 +173,7 @@ The self-hosting compiler also includes an AArch64 native code generator,
 activated by passing `asm` as the third command-line argument:
 
 ```
-compiler source.bad output.s asm
+compiler source.stele output.s asm
 ```
 
 ### Emitter State

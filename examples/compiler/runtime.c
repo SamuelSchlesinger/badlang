@@ -3,7 +3,7 @@
 #include <string.h>
 #include <stdint.h>
 
-/* ── badlang runtime (reference counted) ────────────────────── */
+/* ── stele runtime (reference counted) ────────────────────── */
 
 typedef enum { TAG_INT, TAG_STR, TAG_RECORD, TAG_VOID } Tag;
 
@@ -92,7 +92,7 @@ static Value* record_field(Value* rec, const char* name) {
     return NULL;
 }
 
-static void bl_print(Value* v) {
+static void stele_print(Value* v) {
     switch (v->tag) {
         case TAG_INT:    printf("%lld\n", (long long)v->int_val); break;
         case TAG_STR:    printf("%s\n", v->str_val); break;
@@ -102,7 +102,7 @@ static void bl_print(Value* v) {
             for (int i = 0; i < v->record.num_fields; i++) {
                 if (i > 0) printf(", ");
                 printf("%s: ", v->record.fields[i].name);
-                bl_print(v->record.fields[i].value);
+                stele_print(v->record.fields[i].value);
             }
             printf(" |}");
             break;
@@ -110,7 +110,7 @@ static void bl_print(Value* v) {
     }
 }
 
-static void bl_write(Value* v) {
+static void stele_write(Value* v) {
     switch (v->tag) {
         case TAG_INT:    printf("%lld", (long long)v->int_val); break;
         case TAG_STR:    printf("%s", v->str_val); break;
@@ -120,7 +120,7 @@ static void bl_write(Value* v) {
             for (int i = 0; i < v->record.num_fields; i++) {
                 if (i > 0) printf(", ");
                 printf("%s: ", v->record.fields[i].name);
-                bl_write(v->record.fields[i].value);
+                stele_write(v->record.fields[i].value);
             }
             printf(" |}");
             break;
@@ -141,7 +141,7 @@ static Value* runtime_readln(void) {
 static Value* runtime_readint(void) {
     long long n = 0;
     if (scanf("%lld", &n) != 1) {
-        fprintf(stderr, "badlang: readint failed to read integer\n");
+        fprintf(stderr, "stele: readint failed to read integer\n");
         exit(1);
     }
     int c = getchar(); (void)c;
@@ -156,12 +156,12 @@ static char** g_argv = NULL;
 static Value* fn_unearth(Value* arg) {
     Value* pathVal = record_field(arg, "path");
     if (!pathVal || pathVal->tag != TAG_STR) {
-        fprintf(stderr, "badlang: unearth requires path: String\n");
+        fprintf(stderr, "stele: unearth requires path: String\n");
         exit(1);
     }
     FILE* f = fopen(pathVal->str_val, "r");
     if (!f) {
-        fprintf(stderr, "badlang: unearth cannot open '%s'\n", pathVal->str_val);
+        fprintf(stderr, "stele: unearth cannot open '%s'\n", pathVal->str_val);
         exit(1);
     }
     fseek(f, 0, SEEK_END);
@@ -181,12 +181,12 @@ static Value* fn_inscribe(Value* arg) {
     Value* contentVal = record_field(arg, "content");
     if (!pathVal || pathVal->tag != TAG_STR ||
         !contentVal || contentVal->tag != TAG_STR) {
-        fprintf(stderr, "badlang: inscribe requires path: String, content: String\n");
+        fprintf(stderr, "stele: inscribe requires path: String, content: String\n");
         exit(1);
     }
     FILE* f = fopen(pathVal->str_val, "w");
     if (!f) {
-        fprintf(stderr, "badlang: inscribe cannot open '%s'\n", pathVal->str_val);
+        fprintf(stderr, "stele: inscribe cannot open '%s'\n", pathVal->str_val);
         exit(1);
     }
     fputs(contentVal->str_val, f);
@@ -202,12 +202,12 @@ static Value* fn_argc(Value* arg) {
 static Value* fn_argv(Value* arg) {
     Value* nVal = record_field(arg, "n");
     if (!nVal || nVal->tag != TAG_INT) {
-        fprintf(stderr, "badlang: argv requires n: Int\n");
+        fprintf(stderr, "stele: argv requires n: Int\n");
         exit(1);
     }
     int idx = (int)nVal->int_val;
     if (idx < 0 || idx >= g_argc) {
-        fprintf(stderr, "badlang: argv index %d out of bounds (argc=%d)\n", idx, g_argc);
+        fprintf(stderr, "stele: argv index %d out of bounds (argc=%d)\n", idx, g_argc);
         exit(1);
     }
     return make_str(g_argv[idx]);

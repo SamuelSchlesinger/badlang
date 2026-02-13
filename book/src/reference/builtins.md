@@ -1,6 +1,6 @@
 # Built-in Functions
 
-badlang provides several built-in functions for I/O and system interaction.
+Stele provides several built-in functions for I/O and system interaction.
 These are implemented in the C runtime and available in every program.
 
 ## Console I/O
@@ -56,7 +56,7 @@ Write a string to a file.
 - **Behavior:** Creates or overwrites the file with the case content.
 
 ```
-inscribe {| path: "output.txt", content: "Hello from badlang!" |}
+inscribe {| path: "output.txt", content: "Hello from Stele!" |}
 ```
 
 ## Command-Line Arguments

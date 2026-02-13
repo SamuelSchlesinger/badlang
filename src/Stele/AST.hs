@@ -1,6 +1,6 @@
--- | The Abstract Syntax Tree of badlang.
+-- | The Abstract Syntax Tree of Stele.
 --
--- A badlang program is a sequence of top-level declarations ('Decl'), each
+-- A Stele program is a sequence of top-level declarations ('Decl'), each
 -- of which is one of:
 --
 -- * __Struct__ ('StructDecl') — a named record type with typed fields.
@@ -13,7 +13,7 @@
 --
 -- = Core Design
 --
--- All functions in badlang take a single structural record as their argument.
+-- All functions in Stele take a single structural record as their argument.
 -- Pattern matching (@case@ clauses) is the only mechanism for inspecting
 -- data. Combined with structural subtyping, this means a fn that
 -- pattern-matches @{| x, y |}@ will accept any record with /at least/
@@ -24,7 +24,7 @@
 -- The 'Expr' type covers integer and string literals, variables, binary
 -- and unary operations, record construction, field access, function
 -- invocation, let bindings, and inline pattern matching (@match@).
-module Badlang.AST
+module Stele.AST
   ( -- * Program Structure
     Program(..)
   , Decl(..)
@@ -42,7 +42,7 @@ module Badlang.AST
   , TypeAnn(..)
   ) where
 
--- | A complete badlang program.
+-- | A complete Stele program.
 newtype Program = Program [Decl]
   deriving (Show, Eq)
 

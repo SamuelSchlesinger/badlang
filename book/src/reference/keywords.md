@@ -1,6 +1,6 @@
 # Keyword Reference
 
-All reserved keywords in badlang.
+All reserved keywords in Stele.
 
 ## Declaration Keywords
 

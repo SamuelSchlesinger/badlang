@@ -121,7 +121,7 @@ never be reached.
 
 ## Width Subtyping in Patterns
 
-A key feature of badlang's pattern matching is that record patterns only
+A key feature of Stele's pattern matching is that record patterns only
 specify the **minimum required fields**. A pattern `{| x, y |}` matches any
 record with at least `x` and `y`, regardless of additional fields:
 

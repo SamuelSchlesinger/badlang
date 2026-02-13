@@ -1,4 +1,4 @@
--- | AArch64 (Apple Silicon) assembly code generator for badlang.
+-- | AArch64 (Apple Silicon) assembly code generator for Stele.
 --
 -- Consumes the IR and emits a @.s@ file suitable for assembling and
 -- linking with the C runtime via @cc@.
@@ -12,11 +12,11 @@
 -- * 16-byte stack alignment at all times
 -- * Frame pointer (x29) and link register (x30) saved on entry
 -- * Global data accessed via @adrp@/@add@ or GOT
-module Badlang.EmitAArch64
+module Stele.EmitAArch64
   ( emitAArch64
   ) where
 
-import Badlang.IR
+import Stele.IR
 import qualified Data.Map.Strict as Map
 import Data.Map.Strict (Map)
 import Control.Monad.Trans.State.Strict (State, execState, get, modify')
@@ -415,11 +415,11 @@ emitInstrAsm (IStrEq v op s) = do
 
 emitInstrAsm (IPrint v) = do
   loadVar v "x0"
-  line "  bl _bl_print"
+  line "  bl _stele_print"
 
 emitInstrAsm (IWrite v) = do
   loadVar v "x0"
-  line "  bl _bl_write"
+  line "  bl _stele_write"
 
 emitInstrAsm (IReadLn v) = do
   line "  bl _runtime_readln"
@@ -463,7 +463,7 @@ emitTermAsm (TMatchFail msg) = do
   lbl <- addMatchStr msg
   line $ "  adrp x0, " ++ lbl ++ "@PAGE"
   line $ "  add x0, x0, " ++ lbl ++ "@PAGEOFF"
-  line "  bl _badlang_match_fail"
+  line "  bl _stele_match_fail"
 
 -- ---------------------------------------------------------------------------
 -- Helper: binary operations

@@ -8,12 +8,12 @@
 #
 # C mode:
 #   gen0: Haskell compiler -> compiler.c -> gen0 binary
-#   gen1+: genN-1 compiler.bad genN.c -> cc genN.c -> genN binary
+#   gen1+: genN-1 compiler.stele genN.c -> cc genN.c -> genN binary
 #   verify: gen1.c == gen2.c == ... == genN.c
 #
 # ASM mode:
 #   gen0: Haskell compiler -> compiler.c -> gen0 binary (always via C)
-#   gen1+: genN-1 compiler.bad genN.s asm -> cc genN.s + runtime_aarch64.c -> genN
+#   gen1+: genN-1 compiler.stele genN.s asm -> cc genN.s + runtime_aarch64.c -> genN
 #   verify: gen1.s == gen2.s == ... == genN.s
 
 set -euo pipefail
@@ -21,7 +21,7 @@ set -euo pipefail
 N="${1:-3}"
 MODE="${2:-c}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-COMPILER_SRC="$SCRIPT_DIR/compiler.bad"
+COMPILER_SRC="$SCRIPT_DIR/compiler.stele"
 RUNTIME_C="$SCRIPT_DIR/runtime.c"
 RUNTIME_AARCH64="$SCRIPT_DIR/../../runtime/runtime_aarch64.c"
 WORK_DIR=$(mktemp -d)
@@ -42,7 +42,7 @@ if [[ "$(uname)" == "Darwin" ]]; then
     CC_FLAGS="$CC_FLAGS -Wl,-stack_size,0x10000000"  # 256MB stack
 fi
 
-echo "=== Badlang Bootstrap Test ==="
+echo "=== Stele Bootstrap Test ==="
 echo "Generations: $N"
 echo "Mode: $MODE"
 echo "Source: $COMPILER_SRC"
@@ -50,8 +50,8 @@ echo "Work dir: $WORK_DIR"
 echo ""
 
 # Step 0: Build gen0 using the Haskell reference compiler (always C)
-echo "[gen0] Compiling compiler.bad with Haskell compiler..."
-(cd "$SCRIPT_DIR/../.." && cabal run badlang -- "$COMPILER_SRC") >/dev/null 2>&1
+echo "[gen0] Compiling compiler.stele with Haskell compiler..."
+(cd "$SCRIPT_DIR/../.." && cabal run stele -- "$COMPILER_SRC") >/dev/null 2>&1
 cp "$SCRIPT_DIR/compiler.c" "$WORK_DIR/gen0.c"
 cc $CC_FLAGS -o "$WORK_DIR/gen0" "$WORK_DIR/gen0.c"
 echo "[gen0] OK"
@@ -66,7 +66,7 @@ fi
 # Step 1..N: Each generation compiles the source
 prev="$WORK_DIR/gen0"
 for i in $(seq 1 "$N"); do
-    echo "[gen$i] Compiling compiler.bad with gen$((i-1))..."
+    echo "[gen$i] Compiling compiler.stele with gen$((i-1))..."
     if [[ "$MODE" == "asm" ]]; then
         (cd "$SCRIPT_DIR" && "$prev" "$COMPILER_SRC" "$WORK_DIR/gen${i}.s" asm)
         cc $CC_FLAGS -o "$WORK_DIR/gen${i}" "$WORK_DIR/gen${i}.s" "$RUNTIME_AARCH64"
@@ -93,8 +93,8 @@ done
 
 # Smoke test: compile a simple program with the final generation
 echo ""
-echo "=== Smoke Test (gen$N compiles hello.bad) ==="
-HELLO_SRC="$SCRIPT_DIR/../hello.bad"
+echo "=== Smoke Test (gen$N compiles hello.stele) ==="
+HELLO_SRC="$SCRIPT_DIR/../hello.stele"
 if [ -f "$HELLO_SRC" ]; then
     if [[ "$MODE" == "asm" ]]; then
         (cd "$SCRIPT_DIR" && "$WORK_DIR/gen${N}" "$HELLO_SRC" "$WORK_DIR/hello.s" asm)
@@ -114,7 +114,7 @@ if [ -f "$HELLO_SRC" ]; then
         FIXED=false
     fi
 else
-    echo "Skipped (hello.bad not found)"
+    echo "Skipped (hello.stele not found)"
 fi
 
 echo ""

@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Introduction - The Badlang Book</title>
+        <title>Introduction - The Stele Book</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-114a12be.js";
+            window.path_to_searchindex_js = "searchindex-babbe00e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-e4e73581.js"></script>
+        <script src="toc-29fcd749.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -137,7 +137,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">The Badlang Book</h1>
+                    <h1 class="menu-title">The Stele Book</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -175,14 +175,14 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
-<p><strong>badlang</strong> is an experimental programming language built on structural pattern matching.</p>
+<p><strong>Stele</strong> is an experimental programming language built on structural pattern matching.</p>
 <p>It is built from first principles — parser generator, grammar, type system, and
 C code generation — all implemented in Haskell with no external parsing
-libraries. badlang draws from pattern calculus and structural subtyping to
+libraries. Stele draws from pattern calculus and structural subtyping to
 create a language where <strong>pattern matching is the fundamental operation</strong> and
 all functions accept structural records.</p>
 <h2 id="philosophy"><a class="header" href="#philosophy">Philosophy</a></h2>
-<p>badlang is designed around a few core ideas:</p>
+<p>Stele is designed around a few core ideas:</p>
 <ul>
 <li>
 <p><strong>Records are the universal data structure.</strong> Every function takes a single
@@ -201,7 +201,7 @@ destructuring mechanism.</p>
 what other fields are present. Types are inferred, not declared.</p>
 </li>
 <li>
-<p><strong>Compilation to C and native code.</strong> badlang compiles to readable,
+<p><strong>Compilation to C and native code.</strong> Stele compiles to readable,
 self-contained C99 or directly to AArch64 assembly (Apple Silicon). The
 generated code can be inspected, debugged, and compiled with any C compiler.</p>
 </li>
@@ -224,13 +224,13 @@ effectful entry point. Functions are called by placing an argument after the
 function name. <code>print</code> prints a value. <code>{| ... |}</code> are record literals — the
 “pillars” that hold the language together.</p>
 <h2 id="what-this-book-covers"><a class="header" href="#what-this-book-covers">What This Book Covers</a></h2>
-<p>This book is a complete guide to the badlang language. It covers:</p>
+<p>This book is a complete guide to the Stele language. It covers:</p>
 <ul>
 <li>How to install the compiler and run your first program</li>
 <li>Every syntactic construct in the language</li>
 <li>The type system and how structural subtyping works</li>
 <li>Input and output: reading from stdin, writing files, command-line arguments</li>
-<li>Patterns and techniques for writing idiomatic badlang</li>
+<li>Patterns and techniques for writing idiomatic Stele</li>
 <li>How the compilation pipeline works under the hood</li>
 <li>A complete reference for all keywords, operators, and built-in functions</li>
 </ul>

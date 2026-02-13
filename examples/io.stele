@@ -1,5 +1,5 @@
 do main
-  print "=== badlang IO demo ==="
+  print "=== Stele IO demo ==="
 
   print "What is your name?"
   write "> "
@@ -20,7 +20,7 @@ do main
   print "Program name:"
   print argv {| n: 0 |}
 
-  inscribe {| path: "io_test.txt", content: "Written by badlang!" |}
+  inscribe {| path: "io_test.txt", content: "Written by Stele!" |}
   print "Wrote io_test.txt"
 
   let contents = unearth {| path: "io_test.txt" |}

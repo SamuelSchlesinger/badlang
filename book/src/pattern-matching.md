@@ -1,6 +1,6 @@
 # Pattern Matching
 
-Pattern matching is the fundamental operation in badlang. It is the only way
+Pattern matching is the fundamental operation in Stele. It is the only way
 to inspect values, the only way to branch, and the primary way to destructure
 records.
 

@@ -4,12 +4,12 @@ import System.Environment (getArgs)
 import System.IO (hPutStrLn, stderr)
 import System.Exit (exitFailure, exitWith, ExitCode(..))
 import System.Process (rawSystem)
-import Badlang.Grammar (parseProgram)
-import Badlang.Types (typeCheck)
-import Badlang.Lower (lowerProgram)
-import Badlang.EmitC (emitCFromIR)
-import Badlang.EmitAArch64 (emitAArch64)
-import Badlang.Runtime (runtimeSource)
+import Stele.Grammar (parseProgram)
+import Stele.Types (typeCheck)
+import Stele.Lower (lowerProgram)
+import Stele.EmitC (emitCFromIR)
+import Stele.EmitAArch64 (emitAArch64)
+import Stele.Runtime (runtimeSource)
 
 main :: IO ()
 main = do
@@ -20,13 +20,13 @@ main = do
     ["--run", file]             -> compileAndRun file
     [file]                      -> compile file
     _                           -> do
-      hPutStrLn stderr "badlang — a small language with structural records and sum types"
+      hPutStrLn stderr "stele — a small language with structural records and sum types"
       hPutStrLn stderr ""
       hPutStrLn stderr "Usage:"
-      hPutStrLn stderr "  badlang <source.bad>                Compile to C"
-      hPutStrLn stderr "  badlang --run <source.bad>          Compile to C, build, and run"
-      hPutStrLn stderr "  badlang --native <source.bad>       Compile to native (aarch64)"
-      hPutStrLn stderr "  badlang --native --run <source.bad> Compile native and run"
+      hPutStrLn stderr "  stele <source.stele>                Compile to C"
+      hPutStrLn stderr "  stele --run <source.stele>          Compile to C, build, and run"
+      hPutStrLn stderr "  stele --native <source.stele>       Compile to native (aarch64)"
+      hPutStrLn stderr "  stele --native --run <source.stele> Compile native and run"
       exitFailure
 
 compile :: FilePath -> IO ()

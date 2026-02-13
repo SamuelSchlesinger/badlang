@@ -5,7 +5,7 @@
 # Getting Started
 
 - [Installation](./installation.md)
-- [Hello, Badlang](./hello.md)
+- [Hello, Stele](./hello.md)
 
 # The Language
 

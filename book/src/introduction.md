@@ -1,16 +1,20 @@
 # Introduction
 
-**badlang** is an experimental programming language built on structural pattern matching.
+<p align="center">
+  <img src="../../logo.svg" alt="Stele logo" width="100"/>
+</p>
+
+**Stele** is an experimental programming language built on structural pattern matching.
 
 It is built from first principles — parser generator, grammar, type system, and
 C code generation — all implemented in Haskell with no external parsing
-libraries. badlang draws from pattern calculus and structural subtyping to
+libraries. Stele draws from pattern calculus and structural subtyping to
 create a language where **pattern matching is the fundamental operation** and
 all functions accept structural records.
 
 ## Philosophy
 
-badlang is designed around a few core ideas:
+Stele is designed around a few core ideas:
 
 - **Records are the universal data structure.** Every function takes a single
   record argument. There are no positional parameters, no tuples, no lists —
@@ -25,7 +29,7 @@ badlang is designed around a few core ideas:
   `x` and `y` will accept *any* record that has those fields, regardless of
   what other fields are present. Types are inferred, not declared.
 
-- **Compilation to C and native code.** badlang compiles to readable,
+- **Compilation to C and native code.** Stele compiles to readable,
   self-contained C99 or directly to AArch64 assembly (Apple Silicon). The
   generated code can be inspected, debugged, and compiled with any C compiler.
 
@@ -55,12 +59,12 @@ function name. `print` prints a value. `{| ... |}` are record literals — the
 
 ## What This Book Covers
 
-This book is a complete guide to the badlang language. It covers:
+This book is a complete guide to the Stele language. It covers:
 
 - How to install the compiler and run your first program
 - Every syntactic construct in the language
 - The type system and how structural subtyping works
 - Input and output: reading from stdin, writing files, command-line arguments
-- Patterns and techniques for writing idiomatic badlang
+- Patterns and techniques for writing idiomatic Stele
 - How the compilation pipeline works under the hood
 - A complete reference for all keywords, operators, and built-in functions

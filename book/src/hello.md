@@ -1,10 +1,10 @@
-# Hello, Badlang
+# Hello, Stele
 
 Let's walk through a complete program to get a feel for the language.
 
 ## Your First Program
 
-Create a file called `first.bad`:
+Create a file called `first.stele`:
 
 ```
 do main
@@ -15,7 +15,7 @@ end
 Compile and run it:
 
 ```bash
-cabal run badlang -- --run first.bad
+cabal run stele -- --run first.bad
 ```
 
 Output:
@@ -108,7 +108,7 @@ Output:
 ```
 
 The first `case` clause matches when `n` is literally `0`. The second matches
-any other `n` and recurses. This is how all branching works in badlang — there
+any other `n` and recurses. This is how all branching works in Stele — there
 is no `if`/`else`, only pattern matching.
 
 ## Comments

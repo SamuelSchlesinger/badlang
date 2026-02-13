@@ -1,7 +1,7 @@
 # Worked Examples
 
 This chapter walks through several complete programs that demonstrate how
-badlang's features combine in practice.
+Stele's features combine in practice.
 
 ## FizzBuzz
 

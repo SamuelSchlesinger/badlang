@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>C Code Generation - The Badlang Book</title>
+        <title>C Code Generation - The Stele Book</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-114a12be.js";
+            window.path_to_searchindex_js = "searchindex-babbe00e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-e4e73581.js"></script>
+        <script src="toc-29fcd749.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -137,7 +137,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">The Badlang Book</h1>
+                    <h1 class="menu-title">The Stele Book</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -175,7 +175,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="c-code-generation"><a class="header" href="#c-code-generation">C Code Generation</a></h1>
-<p>badlang compiles to readable, self-contained C. Understanding the generated
+<p>Stele compiles to readable, self-contained C. Understanding the generated
 code can help with debugging and with understanding the language’s runtime
 behavior.</p>
 <h2 id="runtime-representation"><a class="header" href="#runtime-representation">Runtime Representation</a></h2>
@@ -212,7 +212,7 @@ value is freed:</p>
 is freed, then the <code>Value</code>.</li>
 <li><code>TAG_INT</code> / <code>TAG_VOID</code> — the <code>Value</code> is freed directly.</li>
 </ul>
-<p>Because badlang values are <strong>immutable</strong> and there are <strong>no closures or
+<p>Because Stele values are <strong>immutable</strong> and there are <strong>no closures or
 first-class functions</strong>, reference cycles are impossible and reference counting
 is a complete solution — no garbage collector is needed.</p>
 <h3 id="ownership-convention"><a class="header" href="#ownership-convention">Ownership Convention</a></h3>
@@ -244,14 +244,14 @@ end
 <p>Compiles to something like:</p>
 <pre><code class="language-c">static Value* fn_square(Value* arg) {
     Value* _f_n = record_field(arg, "n");
-    Value* bl_n = _f_n;
+    Value* stele_n = _f_n;
     if (_f_n != NULL) {
-        rc_retain(bl_n);
-        Value* _t0 = bl_n; rc_retain(_t0);
-        Value* _t1 = bl_n; rc_retain(_t1);
+        rc_retain(stele_n);
+        Value* _t0 = stele_n; rc_retain(_t0);
+        Value* _t1 = stele_n; rc_retain(_t1);
         Value* _t2 = make_int(_t0-&gt;int_val * _t1-&gt;int_val);
         rc_release(_t0); rc_release(_t1);
-        rc_release(bl_n);
+        rc_release(stele_n);
         return _t2;
     }
     // ...pattern match failure...
@@ -290,12 +290,12 @@ incrementing their reference counts.</p>
 <p>Chains of <code>let</code> bindings are flattened into sequential C variable declarations.
 The compiler collects consecutive <code>let</code> bindings and emits them without nesting,
 then releases all bound variables in reverse declaration order after the body:</p>
-<pre><code class="language-c">Value* bl_x = /* evaluated value for x */;
-Value* bl_y = /* evaluated value for y */;
-/* body code that may reference bl_x, bl_y */
+<pre><code class="language-c">Value* stele_x = /* evaluated value for x */;
+Value* stele_y = /* evaluated value for y */;
+/* body code that may reference stele_x, stele_y */
 /* body result is used directly */
-rc_release(bl_y);
-rc_release(bl_x);
+rc_release(stele_y);
+rc_release(stele_x);
 </code></pre>
 <p>This avoids O(N) nesting depth for N sequential bindings, keeping the generated
 C flat regardless of how many <code>let</code> bindings appear in a row.</p>
@@ -313,17 +313,17 @@ print(_t0);
 rc_release(_t0);
 </code></pre>
 <h2 id="identifier-mangling"><a class="header" href="#identifier-mangling">Identifier Mangling</a></h2>
-<p>To avoid collisions with C keywords, badlang identifiers are prefixed with
-<code>bl_</code>:</p>
+<p>To avoid collisions with C keywords, Stele identifiers are prefixed with
+<code>stele_</code>:</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>badlang</th><th>C</th></tr>
+<tr><th>Stele</th><th>C</th></tr>
 </thead>
 <tbody>
-<tr><td><code>x</code></td><td><code>bl_x</code></td></tr>
-<tr><td><code>name</code></td><td><code>bl_name</code></td></tr>
-<tr><td><code>result</code></td><td><code>bl_result</code></td></tr>
+<tr><td><code>x</code></td><td><code>stele_x</code></td></tr>
+<tr><td><code>name</code></td><td><code>stele_name</code></td></tr>
+<tr><td><code>result</code></td><td><code>stele_result</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -335,28 +335,28 @@ unit.</p>
 <code>__builtin_va_arg</code> for <code>make_record</code>’s variadic interface. These are supported
 by both GCC and Clang. No statement expressions (<code>({ ... })</code>) are used.</p>
 <h2 id="the-aarch64-backend"><a class="header" href="#the-aarch64-backend">The AArch64 Backend</a></h2>
-<p>In addition to C, badlang can compile directly to AArch64 (Apple Silicon)
-assembly. The native backend (<code>Badlang.EmitAArch64</code>) consumes the same IR as
+<p>In addition to C, Stele can compile directly to AArch64 (Apple Silicon)
+assembly. The native backend (<code>Stele.EmitAArch64</code>) consumes the same IR as
 the C backend but emits <code>.s</code> files linked against a separate C runtime.</p>
-<pre><code class="language-bash">cabal run badlang -- --native examples/hello.bad
+<pre><code class="language-bash">cabal run stele -- --native examples/hello.bad
 # =&gt; Writes examples/hello.s + examples/hello_rt.c, links to examples/hello
 
-cabal run badlang -- --native --run examples/hello.bad
+cabal run stele -- --native --run examples/hello.bad
 # =&gt; Compiles and runs immediately
 </code></pre>
 <p>The strategy is straightforward: all IR variables are stored on the stack in
 a fixed-size frame. String literals are collected into a <code>.section __TEXT,__cstring</code> data section. Function calls use the standard Apple AArch64
 calling convention (x0 for first argument / return value, x29/x30 for frame
 and link registers).</p>
-<p>The self-hosting compiler in <code>examples/compiler/compiler.bad</code> also has its own
+<p>The self-hosting compiler in <code>examples/compiler/compiler.stele</code> also has its own
 AArch64 backend and can emit assembly when invoked with the <code>asm</code> flag.</p>
 <h2 id="inspecting-generated-code"><a class="header" href="#inspecting-generated-code">Inspecting Generated Code</a></h2>
 <p>To see the generated C without running it:</p>
-<pre><code class="language-bash">cabal run badlang -- examples/hello.bad
+<pre><code class="language-bash">cabal run stele -- examples/hello.bad
 cat examples/hello.c
 </code></pre>
 <p>To see the generated assembly:</p>
-<pre><code class="language-bash">cabal run badlang -- --native examples/hello.bad
+<pre><code class="language-bash">cabal run stele -- --native examples/hello.bad
 cat examples/hello.s
 </code></pre>
 <p>The output is intentionally readable. It’s a useful learning tool for

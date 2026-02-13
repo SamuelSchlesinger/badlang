@@ -1,11 +1,11 @@
 # The Compilation Pipeline
 
-badlang compiles source code to standalone executables through two backends:
+Stele compiles source code to standalone executables through two backends:
 a portable **C backend** and a native **AArch64 backend** (Apple Silicon).
 Both share a common front end and intermediate representation.
 
 ```
-Source (.bad) → PEG Parse → AST → Type Check → IR → Backend → cc → Binary
+Source (.stele) → PEG Parse → AST → Type Check → IR → Backend → cc → Binary
                                                       │
                                                       ├─ C Backend     → .c file
                                                       └─ AArch64 Backend → .s file + runtime
@@ -15,7 +15,7 @@ Each stage is implemented as a separate Haskell module.
 
 ## Stage 1: PEG Parsing
 
-**Module:** `Badlang.PEG`
+**Module:** `Stele.PEG`
 
 The parser is built entirely from first principles — no Megaparsec, no Happy,
 no Alex. It implements a **Parsing Expression Grammar (PEG)** engine with:
@@ -38,12 +38,12 @@ The parser produces a parse tree, which is then transformed into an AST.
 
 ## Stage 2: AST Construction
 
-**Module:** `Badlang.Grammar` + `Badlang.AST`
+**Module:** `Stele.Grammar` + `Stele.AST`
 
-The grammar module defines the badlang grammar using the PEG combinator EDSL
+The grammar module defines the Stele grammar using the PEG combinator EDSL
 and provides functions to convert parse trees into typed AST nodes.
 
-The AST types (defined in `Badlang.AST`) include:
+The AST types (defined in `Stele.AST`) include:
 
 - `Program` — a list of declarations
 - `Decl` — struct, fn, or do
@@ -53,7 +53,7 @@ The AST types (defined in `Badlang.AST`) include:
 
 ## Stage 3: Type Checking
 
-**Module:** `Badlang.Types`
+**Module:** `Stele.Types`
 
 The type checker implements **Algorithm W** extended with **Remy-style row
 types**. It works in two passes:
@@ -75,7 +75,7 @@ Type errors are reported with the expression that caused the mismatch.
 
 ## Stage 4: Lowering to IR
 
-**Module:** `Badlang.IR` + `Badlang.Lower`
+**Module:** `Stele.IR` + `Stele.Lower`
 
 The lowering pass transforms the typed AST into an explicit intermediate
 representation with basic blocks, named temporaries, and flat instructions.
@@ -97,7 +97,7 @@ Key properties of the IR:
 
 ### C Backend
 
-**Module:** `Badlang.EmitC`
+**Module:** `Stele.EmitC`
 
 The C backend translates the IR into a single, self-contained C99 source file
 with an embedded runtime. Each IR instruction maps to one or two lines of C,
@@ -106,7 +106,7 @@ and basic blocks become labeled sections with `goto`. See the
 
 ### AArch64 Backend
 
-**Module:** `Badlang.EmitAArch64`
+**Module:** `Stele.EmitAArch64`
 
 The AArch64 backend emits Apple Silicon assembly (`.s` files). All IR
 variables are stored on the stack using a fixed-size frame per function.
@@ -116,7 +116,7 @@ reference counting as the embedded C runtime.
 
 ## Stage 6: Assembling and Linking
 
-The badlang CLI invokes the system C compiler (`cc`) to compile the generated
+The Stele CLI invokes the system C compiler (`cc`) to compile the generated
 output into a binary:
 
 - **C mode** (default): `cc -o prog prog.c`
@@ -128,12 +128,12 @@ With `--run`, the resulting binary is executed immediately.
 
 | Module | Role |
 |--------|------|
-| `Badlang.PEG` | PEG parser generator — packrat parsing from scratch |
-| `Badlang.AST` | Abstract syntax tree data types |
-| `Badlang.Grammar` | Grammar definition + parse tree → AST |
-| `Badlang.Types` | Type inference with row polymorphism |
-| `Badlang.IR` | Intermediate representation (basic blocks + flat instructions) |
-| `Badlang.Lower` | AST → IR lowering pass |
-| `Badlang.EmitC` | C code generation from IR |
-| `Badlang.EmitAArch64` | AArch64 assembly generation from IR |
-| `Badlang.Runtime` | C runtime source for the native backend |
+| `Stele.PEG` | PEG parser generator — packrat parsing from scratch |
+| `Stele.AST` | Abstract syntax tree data types |
+| `Stele.Grammar` | Grammar definition + parse tree → AST |
+| `Stele.Types` | Type inference with row polymorphism |
+| `Stele.IR` | Intermediate representation (basic blocks + flat instructions) |
+| `Stele.Lower` | AST → IR lowering pass |
+| `Stele.EmitC` | C code generation from IR |
+| `Stele.EmitAArch64` | AArch64 assembly generation from IR |
+| `Stele.Runtime` | C runtime source for the native backend |

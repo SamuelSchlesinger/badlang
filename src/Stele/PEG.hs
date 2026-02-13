@@ -25,7 +25,7 @@
 --
 -- @
 -- import qualified Data.Map.Strict as Map
--- import Badlang.PEG
+-- import Stele.PEG
 --
 -- myGrammar :: Grammar
 -- myGrammar = Map.fromList
@@ -43,7 +43,7 @@
 -- matches wins. This eliminates ambiguity by construction — PEGs never
 -- produce multiple parse trees. Repetition ('PStar', 'PPlus') is greedy.
 -- Lookahead operators ('PAnd', 'PNot') match without consuming input.
-module Badlang.PEG
+module Stele.PEG
   ( -- * Core Types
     PExpr(..)
   , Grammar
@@ -188,7 +188,7 @@ parseRule name pos st =
     Just cached -> (cached, st)
     Nothing ->
       case Map.lookup name (psGrammar st) of
-        Nothing -> error $ "Badlang.PEG: unknown rule '" ++ name ++ "'"
+        Nothing -> error $ "Stele.PEG: unknown rule '" ++ name ++ "'"
         Just expr ->
           let (result, st') = parseExpr expr pos st
               result' = case result of
