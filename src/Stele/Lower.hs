@@ -12,6 +12,7 @@ import Stele.AST
 import Stele.IR
 
 import Control.Monad.Trans.State.Strict (State, evalState, get, modify')
+import Data.Char (isUpper)
 import qualified Data.Set as Set
 
 -- ---------------------------------------------------------------------------
@@ -349,28 +350,22 @@ lowerPatternBindings scrut (PVariant _ innerPat) =
 
 lowerFieldBinding :: Var -> PatField -> Lower [Var]
 lowerFieldBinding scrut (PatField fname mPat) = do
-  let v = cName fname
+  let isTypeLike n = n `elem` ["Int", "String", "Void"] || (not (null n) && isUpper (head n))
+  let boundName = case mPat of
+        Just (PVar n)
+          | isTypeLike n -> Just fname
+          | otherwise    -> Just n
+        Just PWild -> Nothing
+        _          -> Just fname
   fv <- freshVar ("_fb_" ++ fname ++ "_")
   emit (IFieldGet fv scrut fname)
-  case mPat of
-    Nothing -> do
+  case boundName of
+    Nothing -> return []
+    Just n -> do
+      let v = cName n
       emit (ICopy v fv)
       emit (IRetain v)
       return [v]
-    Just (PLit (IntLit _)) -> do
-      emit (ICopy v fv)
-      emit (IRetain v)
-      return [v]
-    Just (PLit (StrLit _)) -> do
-      emit (ICopy v fv)
-      emit (IRetain v)
-      return [v]
-    Just (PVar _) -> do
-      emit (ICopy v fv)
-      emit (IRetain v)
-      return [v]
-    Just PWild -> return []
-    Just _ -> return []
 
 -- ---------------------------------------------------------------------------
 -- Expression lowering

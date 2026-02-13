@@ -5,6 +5,7 @@ import System.IO (hPutStrLn, stderr)
 import System.Exit (exitFailure, exitWith, ExitCode(..))
 import System.Process (rawSystem)
 import System.Info (arch, os)
+import Data.List (elemIndices)
 import Stele.Grammar (parseProgram)
 import Stele.Types (typeCheck)
 import Stele.Lower (lowerProgram)
@@ -172,6 +173,11 @@ pipelineNative tgt src = do
 
 replaceExtension :: FilePath -> String -> FilePath
 replaceExtension path newExt =
-  case break (== '.') (reverse path) of
-    (_, _ : rest) -> reverse rest ++ newExt
-    _             -> path ++ newExt
+  let (revFile, revDir) = break (== '/') (reverse path)
+      file = reverse revFile
+      dir  = reverse revDir
+      stripExt f =
+        case filter (> 0) (elemIndices '.' f) of
+          [] -> f
+          xs -> take (last xs) f
+  in dir ++ stripExt file ++ newExt

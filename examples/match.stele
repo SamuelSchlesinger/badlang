@@ -20,7 +20,7 @@ fn range_inner
         range_inner {|
           i: i + 1,
           n: n,
-          acc: acc + (fizzbuzz {| n: i |})
+          acc: concat {| a: acc, b: fizzbuzz {| n: i |} |}
         |}
     end
 end

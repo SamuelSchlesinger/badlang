@@ -92,6 +92,30 @@ static Value* record_field(Value* rec, const char* name) {
     return NULL;
 }
 
+static void stele_write(Value* v);
+
+static int stele_value_eq(Value* a, Value* b) {
+    if (a->tag != b->tag) return 0;
+    switch (a->tag) {
+        case TAG_INT: return a->int_val == b->int_val;
+        case TAG_STR: return strcmp(a->str_val, b->str_val) == 0;
+        case TAG_VOID: return 1;
+        case TAG_RECORD:
+            if (a->record.num_fields != b->record.num_fields) return 0;
+            for (int i = 0; i < a->record.num_fields; i++) {
+                Value* bv = record_field(b, a->record.fields[i].name);
+                if (!bv) return 0;
+                if (!stele_value_eq(a->record.fields[i].value, bv)) return 0;
+            }
+            return 1;
+    }
+    return 0;
+}
+
+static int stele_value_neq(Value* a, Value* b) {
+    return !stele_value_eq(a, b);
+}
+
 static void stele_print(Value* v) {
     switch (v->tag) {
         case TAG_INT:    printf("%lld\n", (long long)v->int_val); break;
@@ -102,9 +126,9 @@ static void stele_print(Value* v) {
             for (int i = 0; i < v->record.num_fields; i++) {
                 if (i > 0) printf(", ");
                 printf("%s: ", v->record.fields[i].name);
-                stele_print(v->record.fields[i].value);
+                stele_write(v->record.fields[i].value);
             }
-            printf(" |}");
+            printf(" |}\n");
             break;
         }
     }

@@ -311,6 +311,20 @@ emitInstrAsm (IConst v OVoid) = do
   line "  bl _make_void"
   storeVar v "x0"
 
+emitInstrAsm (IBinOp v Eq l r) = do
+  loadVar l "x0"
+  loadVar r "x1"
+  line "  bl _stele_value_eq"
+  line "  bl _make_int"
+  storeVar v "x0"
+
+emitInstrAsm (IBinOp v Neq l r) = do
+  loadVar l "x0"
+  loadVar r "x1"
+  line "  bl _stele_value_neq"
+  line "  bl _make_int"
+  storeVar v "x0"
+
 emitInstrAsm (IBinOp v op l r) = do
   loadVar l "x8"
   line "  ldr x8, [x8, #8]"     -- x8 = l->int_val

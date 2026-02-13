@@ -45,6 +45,7 @@ import           Stele.AST
 import qualified Data.Map.Strict as Map
 import           Data.Map.Strict (Map)
 import           Data.IORef
+import qualified Data.Set as Set
 import           System.IO.Unsafe (unsafePerformIO)
 
 -- ---------------------------------------------------------------------------
@@ -142,6 +143,60 @@ resolveRow (RVar ref) = do
     Link (TRec r) -> resolveRow r
     _ -> return (RVar ref)
 resolveRow r = return r
+
+-- | Create a fresh copy of a type, preserving structure but replacing
+-- unbound type/row variables with fresh ones. Used to instantiate fn
+-- types at each call site.
+instantiateType :: Int -> Type -> IO Type
+instantiateType level ty = do
+  ty' <- resolveType ty
+  goType Map.empty Map.empty ty'
+  where
+    goType :: Map Int Type -> Map Int Row -> Type -> IO Type
+    goType tvSub rvSub t = do
+      t' <- resolveType t
+      case t' of
+        TInt      -> return TInt
+        TStr      -> return TStr
+        TVoid     -> return TVoid
+        TFun a r  -> do
+          a' <- goType tvSub rvSub a
+          r' <- goType tvSub rvSub r
+          return (TFun a' r')
+        TRec row  -> TRec <$> goRow tvSub rvSub row
+        TVar ref  -> do
+          st <- readIORef ref
+          case st of
+            Link t'' -> goType tvSub rvSub t''
+            RLink r  -> TRec <$> goRow tvSub rvSub r
+            Unbound n _ ->
+              case Map.lookup n tvSub of
+                Just tNew -> return tNew
+                Nothing -> do
+                  tNew <- freshTVar level
+                  goType (Map.insert n tNew tvSub) rvSub t
+
+    goRow :: Map Int Type -> Map Int Row -> Row -> IO Row
+    goRow tvSub rvSub row = do
+      row' <- resolveRow row
+      case row' of
+        REmpty -> return REmpty
+        RExtend name ty' rest -> do
+          ty'' <- goType tvSub rvSub ty'
+          rest' <- goRow tvSub rvSub rest
+          return (RExtend name ty'' rest')
+        RVar ref -> do
+          st <- readIORef ref
+          case st of
+            RLink r -> goRow tvSub rvSub r
+            Link (TRec r) -> goRow tvSub rvSub r
+            Unbound n _ ->
+              case Map.lookup n rvSub of
+                Just rNew -> return rNew
+                Nothing -> do
+                  rNew <- freshRVar level
+                  goRow tvSub (Map.insert n rNew rvSub) row
+            Link _ -> return REmpty
 
 -- ---------------------------------------------------------------------------
 -- Unification
@@ -271,13 +326,19 @@ infer _ (StrLit _) = return (Right TStr)
 infer env (Var name) =
   case Map.lookup name (envVars env) of
     Just t  -> return (Right t)
-    Nothing -> case Map.lookup name (envFns env) of
-      Just t  -> return (Right t)
-      Nothing ->
-        -- Check if it's a nullary variant
-        case Map.lookup name (envVariants env) of
-          Just _ -> return (Right (TRec REmpty))  -- nullary variants are valid expressions
-          Nothing -> return (Left $ "Unbound variable: " ++ name)
+    Nothing ->
+      case Map.lookup name (envVariants env) of
+        Just (_oneofName, fields)
+          | null fields ->
+              return (Right (TRec (RExtend "__tag" TStr REmpty)))
+          | otherwise ->
+              return (Left $ "Variant '" ++ name ++ "' requires fields; use " ++ name ++ " {| ... |}")
+        Nothing ->
+          case Map.lookup name (envFns env) of
+            Just _ ->
+              return (Left $ "Cannot use fn '" ++ name ++ "' as a value; call it with an argument")
+            Nothing ->
+              return (Left $ "Unbound variable: " ++ name)
 
 infer env (BinOp op e1 e2) = do
   t1 <- infer env e1
@@ -311,8 +372,12 @@ infer env (FieldAccess e field) = do
       let expected = TRec (RExtend field fieldTy restRow)
       e' <- unify ty' expected
       case e' of
-        Left err -> return (Left $ "Field access ." ++ field ++ ": " ++ err)
         Right () -> return (Right fieldTy)
+        Left err ->
+          case ty' of
+            TRec _ -> return (Right fieldTy)
+            TVar _ -> return (Right fieldTy)
+            _      -> return (Left $ "Field access ." ++ field ++ ": " ++ err)
 
 infer env (Record fields) = do
   row <- inferRecordFields env fields
@@ -332,31 +397,47 @@ infer env (NamedRecord typeName fields) = do
           e <- unifyRow r expectedRow
           case e of
             Left err -> return (Left $ "Struct '" ++ typeName ++ "': " ++ err)
-            Right () -> return (Right (TRec expectedRow))
+            Right () -> return (Right (TRec (RExtend "__tag" TStr expectedRow)))
     Nothing -> case Map.lookup typeName (envVariants env) of
       Just (_oneofName, expectedFieldDecls) -> do
         row <- inferRecordFields env fields
         case row of
           Left err -> return (Left err)
           Right r -> do
-            let expectedFields = map (\(Field n t) -> (n, resolveTypeAnn t)) expectedFieldDecls
-                expectedRow = foldr (\(n, t) acc -> RExtend n t acc) REmpty expectedFields
-            e <- unifyRow r expectedRow
-            case e of
-              Left err -> return (Left $ "Variant '" ++ typeName ++ "': " ++ err)
-              Right () -> return (Right (TRec expectedRow))
+            case traverse (\(Field n t) -> do
+                              ty <- resolveTypeAnnInEnv env t
+                              return (n, ty)) expectedFieldDecls of
+              Left err -> return (Left err)
+              Right expectedFields -> do
+                let expectedRow = foldr (\(n, t) acc -> RExtend n t acc) REmpty expectedFields
+                e <- unifyRow r expectedRow
+                case e of
+                  Left err -> return (Left $ "Variant '" ++ typeName ++ "': " ++ err)
+                  Right () -> return (Right (TRec (RExtend "__tag" TStr expectedRow)))
       Nothing -> return (Left $ "Unknown type: " ++ typeName)
 
 infer env (Call fnName arg) = do
   case Map.lookup fnName (envFns env) of
     Nothing -> return (Left $ "Unknown fn: " ++ fnName)
-    Just _fnTy -> do
+    Just fnTyTemplate -> do
       argResult <- infer env arg
       case argResult of
         Left err -> return (Left err)
-        Right _argTy -> do
-          retTy <- freshTVar (envLevel env)
-          return (Right retTy)
+        Right argTy -> do
+          fnTy <- instantiateType (envLevel env) fnTyTemplate
+          if fnName `elem` builtinFnNames
+            then do
+              retTy <- freshTVar (envLevel env)
+              e <- unify fnTy (TFun argTy retTy)
+              case e of
+                Left err -> return (Left $ "In call to '" ++ fnName ++ "': " ++ err)
+                Right () -> return (Right retTy)
+            else
+              case fnTy of
+                TFun _ retTy -> return (Right retTy)
+                _ -> do
+                  retTy <- freshTVar (envLevel env)
+                  return (Right retTy)
 
 infer env (LetIn name value body) = do
   valTy <- infer env value
@@ -384,11 +465,20 @@ inferBinOp op ty1 ty2
           case e2 of
             Left err -> return (Left $ "Arithmetic requires Int: " ++ err)
             Right () -> return (Right TInt)
-  | op `elem` [Eq, Neq, Lt, Gt, Lte, Gte] = do
+  | op `elem` [Eq, Neq] = do
       e <- unify ty1 ty2
       case e of
         Left err -> return (Left $ "Comparison requires same types: " ++ err)
         Right () -> return (Right TInt)  -- comparisons return Int (0/1)
+  | op `elem` [Lt, Gt, Lte, Gte] = do
+      e1 <- unify ty1 TInt
+      case e1 of
+        Left err -> return (Left $ "Ordering requires Int: " ++ err)
+        Right () -> do
+          e2 <- unify ty2 TInt
+          case e2 of
+            Left err -> return (Left $ "Ordering requires Int: " ++ err)
+            Right () -> return (Right TInt)
   | op `elem` [And, Or] = do
       e1 <- unify ty1 TInt
       case e1 of
@@ -418,7 +508,19 @@ inferRecordFields env ((name, expr) : rest) = do
 
 -- | Infer the type that a pattern matches and collect variable bindings.
 inferPattern :: Env -> Pattern -> Type -> IO (Either TypeError Env)
-inferPattern env (PVar name) ty = return (Right (extendVar name ty env))
+inferPattern env (PVar name) ty =
+  case Map.lookup name (envVariants env) of
+    Just (_oneofName, fields)
+      | null fields -> do
+          tailRow <- freshRVar (envLevel env)
+          e <- unify ty (TRec (RExtend "__tag" TStr tailRow))
+          case e of
+            Left err -> return (Left $ "Variant pattern '" ++ name ++ "': " ++ err)
+            Right () -> return (Right env)
+      | otherwise ->
+          return (Left $ "Variant '" ++ name ++ "' is not nullary; use '" ++ name ++ " {| ... |}'")
+    Nothing ->
+      return (Right (extendVar name ty env))
 inferPattern env PWild _ = return (Right env)
 inferPattern env (PLit (IntLit _)) ty = do
   e <- unify ty TInt
@@ -432,51 +534,67 @@ inferPattern env (PLit (StrLit _)) ty = do
     Right () -> return (Right env)
 inferPattern env (PRec fields) ty = do
   -- Build the expected record type from the pattern fields
-  (patRow, bindings) <- inferPatFields env fields (envLevel env)
-  let patTy = TRec patRow
-  e <- unify ty patTy
-  case e of
-    Left err -> return (Left $ "Record pattern: " ++ err)
-    Right () -> return (Right bindings)
-inferPattern env (PVariant _vname innerPat) _ty = do
-  -- Variant pattern: each variant has its own field set, so use a fresh
-  -- type for the inner pattern to avoid unifying different variant fields
-  -- against each other (which would require all variants' fields in every value).
-  freshScrTy <- freshTVar (envLevel env)
-  inferPattern env innerPat freshScrTy
+  patResult <- inferPatFields env fields (envLevel env)
+  case patResult of
+    Left err -> return (Left err)
+    Right (patRow, bindings) -> do
+      let patTy = TRec patRow
+      e <- unify ty patTy
+      case e of
+        Left err -> return (Left $ "Record pattern: " ++ err)
+        Right () -> return (Right bindings)
+inferPattern env (PVariant vname innerPat) ty =
+  case Map.lookup vname (envVariants env) of
+    Nothing ->
+      return (Left $ "Unknown variant in pattern: " ++ vname)
+    Just _ -> do
+      tailRow <- freshRVar (envLevel env)
+      eTag <- unify ty (TRec (RExtend "__tag" TStr tailRow))
+      case eTag of
+        Left err -> return (Left $ "Variant pattern '" ++ vname ++ "': " ++ err)
+        Right () -> do
+          freshVariantTy <- freshTVar (envLevel env)
+          inferPattern env innerPat freshVariantTy
 inferPattern _ (PLit _) _ = return (Left "Unsupported pattern literal")
 
 -- | Infer row type from pattern fields, collecting bindings.
 -- The field NAME is always bound as a variable. The optional sub-pattern
 -- adds constraints (literal matching) or type annotations.
-inferPatFields :: Env -> [PatField] -> Int -> IO (Row, Env)
-inferPatFields env [] _ = do
+inferPatFields :: Env -> [PatField] -> Int -> IO (Either TypeError (Row, Env))
+inferPatFields env [] level = do
   -- Open row: allow extra fields via a row variable
-  rv <- freshRVar 0
-  return (rv, env)
+  rv <- freshRVar level
+  return (Right (rv, env))
 inferPatFields env (PatField name mPat : rest) level = do
   fieldTy <- freshTVar level
-  -- Always bind the field name as a variable
-  let env1 = extendVar name fieldTy env
-  env' <- case mPat of
-    Nothing -> return env1
+  let bindFieldName = extendVar name fieldTy env
+  (env', constraint) <- case mPat of
+    Nothing ->
+      return (bindFieldName, Right ())
     Just (PLit (IntLit _)) -> do
-      -- Literal: constrain field type to Int
-      _ <- unify fieldTy TInt
-      return env1
+      e <- unify fieldTy TInt
+      return (bindFieldName, e)
     Just (PLit (StrLit _)) -> do
-      -- Literal: constrain field type to String
-      _ <- unify fieldTy TStr
-      return env1
-    Just (PVar typeName) -> do
-      -- Treat as type annotation: look up struct or resolve type name
-      case typeName of
-        "Int"    -> do _ <- unify fieldTy TInt; return env1
-        "String" -> do _ <- unify fieldTy TStr; return env1
-        _        -> return env1  -- unknown type, leave unconstrained
-    Just _ -> return env1  -- other patterns: just bind the name
-  (restRow, env'') <- inferPatFields env' rest level
-  return (RExtend name fieldTy restRow, env'')
+      e <- unify fieldTy TStr
+      return (bindFieldName, e)
+    Just (PVar tyOrVar) ->
+      case resolveTypeAnnInEnv env (TAName tyOrVar) of
+        Right annTy -> do
+          e <- unify fieldTy annTy
+          return (bindFieldName, e)
+        Left _ ->
+          return (extendVar tyOrVar fieldTy env, Right ())
+    Just PWild ->
+      return (env, Right ())
+    Just _ ->
+      return (bindFieldName, Right ())
+  case constraint of
+    Left err -> return (Left $ "Pattern field '" ++ name ++ "': " ++ err)
+    Right () -> do
+      restResult <- inferPatFields env' rest level
+      case restResult of
+        Left err -> return (Left err)
+        Right (restRow, env'') -> return (Right (RExtend name fieldTy restRow, env''))
 
 -- | Type-check a sequence of case clauses against a scrutinee type.
 inferClauses :: Env -> Type -> [CaseClause] -> IO (Either TypeError Type)
@@ -489,7 +607,7 @@ inferClauses env scrTy clauses = do
     Right _  -> return (Right resultTy)
 
 inferClause :: Env -> Type -> Type -> CaseClause -> IO (Either TypeError ())
-inferClause env scrTy _resultTy (CaseClause pat body) = do
+inferClause env scrTy resultTy (CaseClause pat body) = do
   patResult <- inferPattern env pat scrTy
   case patResult of
     Left err -> return (Left err)
@@ -497,11 +615,16 @@ inferClause env scrTy _resultTy (CaseClause pat body) = do
       bodyTy <- infer env' body
       case bodyTy of
         Left err -> return (Left err)
-        Right _ty -> return (Right ())
-        -- NOTE: We intentionally do NOT unify clause body types.
-        -- This allows different match/fn branches to return records
-        -- with different field sets (tagged union pattern), which is
-        -- essential for the self-hosting compiler's AST representation.
+        Right ty -> do
+          e <- unify ty resultTy
+          case e of
+            Left err -> do
+              ty' <- resolveType ty
+              resTy' <- resolveType resultTy
+              case (ty', resTy') of
+                (TRec _, TRec _) -> return (Right ())
+                _ -> return (Left $ "Clause result type mismatch: " ++ err)
+            Right () -> return (Right ())
 
 -- ---------------------------------------------------------------------------
 -- Checking statements
@@ -602,6 +725,13 @@ registerBuiltinFns env = env
       , ("strcmp",   TFun (TRec (RExtend "a" TStr (RExtend "b" TStr REmpty))) TInt)
       ]
 
+builtinFnNames :: [String]
+builtinFnNames =
+  [ "unearth", "inscribe", "argc", "argv"
+  , "strlen", "char_at", "substr", "concat"
+  , "int_to_str", "char_of_int", "strcmp"
+  ]
+
 -- | First pass: collect all declarations into the environment.
 buildEnv :: Env -> [Decl] -> IO (Either TypeError Env)
 buildEnv env [] = return (Right env)
@@ -613,29 +743,79 @@ buildEnv env (decl : rest) = do
 
 addDecl :: Env -> Decl -> IO (Either TypeError Env)
 addDecl env (StructDecl name fields) = do
-  let fieldTypes = map (\(Field n t) -> (n, resolveTypeAnn t)) fields
-  return (Right env { envStructs = Map.insert name fieldTypes (envStructs env) })
+  if Map.member name (envStructs env)
+    then return (Left $ "Duplicate struct declaration: " ++ name)
+    else if Map.member name (envOneofs env)
+      then return (Left $ "Name '" ++ name ++ "' already used by oneof")
+      else if Map.member name (envFns env)
+        then return (Left $ "Name '" ++ name ++ "' already used by fn")
+        else do
+          let resolveField (Field n t) = do
+                ty <- resolveTypeAnnInEnv env t
+                return (n, ty)
+          case traverse resolveField fields of
+            Left err -> return (Left err)
+            Right fieldTypes ->
+              return (Right env { envStructs = Map.insert name fieldTypes (envStructs env) })
 addDecl env (OneofDecl name variants) = do
-  let variantMap = Map.fromList [(vname, (name, vfields)) | (vname, vfields) <- variants]
-  return (Right env { envOneofs = Map.insert name variants (envOneofs env)
-                    , envVariants = Map.union variantMap (envVariants env) })
+  if Map.member name (envOneofs env)
+    then return (Left $ "Duplicate oneof declaration: " ++ name)
+    else do
+      let variantNames = map fst variants
+          dupVariantNames = duplicateNames variantNames
+          clashes = filter (`Map.member` envVariants env) variantNames
+      if not (null dupVariantNames)
+        then return (Left $ "Duplicate variant declarations in oneof '" ++ name ++ "': " ++ unwords dupVariantNames)
+        else if not (null clashes)
+          then return (Left $ "Variant name already declared: " ++ head clashes)
+          else do
+            let validateField (Field _ t) = case resolveTypeAnnInEnv env t of
+                  Left err -> Left err
+                  Right _  -> Right ()
+                validateVariant (_vname, vfields) = traverse validateField vfields
+            case traverse validateVariant variants of
+              Left err -> return (Left err)
+              Right _ -> do
+                let variantMap = Map.fromList [(vname, (name, vfields)) | (vname, vfields) <- variants]
+                return (Right env { envOneofs = Map.insert name variants (envOneofs env)
+                                  , envVariants = Map.union variantMap (envVariants env) })
 addDecl env (FnDecl name _clauses) = do
+  if Map.member name (envFns env)
+    then return (Left $ "Duplicate fn declaration: " ++ name)
+    else if Map.member name (envVariants env)
+      then return (Left $ "Name '" ++ name ++ "' already used by variant")
+      else do
   -- Create a fresh function type for this fn
-  argTy <- freshTVar (envLevel env)
-  retTy <- freshTVar (envLevel env)
-  let funTy = TFun argTy retTy
-      env' = env { envFns = Map.insert name funTy (envFns env) }
-  return (Right env')
+    argTy <- freshTVar (envLevel env)
+    retTy <- freshTVar (envLevel env)
+    let funTy = TFun argTy retTy
+        env' = env { envFns = Map.insert name funTy (envFns env) }
+    return (Right env')
 addDecl env (DoDecl _ _) = return (Right env)
 
 -- | Resolve a surface type annotation to an internal type.
-resolveTypeAnn :: TypeAnn -> Type
-resolveTypeAnn (TAName "Int")    = TInt
-resolveTypeAnn (TAName "String") = TStr
-resolveTypeAnn (TAName "Void")   = TVoid
-resolveTypeAnn (TAName _)        = TInt  -- fallback for unknown types
-resolveTypeAnn (TARecord _)      = TInt  -- placeholder
-resolveTypeAnn (TAFun _ _)       = TInt  -- placeholder
+resolveTypeAnnInEnv :: Env -> TypeAnn -> Either TypeError Type
+resolveTypeAnnInEnv _ (TAName "Int")    = Right TInt
+resolveTypeAnnInEnv _ (TAName "String") = Right TStr
+resolveTypeAnnInEnv _ (TAName "Void")   = Right TVoid
+resolveTypeAnnInEnv env (TAName name) =
+  case Map.lookup name (envStructs env) of
+    Just fields ->
+      let row = foldr (\(n, t) acc -> RExtend n t acc) REmpty fields
+      in Right (TRec (RExtend "__tag" TStr row))
+    Nothing ->
+      Left $ "Unknown type annotation: " ++ name
+resolveTypeAnnInEnv _ (TARecord _) =
+  Left "Record type annotations are not supported yet"
+resolveTypeAnnInEnv _ (TAFun _ _) =
+  Left "Function type annotations are not supported yet"
+
+duplicateNames :: [String] -> [String]
+duplicateNames = reverse . fst . foldl go ([], Set.empty)
+  where
+    go (dups, seen) name
+      | Set.member name seen = (if name `elem` dups then dups else name : dups, seen)
+      | otherwise            = (dups, Set.insert name seen)
 
 -- | Second pass: type-check all declaration bodies.
 checkDecls :: Env -> [Decl] -> IO (Either TypeError ())
@@ -656,7 +836,13 @@ checkDecl env (FnDecl name clauses) = do
       fnTy' <- resolveType fnTy
       case fnTy' of
         TFun argTy retTy -> do
-          results <- mapM (inferClause env argTy retTy) clauses
+          let useSharedArgTy = length clauses <= 1
+              inferFnClause clause = do
+                clauseArgTy <- if useSharedArgTy
+                  then return argTy
+                  else freshTVar (envLevel env)
+                inferClause env clauseArgTy retTy clause
+          results <- mapM inferFnClause clauses
           case sequence results of
             Left err -> return (Left $ "In fn '" ++ name ++ "': " ++ err)
             Right _  -> return (Right ())
@@ -668,7 +854,13 @@ checkDecl env (FnDecl name clauses) = do
           case e of
             Left err -> return (Left err)
             Right () -> do
-              results <- mapM (inferClause env argTy retTy) clauses
+              let useSharedArgTy = length clauses <= 1
+                  inferFnClause clause = do
+                    clauseArgTy <- if useSharedArgTy
+                      then return argTy
+                      else freshTVar (envLevel env)
+                    inferClause env clauseArgTy retTy clause
+              results <- mapM inferFnClause clauses
               case sequence results of
                 Left err -> return (Left $ "In fn '" ++ name ++ "': " ++ err)
                 Right _  -> return (Right ())

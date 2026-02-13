@@ -322,6 +322,22 @@ emitInstrAsm (IConst v OVoid) = do
   line $ "  callq " ++ symPrefix tgt ++ "make_void"
   storeVar v "%rax"
 
+emitInstrAsm (IBinOp v Eq l r) = do
+  tgt <- getTarget
+  loadVar l "%rdi"
+  loadVar r "%rsi"
+  line $ "  callq " ++ symPrefix tgt ++ "stele_value_eq"
+  line $ "  callq " ++ symPrefix tgt ++ "make_int"
+  storeVar v "%rax"
+
+emitInstrAsm (IBinOp v Neq l r) = do
+  tgt <- getTarget
+  loadVar l "%rdi"
+  loadVar r "%rsi"
+  line $ "  callq " ++ symPrefix tgt ++ "stele_value_neq"
+  line $ "  callq " ++ symPrefix tgt ++ "make_int"
+  storeVar v "%rax"
+
 emitInstrAsm (IBinOp v op l r) = do
   tgt <- getTarget
   loadVar l "%r8"

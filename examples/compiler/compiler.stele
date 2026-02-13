@@ -1208,15 +1208,15 @@ fn emit_binop_c
         let s3 = concat {| a: s2, b: b |}
         concat {| a: s3, b: "->int_val)" |}
       case "==" =>
-        let s1 = concat {| a: "make_int(", b: a |}
-        let s2 = concat {| a: s1, b: "->int_val == " |}
+        let s1 = concat {| a: "make_int(stele_value_eq(", b: a |}
+        let s2 = concat {| a: s1, b: ", " |}
         let s3 = concat {| a: s2, b: b |}
-        concat {| a: s3, b: "->int_val)" |}
+        concat {| a: s3, b: "))" |}
       case "!=" =>
-        let s1 = concat {| a: "make_int(", b: a |}
-        let s2 = concat {| a: s1, b: "->int_val != " |}
+        let s1 = concat {| a: "make_int(stele_value_neq(", b: a |}
+        let s2 = concat {| a: s1, b: ", " |}
         let s3 = concat {| a: s2, b: b |}
-        concat {| a: s3, b: "->int_val)" |}
+        concat {| a: s3, b: "))" |}
       case "<" =>
         let s1 = concat {| a: "make_int(", b: a |}
         let s2 = concat {| a: s1, b: "->int_val < " |}
@@ -1472,6 +1472,34 @@ end
 -- ============================================================
 -- Returns {| cond: String, bindings: String |}
 
+fn is_type_like_pat_name
+  case {| name |} =>
+    let len = strlen {| s: name |}
+    let starts_upper = match len > 0
+      case 1 =>
+        let c = char_at {| s: name, n: 0 |}
+        (c >= 65) && (c <= 90)
+      case 0 => 0
+    end
+    (str_eq {| a: name, b: "Int" |}) ||
+    (str_eq {| a: name, b: "String" |}) ||
+    (str_eq {| a: name, b: "Void" |}) ||
+    starts_upper
+end
+
+fn field_binding_name
+  case {| field |} =>
+    match field.pat.tag
+      case "pat_var" =>
+        match is_type_like_pat_name {| name: field.pat.name |}
+          case 1 => field.name
+          case 0 => field.pat.name
+        end
+      case "pat_wild" => ""
+      case _ => field.name
+    end
+end
+
 -- Match a single record field pattern
 -- Returns {| cond: String, bindings: String |}
 fn emit_rec_field_match
@@ -1487,13 +1515,17 @@ fn emit_rec_field_match
     let b5 = concat {| a: b4, b: cs |}
     let b6 = concat {| a: b5, b: ");" |}
     let binding1 = concat {| a: b6, b: n |}
-    -- Value* bl_NAME = _f_NAME;
-    let cn = c_name {| name: field.name |}
-    let b7 = concat {| a: "Value* ", b: cn |}
-    let b8 = concat {| a: b7, b: " = " |}
-    let b9 = concat {| a: b8, b: tmp |}
-    let b10 = concat {| a: b9, b: ";" |}
-    let binding2 = concat {| a: b10, b: n |}
+    let bind_name = field_binding_name {| field: field |}
+    let binding2 = match str_eq {| a: bind_name, b: "" |}
+      case 1 => ""
+      case 0 =>
+        let cn = c_name {| name: bind_name |}
+        let b7 = concat {| a: "Value* ", b: cn |}
+        let b8 = concat {| a: b7, b: " = " |}
+        let b9 = concat {| a: b8, b: tmp |}
+        let b10 = concat {| a: b9, b: ";" |}
+        concat {| a: b10, b: n |}
+    end
     let both_bindings = concat {| a: binding1, b: binding2 |}
     -- Null check is always needed
     let null_check = concat {| a: tmp, b: " != NULL" |}
@@ -1593,16 +1625,10 @@ end
 -- Extract bound variable names from a pattern (for retain/release)
 fn extract_field_bound_names
   case {| field |} =>
-    match field.pat.tag
-      case "pat_none" =>
-        cons {| head: field.name, tail: nil {| |} |}
-      case "pat_var" =>
-        cons {| head: field.name, tail: nil {| |} |}
-      case "pat_int" =>
-        cons {| head: field.name, tail: nil {| |} |}
-      case "pat_str" =>
-        cons {| head: field.name, tail: nil {| |} |}
-      case _ => nil {| |}
+    let name = field_binding_name {| field: field |}
+    match str_eq {| a: name, b: "" |}
+      case 1 => nil {| |}
+      case 0 => cons {| head: name, tail: nil {| |} |}
     end
 end
 
@@ -2466,24 +2492,39 @@ fn emit_binop_asm
     let ar = alloc_slot {| name: f.name, state: st |}
     let ls = lookup_slot {| name: r1.var, slots: ar.state.slots |}
     let rs = lookup_slot {| name: r2.var, slots: ar.state.slots |}
-    let ll = emit_load_slot {| slot: ls, reg: "x8" |}
-    let rl = emit_load_slot {| slot: rs, reg: "x9" |}
-    let op = emit_binop_op_asm {| op: node.op |}
     let store = emit_store_slot {| slot: ar.slot, reg: "x0" |}
     let rll = emit_load_slot {| slot: ls, reg: "x0" |}
     let rrl = emit_load_slot {| slot: rs, reg: "x0" |}
     let s1 = concat {| a: r1.code, b: r2.code |}
-    let s2 = concat {| a: s1, b: ll |}
-    let s3 = concat {| a: s2, b: asm_ln {| s: "  ldr x8, [x8, #8]" |} |}
-    let s4 = concat {| a: s3, b: rl |}
-    let s5 = concat {| a: s4, b: asm_ln {| s: "  ldr x9, [x9, #8]" |} |}
-    let s6 = concat {| a: s5, b: op |}
-    let s7 = concat {| a: s6, b: asm_ln {| s: "  bl _make_int" |} |}
-    let s8 = concat {| a: s7, b: store |}
-    let s9 = concat {| a: s8, b: rll |}
-    let s10 = concat {| a: s9, b: asm_ln {| s: "  bl _rc_release" |} |}
-    let s11 = concat {| a: s10, b: rrl |}
-    {| code: concat {| a: s11, b: asm_ln {| s: "  bl _rc_release" |} |}, var: f.name, state: ar.state |}
+    let calc = match node.op
+      case "==" =>
+        let lp = emit_load_slot {| slot: ls, reg: "x0" |}
+        let rp = emit_load_slot {| slot: rs, reg: "x1" |}
+        let c1 = concat {| a: lp, b: rp |}
+        let c2 = concat {| a: c1, b: asm_ln {| s: "  bl _stele_value_eq" |} |}
+        concat {| a: c2, b: asm_ln {| s: "  bl _make_int" |} |}
+      case "!=" =>
+        let lp = emit_load_slot {| slot: ls, reg: "x0" |}
+        let rp = emit_load_slot {| slot: rs, reg: "x1" |}
+        let c1 = concat {| a: lp, b: rp |}
+        let c2 = concat {| a: c1, b: asm_ln {| s: "  bl _stele_value_neq" |} |}
+        concat {| a: c2, b: asm_ln {| s: "  bl _make_int" |} |}
+      case _ =>
+        let ll = emit_load_slot {| slot: ls, reg: "x8" |}
+        let rl = emit_load_slot {| slot: rs, reg: "x9" |}
+        let op = emit_binop_op_asm {| op: node.op |}
+        let c1 = concat {| a: ll, b: asm_ln {| s: "  ldr x8, [x8, #8]" |} |}
+        let c2 = concat {| a: c1, b: rl |}
+        let c3 = concat {| a: c2, b: asm_ln {| s: "  ldr x9, [x9, #8]" |} |}
+        let c4 = concat {| a: c3, b: op |}
+        concat {| a: c4, b: asm_ln {| s: "  bl _make_int" |} |}
+    end
+    let s2 = concat {| a: s1, b: calc |}
+    let s3 = concat {| a: s2, b: store |}
+    let s4 = concat {| a: s3, b: rll |}
+    let s5 = concat {| a: s4, b: asm_ln {| s: "  bl _rc_release" |} |}
+    let s6 = concat {| a: s5, b: rrl |}
+    {| code: concat {| a: s6, b: asm_ln {| s: "  bl _rc_release" |} |}, var: f.name, state: ar.state |}
 end
 
 fn emit_unop_asm
@@ -2713,7 +2754,8 @@ fn emit_rec_field_match_asm
     let s11 = concat {| a: s10, b: "  cbz x0, " |}
     let s12 = concat {| a: s11, b: fail_label |}
     let base = concat {| a: s12, b: n |}
-    let cn = c_name {| name: field.name |}
+    let bind_name = field_binding_name {| field: field |}
+    let cn = c_name {| name: bind_name |}
     match field.pat.tag
       case "pat_none" =>
         let ns = cons {| head: {| name: cn, slot: ar.slot |}, tail: ar.state.slots |}
@@ -3428,24 +3470,41 @@ fn emit_binop_x86
     let ar = alloc_slot {| name: f.name, state: st |}
     let ls = lookup_slot {| name: r1.var, slots: ar.state.slots |}
     let rs = lookup_slot {| name: r2.var, slots: ar.state.slots |}
-    let ll = emit_load_slot_x86 {| slot: ls, reg: "%r8" |}
-    let rl = emit_load_slot_x86 {| slot: rs, reg: "%r9" |}
-    let op = emit_binop_op_x86 {| op: node.op |}
     let store = emit_store_slot_x86 {| slot: ar.slot, reg: "%rax" |}
     let rll = emit_load_slot_x86 {| slot: ls, reg: "%rdi" |}
     let rrl = emit_load_slot_x86 {| slot: rs, reg: "%rdi" |}
     let s1 = concat {| a: r1.code, b: r2.code |}
-    let s2 = concat {| a: s1, b: ll |}
-    let s3 = concat {| a: s2, b: asm_ln {| s: "  movq 8(%r8), %r8" |} |}
-    let s4 = concat {| a: s3, b: rl |}
-    let s5 = concat {| a: s4, b: asm_ln {| s: "  movq 8(%r9), %r9" |} |}
-    let s6 = concat {| a: s5, b: op |}
-    let s7 = concat {| a: s6, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "make_int" |} |} |} |}
-    let s8 = concat {| a: s7, b: store |}
-    let s9 = concat {| a: s8, b: rll |}
-    let s10 = concat {| a: s9, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "rc_release" |} |} |} |}
-    let s11 = concat {| a: s10, b: rrl |}
-    {| code: concat {| a: s11, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "rc_release" |} |} |} |}, var: f.name, state: ar.state |}
+    let calc = match node.op
+      case "==" =>
+        let lp = emit_load_slot_x86 {| slot: ls, reg: "%rdi" |}
+        let rp = emit_load_slot_x86 {| slot: rs, reg: "%rsi" |}
+        let c1 = concat {| a: lp, b: rp |}
+        let c2 = concat {| a: c1, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "stele_value_eq" |} |} |} |}
+        let c3 = concat {| a: c2, b: asm_ln {| s: "  movl %eax, %edi" |} |}
+        concat {| a: c3, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "make_int" |} |} |} |}
+      case "!=" =>
+        let lp = emit_load_slot_x86 {| slot: ls, reg: "%rdi" |}
+        let rp = emit_load_slot_x86 {| slot: rs, reg: "%rsi" |}
+        let c1 = concat {| a: lp, b: rp |}
+        let c2 = concat {| a: c1, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "stele_value_neq" |} |} |} |}
+        let c3 = concat {| a: c2, b: asm_ln {| s: "  movl %eax, %edi" |} |}
+        concat {| a: c3, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "make_int" |} |} |} |}
+      case _ =>
+        let ll = emit_load_slot_x86 {| slot: ls, reg: "%r8" |}
+        let rl = emit_load_slot_x86 {| slot: rs, reg: "%r9" |}
+        let op = emit_binop_op_x86 {| op: node.op |}
+        let c1 = concat {| a: ll, b: asm_ln {| s: "  movq 8(%r8), %r8" |} |}
+        let c2 = concat {| a: c1, b: rl |}
+        let c3 = concat {| a: c2, b: asm_ln {| s: "  movq 8(%r9), %r9" |} |}
+        let c4 = concat {| a: c3, b: op |}
+        concat {| a: c4, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "make_int" |} |} |} |}
+    end
+    let s2 = concat {| a: s1, b: calc |}
+    let s3 = concat {| a: s2, b: store |}
+    let s4 = concat {| a: s3, b: rll |}
+    let s5 = concat {| a: s4, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "rc_release" |} |} |} |}
+    let s6 = concat {| a: s5, b: rrl |}
+    {| code: concat {| a: s6, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "rc_release" |} |} |} |}, var: f.name, state: ar.state |}
 end
 
 fn emit_unop_x86
@@ -3677,7 +3736,8 @@ fn emit_rec_field_match_x86
     let s9 = concat {| a: s8, b: "  je " |}
     let s10 = concat {| a: s9, b: fail_label |}
     let base = concat {| a: s10, b: n |}
-    let cn = c_name {| name: field.name |}
+    let bind_name = field_binding_name {| field: field |}
+    let cn = c_name {| name: bind_name |}
     match field.pat.tag
       case "pat_none" =>
         let ns = cons {| head: {| name: cn, slot: ar.slot |}, tail: ar.state.slots |}
