@@ -1164,6 +1164,11 @@ fn is_builtin_fn
     (str_eq {| a: name, b: "inscribe" |}) ||
     (str_eq {| a: name, b: "argc" |}) ||
     (str_eq {| a: name, b: "argv" |}) ||
+    (str_eq {| a: name, b: "sh" |}) ||
+    (str_eq {| a: name, b: "terminate" |}) ||
+    (str_eq {| a: name, b: "spawn" |}) ||
+    (str_eq {| a: name, b: "await" |}) ||
+    (str_eq {| a: name, b: "sleep_ms" |}) ||
     (str_eq {| a: name, b: "strlen" |}) ||
     (str_eq {| a: name, b: "char_at" |}) ||
     (str_eq {| a: name, b: "substr" |}) ||

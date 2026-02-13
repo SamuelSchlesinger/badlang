@@ -30,6 +30,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 COMPILER_SRC="$SCRIPT_DIR/compiler.stele"
 RUNTIME_AARCH64="$SCRIPT_DIR/../../runtime/runtime_aarch64.c"
 RUNTIME_X86_64="$SCRIPT_DIR/../../runtime/runtime_x86_64.c"
+STDLIB_DIR="$SCRIPT_DIR/../../stdlib"
 WORK_DIR=$(mktemp -d)
 
 trap 'rm -rf "$WORK_DIR"' EXIT
@@ -169,6 +170,42 @@ if [ -f "$HELLO_SRC" ]; then
     fi
 else
     echo "Skipped (hello.stele not found)"
+fi
+
+# Smoke test: build and run stela via the final generation
+echo ""
+echo "=== Smoke Test (gen$N compiles stela.stele) ==="
+STELA_SRC="$SCRIPT_DIR/stela.stele"
+if [ -f "$STELA_SRC" ]; then
+    emit_with_compiler "$WORK_DIR/gen${N}" "$STELA_SRC" "$WORK_DIR/stela.$EXT"
+    compile_generated "$WORK_DIR/stela.$EXT" "$WORK_DIR/stela"
+    STELA_RUN_DIR="$WORK_DIR/stela-run"
+    mkdir -p "$STELA_RUN_DIR"
+    cp "$SCRIPT_DIR/runtime.c" "$STELA_RUN_DIR/runtime.c"
+    cp "$STDLIB_DIR/cli.stele" "$STELA_RUN_DIR/cli.stele"
+    cp "$STDLIB_DIR/math.stele" "$STELA_RUN_DIR/math.stele"
+    cp "$STDLIB_DIR/concurrency.stele" "$STELA_RUN_DIR/concurrency.stele"
+    cat > "$STELA_RUN_DIR/app.stele" <<'EOF'
+do main
+  let argc_now = cli_argc {| |}
+  let clamped = math_clamp {| n: argc_now, lo: 0, hi: 10 |}
+  let pid = conc_spawn {| command: "true" |}
+  let code = conc_await {| pid: pid |}
+  print clamped
+  print code
+end
+EOF
+    (
+      cd "$STELA_RUN_DIR" && \
+      "$WORK_DIR/stela" check "$HELLO_SRC" --compiler "$WORK_DIR/gen${N}" --mode c --no-sandbox >/dev/null && \
+      "$WORK_DIR/stela" package-lib cli.stele --name cli >/dev/null && \
+      "$WORK_DIR/stela" package-lib math.stele --name math >/dev/null && \
+      "$WORK_DIR/stela" package-lib concurrency.stele --name concurrency >/dev/null && \
+      "$WORK_DIR/stela" test app.stele --lib cli --lib math --lib concurrency --compiler "$WORK_DIR/gen${N}" --mode c --no-sandbox >/dev/null
+    )
+    echo "stela self-hosted targets/libs/stdlib: OK"
+else
+    echo "Skipped (stela.stele not found)"
 fi
 
 echo ""

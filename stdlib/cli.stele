@@ -1,0 +1,94 @@
+-- cli.stele
+-- Minimal CLI framework helpers (argument access, flags, options).
+
+fn cli_str_eq
+  case {| a, b |} =>
+    match strcmp {| a: a, b: b |}
+      case 0 => 1
+      case _ => 0
+    end
+end
+
+fn cli_argc
+  case {| |} => argc {| |}
+end
+
+fn cli_argv
+  case {| n |} =>
+    match (cli_argc {| |}) > n
+      case 1 => argv {| n: n |}
+      case 0 => ""
+    end
+end
+
+fn cli_has_arg
+  case {| n |} =>
+    (cli_argc {| |}) > n
+end
+
+fn cli_subcommand
+  case {| name |} =>
+    match cli_has_arg {| n: 1 |}
+      case 1 =>
+        cli_str_eq {| a: cli_argv {| n: 1 |}, b: name |}
+      case 0 => 0
+    end
+end
+
+fn cli_flag_loop
+  case {| flag, i, ac |} =>
+    match i >= ac
+      case 1 => 0
+      case 0 =>
+        let arg = cli_argv {| n: i |}
+        match cli_str_eq {| a: arg, b: flag |}
+          case 1 => 1
+          case 0 => cli_flag_loop {| flag: flag, i: i + 1, ac: ac |}
+        end
+    end
+end
+
+fn cli_flag
+  case {| flag |} =>
+    let ac = cli_argc {| |}
+    cli_flag_loop {| flag: flag, i: 1, ac: ac |}
+end
+
+fn cli_opt_value_loop
+  case {| key, i, ac, default |} =>
+    match i >= ac
+      case 1 => default
+      case 0 =>
+        let arg = cli_argv {| n: i |}
+        match cli_str_eq {| a: arg, b: key |}
+          case 1 =>
+            match (i + 1) < ac
+              case 1 => cli_argv {| n: i + 1 |}
+              case 0 => default
+            end
+          case 0 =>
+            cli_opt_value_loop {| key: key, i: i + 1, ac: ac, default: default |}
+        end
+    end
+end
+
+fn cli_opt_value
+  case {| key, default |} =>
+    let ac = cli_argc {| |}
+    cli_opt_value_loop {| key: key, i: 1, ac: ac, default: default |}
+end
+
+fn cli_echo
+  case {| msg |} =>
+    let s1 = concat {| a: "echo \"", b: msg |}
+    let cmd = concat {| a: s1, b: "\"" |}
+    sh {| command: cmd |}
+end
+
+fn cli_die
+  case {| msg, code |} =>
+    let ignored1 = cli_echo {| msg: msg |}
+    let ignored2 = terminate {| code: code |}
+    ""
+end
+

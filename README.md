@@ -40,6 +40,75 @@ cabal run stele -- --native examples/hello.stele
 cabal run stele -- --native --run examples/hello.stele
 ```
 
+## Stela (Self-Hosted Build Tool)
+
+`examples/compiler/stela.stele` is a Stele-native build tool (no package
+manager) with a Cargo-style command subset:
+
+```bash
+stela build <source.stele> [--lib <name> ...]
+stela run <source.stele> [--lib <name> ...]
+stela check <source.stele> [--lib <name> ...]
+stela test <source.stele> [--lib <name> ...]
+stela bench <source.stele> [--lib <name> ...]
+stela package-lib <source.stele> [--name <name>] [--lib <name> ...]
+stela clean
+```
+
+It supports sandboxed builds via `sandbox-exec` when available.
+
+### Bootstrapping Stela
+
+```bash
+# 1) Build the self-hosted compiler binary
+cabal run stele -- examples/compiler/compiler.stele
+cc -O1 -o examples/compiler/compiler examples/compiler/compiler.c
+
+# 2) Build stela with the self-hosted compiler
+(cd examples/compiler && ./compiler stela.stele stela.c)
+cc -O1 -o examples/compiler/stela examples/compiler/stela.c
+```
+
+### Using Stela
+
+Run from the compiler directory (`runtime.c` is read relative to the current
+working directory by the self-hosted compiler):
+
+```bash
+(cd examples/compiler && ./stela build ../hello.stele --compiler ./compiler --mode c)
+(cd examples/compiler && ./stela run ../hello.stele --compiler ./compiler --mode c)
+(cd examples/compiler && ./stela check ../hello.stele --compiler ./compiler --mode c)
+(cd examples/compiler && ./stela test ../hello.stele --compiler ./compiler --mode c)
+(cd examples/compiler && ./stela bench ../hello.stele --compiler ./compiler --mode c)
+(cd examples/compiler && ./stela clean)
+```
+
+Local library packaging/inclusion:
+
+```bash
+(cd examples/compiler && ./stela package-lib math.stele --name math)
+(cd examples/compiler && ./stela build app.stele --lib math --compiler ./compiler --mode c)
+```
+
+Libraries are stored under `.stela/lib/<name>.stelib`.
+
+Bundled standard libraries live under `stdlib/`:
+
+- `stdlib/cli.stele`: CLI helpers for `argc/argv`, flags, and key/value options
+- `stdlib/math.stele`: integer math helpers (`abs`, `clamp`, `gcd`, `lcm`, etc.)
+- `stdlib/concurrency.stele`: process-level helpers over `spawn/await/sleep_ms`
+
+Example packaging flow:
+
+```bash
+(cd examples/compiler && ./stela package-lib ../../stdlib/cli.stele --name cli)
+(cd examples/compiler && ./stela package-lib ../../stdlib/math.stele --name math)
+(cd examples/compiler && ./stela package-lib ../../stdlib/concurrency.stele --name concurrency)
+(cd examples/compiler && ./stela run app.stele --lib cli --lib math --lib concurrency --compiler ./compiler --mode c)
+```
+
+Options: `--mode c|asm|x86|x86-linux`, `--sandbox`, `--no-sandbox`, `--lib <name>`, `--name <name>`.
+
 ## The Language
 
 ### Vocabulary

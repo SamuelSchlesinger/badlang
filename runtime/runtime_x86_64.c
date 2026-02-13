@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <unistd.h>
+#include <sys/wait.h>
 
 /* ── stele runtime for native (x86-64) backend ───────────────── */
 /* All functions have external linkage so they can be called from   */
@@ -255,6 +257,76 @@ Value* fn_argv(Value* arg) {
         exit(1);
     }
     return make_str(g_argv[idx]);
+}
+
+Value* fn_sh(Value* arg) {
+    Value* cmdVal = record_field(arg, "command");
+    if (!cmdVal || cmdVal->tag != TAG_STR) {
+        fprintf(stderr, "stele: sh requires command: String\n");
+        exit(1);
+    }
+    int rc = system(cmdVal->str_val);
+    return make_int((int64_t)rc);
+}
+
+Value* fn_terminate(Value* arg) {
+    Value* codeVal = record_field(arg, "code");
+    if (!codeVal || codeVal->tag != TAG_INT) {
+        fprintf(stderr, "stele: terminate requires code: Int\n");
+        exit(1);
+    }
+    exit((int)codeVal->int_val);
+}
+
+Value* fn_spawn(Value* arg) {
+    Value* cmdVal = record_field(arg, "command");
+    if (!cmdVal || cmdVal->tag != TAG_STR) {
+        fprintf(stderr, "stele: spawn requires command: String\n");
+        exit(1);
+    }
+    pid_t pid = fork();
+    if (pid < 0) {
+        fprintf(stderr, "stele: spawn failed\n");
+        exit(1);
+    }
+    if (pid == 0) {
+        execl("/bin/sh", "sh", "-c", cmdVal->str_val, (char*)NULL);
+        _exit(127);
+    }
+    return make_int((int64_t)pid);
+}
+
+Value* fn_await(Value* arg) {
+    Value* pidVal = record_field(arg, "pid");
+    if (!pidVal || pidVal->tag != TAG_INT) {
+        fprintf(stderr, "stele: await requires pid: Int\n");
+        exit(1);
+    }
+    int status = 0;
+    pid_t r = waitpid((pid_t)pidVal->int_val, &status, 0);
+    if (r < 0) {
+        fprintf(stderr, "stele: await failed for pid %lld\n", (long long)pidVal->int_val);
+        exit(1);
+    }
+    if (WIFEXITED(status)) {
+        return make_int((int64_t)WEXITSTATUS(status));
+    }
+    if (WIFSIGNALED(status)) {
+        return make_int((int64_t)(128 + WTERMSIG(status)));
+    }
+    return make_int((int64_t)status);
+}
+
+Value* fn_sleep_ms(Value* arg) {
+    Value* msVal = record_field(arg, "ms");
+    if (!msVal || msVal->tag != TAG_INT) {
+        fprintf(stderr, "stele: sleep_ms requires ms: Int\n");
+        exit(1);
+    }
+    int64_t ms = msVal->int_val;
+    if (ms < 0) ms = 0;
+    usleep((useconds_t)(ms * 1000));
+    return make_void();
 }
 
 /* ── string built-in fns ──────────────────────────────────── */

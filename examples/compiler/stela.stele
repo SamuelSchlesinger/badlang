@@ -1,0 +1,692 @@
+-- stela: self-hosted build tool for Stele projects
+--
+-- Cargo-inspired command subset (no package manager):
+--   stela build <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|x86|x86-linux>] [--sandbox|--no-sandbox]
+--   stela run   <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|x86|x86-linux>] [--sandbox|--no-sandbox]
+--   stela check <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|x86|x86-linux>] [--sandbox|--no-sandbox]
+--   stela test  <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|x86|x86-linux>] [--sandbox|--no-sandbox]
+--   stela bench <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|x86|x86-linux>] [--sandbox|--no-sandbox]
+--   stela package-lib <source.stele> [--lib <name> ...] [--name <name>]
+--   stela clean
+
+fn str_eq
+  case {| a, b |} =>
+    match strcmp {| a: a, b: b |}
+      case 0 => 1
+      case _ => 0
+    end
+end
+
+fn starts_with
+  case {| s, prefix |} =>
+    let plen = strlen {| s: prefix |}
+    let slen = strlen {| s: s |}
+    match slen >= plen
+      case 0 => 0
+      case 1 =>
+        let sub = substr {| s: s, start: 0, len: plen |}
+        str_eq {| a: sub, b: prefix |}
+    end
+end
+
+fn echo_line
+  case {| msg |} =>
+    let s1 = concat {| a: "echo \"", b: msg |}
+    let cmd = concat {| a: s1, b: "\"" |}
+    sh {| command: cmd |}
+end
+
+fn with_space
+  case {| a, b |} =>
+    let s = concat {| a: a, b: " " |}
+    concat {| a: s, b: b |}
+end
+
+fn join3
+  case {| a, b, c |} =>
+    let ab = with_space {| a: a, b: b |}
+    with_space {| a: ab, b: c |}
+end
+
+fn join4
+  case {| a, b, c, d |} =>
+    let abc = join3 {| a: a, b: b, c: c |}
+    with_space {| a: abc, b: d |}
+end
+
+fn join5
+  case {| a, b, c, d, e |} =>
+    let abcd = join4 {| a: a, b: b, c: c, d: d |}
+    with_space {| a: abcd, b: e |}
+end
+
+fn join6
+  case {| a, b, c, d, e, f |} =>
+    let abcde = join5 {| a: a, b: b, c: c, d: d, e: e |}
+    with_space {| a: abcde, b: f |}
+end
+
+fn join7
+  case {| a, b, c, d, e, f, g |} =>
+    let abcdef = join6 {| a: a, b: b, c: c, d: d, e: e, f: f |}
+    with_space {| a: abcdef, b: g |}
+end
+
+fn join8
+  case {| a, b, c, d, e, f, g, h |} =>
+    let abcdefg = join7 {| a: a, b: b, c: c, d: d, e: e, f: f, g: g |}
+    with_space {| a: abcdefg, b: h |}
+end
+
+fn last_index_char_loop
+  case {| s, pos, target, last |} =>
+    let slen = strlen {| s: s |}
+    match pos >= slen
+      case 1 => last
+      case 0 =>
+        let ch = char_at {| s: s, n: pos |}
+        match ch == target
+          case 1 => last_index_char_loop {| s: s, pos: pos + 1, target: target, last: pos |}
+          case 0 => last_index_char_loop {| s: s, pos: pos + 1, target: target, last: last |}
+        end
+    end
+end
+
+fn basename_no_ext
+  case {| path |} =>
+    let plen = strlen {| s: path |}
+    let slash = last_index_char_loop {| s: path, pos: 0, target: 47, last: 0 - 1 |}
+    let start = slash + 1
+    let file = substr {| s: path, start: start, len: plen - start |}
+    let flen = strlen {| s: file |}
+    let dot = last_index_char_loop {| s: file, pos: 0, target: 46, last: 0 - 1 |}
+    match dot >= 0
+      case 1 => substr {| s: file, start: 0, len: dot |}
+      case 0 => file
+    end
+end
+
+fn mode_is_valid
+  case {| mode |} =>
+    (str_eq {| a: mode, b: "c" |}) ||
+    (str_eq {| a: mode, b: "asm" |}) ||
+    (str_eq {| a: mode, b: "x86" |}) ||
+    (str_eq {| a: mode, b: "x86-linux" |})
+end
+
+fn runtime_for_mode
+  case {| mode |} =>
+    match str_eq {| a: mode, b: "asm" |}
+      case 1 => "runtime/runtime_aarch64.c"
+      case 0 => "runtime/runtime_x86_64.c"
+    end
+end
+
+fn target_dir
+  case {| |} => "target/debug"
+end
+
+fn output_binary_path
+  case {| source |} =>
+    let base = basename_no_ext {| path: source |}
+    let p1 = concat {| a: target_dir {| |}, b: "/" |}
+    concat {| a: p1, b: base |}
+end
+
+fn output_source_path
+  case {| source, mode |} =>
+    let bin = output_binary_path {| source: source |}
+    match str_eq {| a: mode, b: "c" |}
+      case 1 => concat {| a: bin, b: ".c" |}
+      case 0 => concat {| a: bin, b: ".s" |}
+    end
+end
+
+fn check_source_path
+  case {| source, mode |} =>
+    let base = basename_no_ext {| path: source |}
+    let p1 = concat {| a: target_dir {| |}, b: "/.check_" |}
+    let p2 = concat {| a: p1, b: base |}
+    match str_eq {| a: mode, b: "c" |}
+      case 1 => concat {| a: p2, b: ".c" |}
+      case 0 => concat {| a: p2, b: ".s" |}
+    end
+end
+
+fn append_word
+  case {| words, word |} =>
+    let len = strlen {| s: words |}
+    match len == 0
+      case 1 => word
+      case 0 =>
+        let s1 = concat {| a: words, b: " " |}
+        concat {| a: s1, b: word |}
+    end
+end
+
+fn lib_path_for
+  case {| name |} =>
+    let p1 = concat {| a: ".stela/lib/", b: name |}
+    concat {| a: p1, b: ".stelib" |}
+end
+
+fn default_opts
+  case {| |} =>
+    {|
+      source: "",
+      has_source: 0,
+      compiler: "./compiler",
+      mode: "c",
+      sandbox: 1,
+      libs: "",
+      name: "",
+      has_name: 0
+    |}
+end
+
+fn set_source
+  case {| opts, source |} =>
+    {|
+      source: source,
+      has_source: 1,
+      compiler: opts.compiler,
+      mode: opts.mode,
+      sandbox: opts.sandbox,
+      libs: opts.libs,
+      name: opts.name,
+      has_name: opts.has_name
+    |}
+end
+
+fn set_compiler
+  case {| opts, compiler |} =>
+    {|
+      source: opts.source,
+      has_source: opts.has_source,
+      compiler: compiler,
+      mode: opts.mode,
+      sandbox: opts.sandbox,
+      libs: opts.libs,
+      name: opts.name,
+      has_name: opts.has_name
+    |}
+end
+
+fn set_mode
+  case {| opts, mode |} =>
+    {|
+      source: opts.source,
+      has_source: opts.has_source,
+      compiler: opts.compiler,
+      mode: mode,
+      sandbox: opts.sandbox,
+      libs: opts.libs,
+      name: opts.name,
+      has_name: opts.has_name
+    |}
+end
+
+fn set_sandbox
+  case {| opts, sandbox |} =>
+    {|
+      source: opts.source,
+      has_source: opts.has_source,
+      compiler: opts.compiler,
+      mode: opts.mode,
+      sandbox: sandbox,
+      libs: opts.libs,
+      name: opts.name,
+      has_name: opts.has_name
+    |}
+end
+
+fn add_lib
+  case {| opts, lib_name |} =>
+    let lib_path = lib_path_for {| name: lib_name |}
+    let libs2 = append_word {| words: opts.libs, word: lib_path |}
+    {|
+      source: opts.source,
+      has_source: opts.has_source,
+      compiler: opts.compiler,
+      mode: opts.mode,
+      sandbox: opts.sandbox,
+      libs: libs2,
+      name: opts.name,
+      has_name: opts.has_name
+    |}
+end
+
+fn set_name
+  case {| opts, name |} =>
+    {|
+      source: opts.source,
+      has_source: opts.has_source,
+      compiler: opts.compiler,
+      mode: opts.mode,
+      sandbox: opts.sandbox,
+      libs: opts.libs,
+      name: name,
+      has_name: 1
+    |}
+end
+
+fn fail_opts
+  case {| msg, opts |} =>
+    let ignored1 = echo_line {| msg: msg |}
+    let ignored2 = terminate {| code: 1 |}
+    opts
+end
+
+fn parse_opts_loop
+  case {| i, ac, opts |} =>
+    match i >= ac
+      case 1 => opts
+      case 0 =>
+        let arg = argv {| n: i |}
+        match str_eq {| a: arg, b: "--compiler" |}
+          case 1 =>
+            match (i + 1) < ac
+              case 1 =>
+                let val = argv {| n: i + 1 |}
+                let next = set_compiler {| opts: opts, compiler: val |}
+                parse_opts_loop {| i: i + 2, ac: ac, opts: next |}
+              case 0 =>
+                fail_opts {| msg: "stela: missing value for --compiler", opts: opts |}
+            end
+          case 0 =>
+            match str_eq {| a: arg, b: "--mode" |}
+              case 1 =>
+                match (i + 1) < ac
+                  case 1 =>
+                    let val = argv {| n: i + 1 |}
+                    let next = set_mode {| opts: opts, mode: val |}
+                    parse_opts_loop {| i: i + 2, ac: ac, opts: next |}
+                  case 0 =>
+                    fail_opts {| msg: "stela: missing value for --mode", opts: opts |}
+                end
+              case 0 =>
+                match str_eq {| a: arg, b: "--native" |}
+                  case 1 =>
+                    let next = set_mode {| opts: opts, mode: "asm" |}
+                    parse_opts_loop {| i: i + 1, ac: ac, opts: next |}
+                  case 0 =>
+                    match str_eq {| a: arg, b: "--sandbox" |}
+                      case 1 =>
+                        let next = set_sandbox {| opts: opts, sandbox: 1 |}
+                        parse_opts_loop {| i: i + 1, ac: ac, opts: next |}
+                      case 0 =>
+                        match str_eq {| a: arg, b: "--no-sandbox" |}
+                          case 1 =>
+                            let next = set_sandbox {| opts: opts, sandbox: 0 |}
+                            parse_opts_loop {| i: i + 1, ac: ac, opts: next |}
+                          case 0 =>
+                            match str_eq {| a: arg, b: "--lib" |}
+                              case 1 =>
+                                match (i + 1) < ac
+                                  case 1 =>
+                                    let val = argv {| n: i + 1 |}
+                                    let next = add_lib {| opts: opts, lib_name: val |}
+                                    parse_opts_loop {| i: i + 2, ac: ac, opts: next |}
+                                  case 0 =>
+                                    fail_opts {| msg: "stela: missing value for --lib", opts: opts |}
+                                end
+                              case 0 =>
+                                match str_eq {| a: arg, b: "--name" |}
+                                  case 1 =>
+                                    match (i + 1) < ac
+                                      case 1 =>
+                                        let val = argv {| n: i + 1 |}
+                                        let next = set_name {| opts: opts, name: val |}
+                                        parse_opts_loop {| i: i + 2, ac: ac, opts: next |}
+                                      case 0 =>
+                                        fail_opts {| msg: "stela: missing value for --name", opts: opts |}
+                                    end
+                                  case 0 =>
+                                    match starts_with {| s: arg, prefix: "--" |}
+                                      case 1 =>
+                                        let m1 = concat {| a: "stela: unknown option ", b: arg |}
+                                        fail_opts {| msg: m1, opts: opts |}
+                                      case 0 =>
+                                        match opts.has_source
+                                          case 0 =>
+                                            let next = set_source {| opts: opts, source: arg |}
+                                            parse_opts_loop {| i: i + 1, ac: ac, opts: next |}
+                                          case 1 =>
+                                            let m1 = concat {| a: "stela: unexpected extra argument ", b: arg |}
+                                            fail_opts {| msg: m1, opts: opts |}
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+fn require_source
+  case {| opts |} =>
+    match opts.has_source
+      case 1 => opts
+      case 0 =>
+        fail_opts {| msg: "stela: missing source file", opts: opts |}
+    end
+end
+
+fn default_lib_name
+  case {| opts |} =>
+    match opts.has_name
+      case 1 => opts.name
+      case 0 => basename_no_ext {| path: opts.source |}
+    end
+end
+
+fn sandbox_available
+  case {| |} =>
+    let has_bin = sh {| command: "command -v sandbox-exec >/dev/null 2>&1" |}
+    match has_bin == 0
+      case 1 =>
+        let probe = sh {| command: "sandbox-exec -p '(version 1) (allow default)' /usr/bin/true >/dev/null 2>&1" |}
+        match probe == 0
+          case 1 => 1
+          case 0 => 0
+        end
+      case 0 => 0
+    end
+end
+
+fn sandbox_policy
+  case {| |} =>
+    "(version 1)\n(deny default)\n(import \"system.sb\")\n(allow process*)\n(allow file-read*)\n(allow file-write* (subpath \"./target\") (subpath \"/tmp\") (literal \"./.stela.sb\"))\n"
+end
+
+fn wrap_cmd
+  case {| cmd, use_sandbox |} =>
+    match use_sandbox
+      case 1 =>
+        let prefix = "sandbox-exec -f .stela.sb"
+        with_space {| a: prefix, b: cmd |}
+      case 0 => cmd
+    end
+end
+
+fn run_cmd_or_die
+  case {| cmd, label |} =>
+    let rc = sh {| command: cmd |}
+    match rc == 0
+      case 1 => 0
+      case 0 =>
+        let m1 = concat {| a: "stela: failed ", b: label |}
+        let m2 = concat {| a: m1, b: " with command: " |}
+        let m3 = concat {| a: m2, b: cmd |}
+        let ignored1 = echo_line {| msg: m3 |}
+        let ignored2 = terminate {| code: 1 |}
+        0
+    end
+end
+
+fn build_compile_cmd
+  case {| opts, in_src, out_src |} =>
+    match str_eq {| a: opts.mode, b: "c" |}
+      case 1 =>
+        join3 {| a: opts.compiler, b: in_src, c: out_src |}
+      case 0 =>
+        join4 {| a: opts.compiler, b: in_src, c: out_src, d: opts.mode |}
+    end
+end
+
+fn build_link_cmd
+  case {| opts, out_src, out_bin |} =>
+    match str_eq {| a: opts.mode, b: "c" |}
+      case 1 =>
+        join5 {| a: "cc", b: "-O1", c: "-o", d: out_bin, e: out_src |}
+      case 0 =>
+        let runtime = runtime_for_mode {| mode: opts.mode |}
+        match str_eq {| a: opts.mode, b: "x86" |}
+          case 1 =>
+            join8 {| a: "cc", b: "-O1", c: "-arch", d: "x86_64", e: "-o", f: out_bin, g: out_src, h: runtime |}
+          case 0 =>
+            join6 {| a: "cc", b: "-O1", c: "-o", d: out_bin, e: out_src, f: runtime |}
+        end
+    end
+end
+
+fn ensure_target_dir
+  case {| |} =>
+    run_cmd_or_die {| cmd: "mkdir -p target/debug", label: "create target/debug" |}
+end
+
+fn ensure_lib_dir
+  case {| |} =>
+    run_cmd_or_die {| cmd: "mkdir -p .stela/lib", label: "create .stela/lib" |}
+end
+
+fn materialize_with_libs
+  case {| opts, out_path, label |} =>
+    let inputs = append_word {| words: opts.libs, word: opts.source |}
+    let c1 = concat {| a: "cat ", b: inputs |}
+    let c2 = concat {| a: c1, b: " > " |}
+    let cmd = concat {| a: c2, b: out_path |}
+    run_cmd_or_die {| cmd: cmd, label: label |}
+end
+
+fn prepare_build_source
+  case {| opts |} =>
+    let llen = strlen {| s: opts.libs |}
+    match llen == 0
+      case 1 => opts.source
+      case 0 =>
+        let base = basename_no_ext {| path: opts.source |}
+        let p1 = concat {| a: target_dir {| |}, b: "/.combo_" |}
+        let p2 = concat {| a: p1, b: base |}
+        let combo = concat {| a: p2, b: ".stele" |}
+        let ignored = materialize_with_libs {| opts: opts, out_path: combo, label: "merge libraries" |}
+        combo
+    end
+end
+
+fn effective_sandbox
+  case {| requested |} =>
+    match requested
+      case 1 =>
+        let has_sb = sandbox_available {| |}
+        match has_sb
+          case 1 => 1
+          case 0 =>
+            let ignored = echo_line {| msg: "stela: sandbox unavailable; running unsandboxed" |}
+            0
+        end
+      case 0 => 0
+    end
+end
+
+fn validate_mode
+  case {| mode |} =>
+    match mode_is_valid {| mode: mode |}
+      case 1 => 0
+      case 0 =>
+        let m1 = concat {| a: "stela: unknown mode ", b: mode |}
+        let ignored1 = echo_line {| msg: m1 |}
+        let ignored2 = echo_line {| msg: "stela: expected one of c, asm, x86, x86-linux" |}
+        let ignored3 = terminate {| code: 1 |}
+        0
+    end
+end
+
+fn build_action
+  case {| opts, run_after |} =>
+    let ignored1 = validate_mode {| mode: opts.mode |}
+    let ignored2 = ensure_target_dir {| |}
+    let use_sb = effective_sandbox {| requested: opts.sandbox |}
+    let ignored_policy = match use_sb
+      case 1 =>
+        let ignored = inscribe {| path: ".stela.sb", content: sandbox_policy {| |} |}
+        0
+      case 0 =>
+        0
+    end
+    let in_src = prepare_build_source {| opts: opts |}
+    let out_src = output_source_path {| source: opts.source, mode: opts.mode |}
+    let out_bin = output_binary_path {| source: opts.source |}
+    let compile_cmd = build_compile_cmd {| opts: opts, in_src: in_src, out_src: out_src |}
+    let compile_cmd2 = wrap_cmd {| cmd: compile_cmd, use_sandbox: use_sb |}
+    let ignored3 = run_cmd_or_die {| cmd: compile_cmd2, label: "compile" |}
+    let link_cmd = build_link_cmd {| opts: opts, out_src: out_src, out_bin: out_bin |}
+    let link_cmd2 = wrap_cmd {| cmd: link_cmd, use_sandbox: use_sb |}
+    let ignored4 = run_cmd_or_die {| cmd: link_cmd2, label: "link" |}
+    let m1 = concat {| a: "Built ", b: out_bin |}
+    let ignored5 = echo_line {| msg: m1 |}
+    match run_after == 1
+      case 1 =>
+        let ignored = run_cmd_or_die {| cmd: out_bin, label: "run" |}
+        0
+      case 0 =>
+        match run_after == 2
+          case 1 =>
+            let ignored1 = run_cmd_or_die {| cmd: out_bin, label: "test" |}
+            let ignored2 = echo_line {| msg: "Test passed" |}
+            0
+          case 0 =>
+            match run_after == 3
+              case 1 =>
+                let bench_cmd = concat {| a: "/usr/bin/time -p ", b: out_bin |}
+                let ignored1 = run_cmd_or_die {| cmd: bench_cmd, label: "bench" |}
+                0
+              case 0 => 0
+            end
+        end
+    end
+end
+
+fn check_action
+  case {| opts |} =>
+    let ignored1 = validate_mode {| mode: opts.mode |}
+    let ignored2 = ensure_target_dir {| |}
+    let use_sb = effective_sandbox {| requested: opts.sandbox |}
+    let ignored_policy = match use_sb
+      case 1 =>
+        let ignored = inscribe {| path: ".stela.sb", content: sandbox_policy {| |} |}
+        0
+      case 0 =>
+        0
+    end
+    let in_src = prepare_build_source {| opts: opts |}
+    let out_src = check_source_path {| source: opts.source, mode: opts.mode |}
+    let compile_cmd = build_compile_cmd {| opts: opts, in_src: in_src, out_src: out_src |}
+    let compile_cmd2 = wrap_cmd {| cmd: compile_cmd, use_sandbox: use_sb |}
+    let ignored3 = run_cmd_or_die {| cmd: compile_cmd2, label: "check" |}
+    let m1 = concat {| a: "Checked ", b: opts.source |}
+    let ignored4 = echo_line {| msg: m1 |}
+    0
+end
+
+fn package_lib_action
+  case {| opts |} =>
+    let ignored1 = ensure_lib_dir {| |}
+    let lib_name = default_lib_name {| opts: opts |}
+    let p1 = concat {| a: ".stela/lib/", b: lib_name |}
+    let out_path = concat {| a: p1, b: ".stelib" |}
+    let ignored2 = materialize_with_libs {| opts: opts, out_path: out_path, label: "package library" |}
+    let m1 = concat {| a: "Packaged library ", b: lib_name |}
+    let m2 = concat {| a: m1, b: " -> " |}
+    let m3 = concat {| a: m2, b: out_path |}
+    let ignored3 = echo_line {| msg: m3 |}
+    0
+end
+
+fn clean_action
+  case {| |} =>
+    let ignored = sh {| command: "rm -rf target" |}
+    let ignored2 = echo_line {| msg: "Removed target/" |}
+    0
+end
+
+fn usage
+  case {| |} =>
+    let ignored1 = echo_line {| msg: "stela - self-hosted Stele build tool" |}
+    let ignored2 = echo_line {| msg: "Usage:" |}
+    let ignored3 = echo_line {| msg: "  stela build <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|x86|x86-linux>] [--sandbox|--no-sandbox]" |}
+    let ignored4 = echo_line {| msg: "  stela run   <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|x86|x86-linux>] [--sandbox|--no-sandbox]" |}
+    let ignored5 = echo_line {| msg: "  stela check <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|x86|x86-linux>] [--sandbox|--no-sandbox]" |}
+    let ignored6 = echo_line {| msg: "  stela test  <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|x86|x86-linux>] [--sandbox|--no-sandbox]" |}
+    let ignored7 = echo_line {| msg: "  stela bench <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|x86|x86-linux>] [--sandbox|--no-sandbox]" |}
+    let ignored8 = echo_line {| msg: "  stela package-lib <source.stele> [--lib <name> ...] [--name <name>]" |}
+    let ignored9 = echo_line {| msg: "  stela clean" |}
+    0
+end
+
+do main
+  let ac = argc {| |}
+  match ac >= 2
+    case 1 =>
+      let cmd = argv {| n: 1 |}
+      match str_eq {| a: cmd, b: "build" |}
+        case 1 =>
+          let opts0 = default_opts {| |}
+          let parsed = parse_opts_loop {| i: 2, ac: ac, opts: opts0 |}
+          let opts = require_source {| opts: parsed |}
+          build_action {| opts: opts, run_after: 0 |}
+        case 0 =>
+          match str_eq {| a: cmd, b: "run" |}
+            case 1 =>
+              let opts0 = default_opts {| |}
+              let parsed = parse_opts_loop {| i: 2, ac: ac, opts: opts0 |}
+              let opts = require_source {| opts: parsed |}
+              build_action {| opts: opts, run_after: 1 |}
+            case 0 =>
+              match str_eq {| a: cmd, b: "test" |}
+                case 1 =>
+                  let opts0 = default_opts {| |}
+                  let parsed = parse_opts_loop {| i: 2, ac: ac, opts: opts0 |}
+                  let opts = require_source {| opts: parsed |}
+                  build_action {| opts: opts, run_after: 2 |}
+                case 0 =>
+                  match str_eq {| a: cmd, b: "bench" |}
+                    case 1 =>
+                      let opts0 = default_opts {| |}
+                      let parsed = parse_opts_loop {| i: 2, ac: ac, opts: opts0 |}
+                      let opts = require_source {| opts: parsed |}
+                      build_action {| opts: opts, run_after: 3 |}
+                    case 0 =>
+                      match str_eq {| a: cmd, b: "check" |}
+                        case 1 =>
+                          let opts0 = default_opts {| |}
+                          let parsed = parse_opts_loop {| i: 2, ac: ac, opts: opts0 |}
+                          let opts = require_source {| opts: parsed |}
+                          check_action {| opts: opts |}
+                        case 0 =>
+                          match str_eq {| a: cmd, b: "package-lib" |}
+                            case 1 =>
+                              let opts0 = default_opts {| |}
+                              let parsed = parse_opts_loop {| i: 2, ac: ac, opts: opts0 |}
+                              let opts = require_source {| opts: parsed |}
+                              package_lib_action {| opts: opts |}
+                            case 0 =>
+                              match str_eq {| a: cmd, b: "clean" |}
+                                case 1 =>
+                                  match ac == 2
+                                    case 1 => clean_action {| |}
+                                    case 0 =>
+                                      let ignored1 = usage {| |}
+                                      let ignored2 = terminate {| code: 1 |}
+                                      0
+                                  end
+                                case 0 =>
+                                  let ignored1 = usage {| |}
+                                  let ignored2 = terminate {| code: 1 |}
+                                  0
+                              end
+                          end
+                      end
+                  end
+              end
+          end
+      end
+    case 0 =>
+      let ignored1 = usage {| |}
+      let ignored2 = terminate {| code: 1 |}
+      0
+  end
+end

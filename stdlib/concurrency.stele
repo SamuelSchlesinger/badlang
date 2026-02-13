@@ -1,0 +1,38 @@
+-- concurrency.stele
+-- Process-level concurrency helpers.
+
+fn conc_spawn
+  case {| command |} =>
+    spawn {| command: command |}
+end
+
+fn conc_await
+  case {| pid |} =>
+    await {| pid: pid |}
+end
+
+fn conc_sleep_ms
+  case {| ms |} =>
+    sleep_ms {| ms: ms |}
+end
+
+fn conc_parallel2
+  case {| command_a, command_b |} =>
+    let p1 = conc_spawn {| command: command_a |}
+    let p2 = conc_spawn {| command: command_b |}
+    let r1 = conc_await {| pid: p1 |}
+    let r2 = conc_await {| pid: p2 |}
+    {| a: r1, b: r2 |}
+end
+
+fn conc_parallel3
+  case {| command_a, command_b, command_c |} =>
+    let p1 = conc_spawn {| command: command_a |}
+    let p2 = conc_spawn {| command: command_b |}
+    let p3 = conc_spawn {| command: command_c |}
+    let r1 = conc_await {| pid: p1 |}
+    let r2 = conc_await {| pid: p2 |}
+    let r3 = conc_await {| pid: p3 |}
+    {| a: r1, b: r2, c: r3 |}
+end
+

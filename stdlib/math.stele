@@ -1,0 +1,73 @@
+-- math.stele
+-- Integer-focused math helpers.
+
+fn math_abs
+  case {| n |} =>
+    match n < 0
+      case 1 => 0 - n
+      case 0 => n
+    end
+end
+
+fn math_min
+  case {| a, b |} =>
+    match a <= b
+      case 1 => a
+      case 0 => b
+    end
+end
+
+fn math_max
+  case {| a, b |} =>
+    match a >= b
+      case 1 => a
+      case 0 => b
+    end
+end
+
+fn math_clamp
+  case {| n, lo, hi |} =>
+    let x = math_max {| a: n, b: lo |}
+    math_min {| a: x, b: hi |}
+end
+
+fn math_is_even
+  case {| n |} => (n % 2) == 0
+end
+
+fn math_is_odd
+  case {| n |} => (n % 2) != 0
+end
+
+fn math_pow
+  case {| base, exp: 0 |} => 1
+  case {| base, exp |} =>
+    match exp < 0
+      case 1 => 0
+      case 0 => base * (math_pow {| base: base, exp: exp - 1 |})
+    end
+end
+
+fn math_gcd
+  case {| a, b: 0 |} => math_abs {| n: a |}
+  case {| a, b |} => math_gcd {| a: b, b: a % b |}
+end
+
+fn math_lcm
+  case {| a, b |} =>
+    let g = math_gcd {| a: a, b: b |}
+    match g == 0
+      case 1 => 0
+      case 0 => math_abs {| n: (a / g) * b |}
+    end
+end
+
+fn math_factorial
+  case {| n: 0 |} => 1
+  case {| n |} =>
+    match n < 0
+      case 1 => 0
+      case 0 => n * (math_factorial {| n: n - 1 |})
+    end
+end
+

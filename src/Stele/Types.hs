@@ -709,6 +709,16 @@ registerBuiltinFns env = env
       , ("argc",     TFun (TRec REmpty) TInt)
       -- argv : {| n: Int |} -> String
       , ("argv",     TFun (TRec (RExtend "n" TInt REmpty)) TStr)
+      -- sh : {| command: String |} -> Int
+      , ("sh",       TFun (TRec (RExtend "command" TStr REmpty)) TInt)
+      -- terminate : {| code: Int |} -> Void
+      , ("terminate", TFun (TRec (RExtend "code" TInt REmpty)) TVoid)
+      -- spawn : {| command: String |} -> Int
+      , ("spawn",    TFun (TRec (RExtend "command" TStr REmpty)) TInt)
+      -- await : {| pid: Int |} -> Int
+      , ("await",    TFun (TRec (RExtend "pid" TInt REmpty)) TInt)
+      -- sleep_ms : {| ms: Int |} -> Void
+      , ("sleep_ms", TFun (TRec (RExtend "ms" TInt REmpty)) TVoid)
       -- strlen : {| s: String |} -> Int
       , ("strlen",   TFun (TRec (RExtend "s" TStr REmpty)) TInt)
       -- char_at : {| s: String, n: Int |} -> Int
@@ -727,7 +737,8 @@ registerBuiltinFns env = env
 
 builtinFnNames :: [String]
 builtinFnNames =
-  [ "unearth", "inscribe", "argc", "argv"
+  [ "unearth", "inscribe", "argc", "argv", "sh", "terminate"
+  , "spawn", "await", "sleep_ms"
   , "strlen", "char_at", "substr", "concat"
   , "int_to_str", "char_of_int", "strcmp"
   ]

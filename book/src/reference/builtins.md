@@ -89,6 +89,56 @@ let program = argv {| n: 0 |}
 let first_arg = argv {| n: 1 |}
 ```
 
+## Process Control
+
+### sh
+
+Run a shell command.
+
+- **Call:** `sh {| command: "echo hello" |}`
+- **Argument:** `{| command: String |}`
+- **Returns:** `Int`
+- **Behavior:** Executes the command via the host shell and returns the
+  process status code.
+
+### terminate
+
+Exit the current process immediately.
+
+- **Call:** `terminate {| code: 1 |}`
+- **Argument:** `{| code: Int |}`
+- **Returns:** `Void`
+- **Behavior:** Terminates the process with the provided exit code.
+
+### spawn
+
+Run a shell command in a child process and return its PID.
+
+- **Call:** `spawn {| command: "sleep 1" |}`
+- **Argument:** `{| command: String |}`
+- **Returns:** `Int`
+- **Behavior:** Forks, executes the command via `/bin/sh -c ...`, and returns
+  the child PID to the caller.
+
+### await
+
+Wait for a child process to exit.
+
+- **Call:** `await {| pid: 12345 |}`
+- **Argument:** `{| pid: Int |}`
+- **Returns:** `Int`
+- **Behavior:** Blocks until the child exits and returns its exit status.
+
+### sleep_ms
+
+Sleep the current process for a number of milliseconds.
+
+- **Call:** `sleep_ms {| ms: 250 |}`
+- **Argument:** `{| ms: Int |}`
+- **Returns:** `Void`
+- **Behavior:** Sleeps for the requested duration (negative values are treated
+  as `0`).
+
 ## Summary Table
 
 | Function | Argument | Returns | Description |
@@ -99,3 +149,8 @@ let first_arg = argv {| n: 1 |}
 | `inscribe` | `{| path: String, content: String |}` | `Void` | Write to file |
 | `argc` | `{| |}` | `Int` | Argument count |
 | `argv` | `{| n: Int |}` | `String` | Get argument by index |
+| `sh` | `{| command: String |}` | `Int` | Run shell command |
+| `terminate` | `{| code: Int |}` | `Void` | Exit the process |
+| `spawn` | `{| command: String |}` | `Int` | Spawn child process (shell command) |
+| `await` | `{| pid: Int |}` | `Int` | Wait for child and return status |
+| `sleep_ms` | `{| ms: Int |}` | `Void` | Sleep for a duration in ms |
