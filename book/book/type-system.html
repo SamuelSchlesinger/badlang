@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7ed70138.js";
+            window.path_to_searchindex_js = "searchindex-114a12be.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-daf9c5e4.js"></script>
+        <script src="toc-e4e73581.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -199,7 +199,7 @@ errors when things don’t line up.</p>
 </code></pre>
 <h2 id="open-record-types-row-polymorphism"><a class="header" href="#open-record-types-row-polymorphism">Open Record Types (Row Polymorphism)</a></h2>
 <p>The key insight of badlang’s type system is that record types can be <strong>open</strong>.
-When a rite pattern-matches on <code>{| x, y |}</code>, the inferred type is:</p>
+When a fn pattern-matches on <code>{| x, y |}</code>, the inferred type is:</p>
 <pre><code>{| x: Int, y: Int | r |}
 </code></pre>
 <p>The <code>| r</code> is a row variable representing “and possibly more fields.” This is
@@ -223,9 +223,9 @@ automatically.</p>
 <tr><td><code>a &amp;&amp; b</code>, <code>a || b</code></td><td>Both operands <code>Int</code>, result <code>Int</code></td></tr>
 <tr><td>`{</td><td>x: e1, y: e2</td></tr>
 <tr><td><code>rec.field</code></td><td>Type of <code>field</code> in <code>rec</code>’s type</td></tr>
-<tr><td><code>invoke f arg</code></td><td>Return type of <code>f</code></td></tr>
-<tr><td><code>hearken</code></td><td><code>String</code></td></tr>
-<tr><td><code>scry</code></td><td><code>Int</code></td></tr>
+<tr><td><code>f arg</code></td><td>Return type of <code>f</code></td></tr>
+<tr><td><code>readln</code></td><td><code>String</code></td></tr>
+<tr><td><code>readint</code></td><td><code>Int</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -235,11 +235,11 @@ algorithm — extended with <strong>Remy-style row types</strong> for records.</
 <p>The process:</p>
 <ol>
 <li>
-<p><strong>Collect declarations.</strong> All altars, rites, and rituals are registered in
-the type environment before any bodies are checked.</p>
+<p><strong>Collect declarations.</strong> All structs, functions, and do blocks are
+registered in the type environment before any bodies are checked.</p>
 </li>
 <li>
-<p><strong>Infer each body.</strong> For each rite, the type checker walks the pattern and
+<p><strong>Infer each body.</strong> For each fn, the type checker walks the pattern and
 body, generating type constraints. For each record pattern, a fresh row
 variable is created to allow extra fields.</p>
 </li>
@@ -255,18 +255,18 @@ integer), the type checker reports the mismatch.</p>
 </li>
 </ol>
 <h2 id="pragmatic-let-polymorphism"><a class="header" href="#pragmatic-let-polymorphism">Pragmatic Let-Polymorphism</a></h2>
-<p>Each call to <code>invoke</code> creates <strong>fresh type variables</strong> for the callee. This
-means a rite can be called with structurally different arguments at different
+<p>Each function call creates <strong>fresh type variables</strong> for the callee. This
+means a fn can be called with structurally different arguments at different
 call sites:</p>
-<pre><code>rite get_x
-  given {| x |} =&gt; x
-seal
+<pre><code>fn get_x
+  case {| x |} =&gt; x
+end
 
-ritual main
+do main
   -- Called with different record types at each site:
-  utter invoke get_x {| x: 42 |}
-  utter invoke get_x {| x: "hello" |}
-seal
+  print get_x {| x: 42 |}
+  print get_x {| x: "hello" |}
+end
 </code></pre>
 <p>This is a pragmatic form of let-polymorphism that avoids the complexity of
 a full polymorphic type system while providing useful flexibility.</p>
@@ -277,23 +277,23 @@ a full polymorphic type system while providing useful flexibility.</p>
 <li>Accessing a field that doesn’t exist on a record</li>
 <li>Passing a record that’s missing required fields</li>
 </ul>
-<pre><code>rite needs_xyz
-  given {| x, y, z |} =&gt; x + y + z
-seal
+<pre><code>fn needs_xyz
+  case {| x, y, z |} =&gt; x + y + z
+end
 
-ritual main
+do main
   -- Type error: record is missing field z
-  utter invoke needs_xyz {| x: 1, y: 2 |}
-seal
+  print needs_xyz {| x: 1, y: 2 |}
+end
 </code></pre>
 <h2 id="no-explicit-type-annotations"><a class="header" href="#no-explicit-type-annotations">No Explicit Type Annotations</a></h2>
-<p>Type annotations appear in only one place: altar field declarations.</p>
-<pre><code>altar Point
+<p>Type annotations appear in only one place: struct field declarations.</p>
+<pre><code>struct Point
   x : Int
   y : Int
-seal
+end
 </code></pre>
-<p>Everywhere else — rite bodies, ritual statements, let bindings — types are
+<p>Everywhere else — fn bodies, do statements, let bindings — types are
 inferred. There is no syntax for writing type annotations on expressions or
 function signatures.</p>
 

@@ -7,7 +7,7 @@
 --
 -- Records have types like @{| x: Int, y: String | r |}@ where @r@ is a
 -- /row variable/ — an open tail that permits additional fields. This is
--- how width subtyping emerges naturally from unification: a rite that
+-- how width subtyping emerges naturally from unification: a fn that
 -- pattern-matches @{| x, y |}@ receives the type
 -- @{| x: t0, y: t1 | r0 |} -> t2@, so any record with at least @x@ and @y@
 -- fields will unify successfully.
@@ -22,9 +22,9 @@
 -- * __Two-pass checking:__ the first pass collects all declarations
 --   into the type environment; the second verifies each declaration
 --   body against its inferred type.
--- * __Per-call-site freshening:__ each @invoke@ expression creates
+-- * __Per-call-site freshening:__ each @call@ expression creates
 --   fresh type variables, implementing a pragmatic form of
---   let-polymorphism that allows the same rite to be called with
+--   let-polymorphism that allows the same fn to be called with
 --   structurally different records.
 --
 -- = Entry Point
@@ -80,14 +80,16 @@ data TVarState
 -- ---------------------------------------------------------------------------
 
 data Env = Env
-  { envVars   :: Map String Type      -- ^ Variable -> type
-  , envRites  :: Map String Type      -- ^ Rite name -> function type
-  , envAltars :: Map String [(String, Type)]  -- ^ Altar name -> fields
-  , envLevel  :: !Int                 -- ^ Current generalization level
+  { envVars     :: Map String Type      -- ^ Variable -> type
+  , envFns      :: Map String Type      -- ^ Fn name -> function type
+  , envStructs  :: Map String [(String, Type)]  -- ^ Struct name -> fields
+  , envOneofs   :: Map String [(String, [Field])] -- ^ Oneof name -> [(variant, fields)]
+  , envVariants :: Map String (String, [Field])   -- ^ Variant name -> (oneof_name, fields)
+  , envLevel    :: !Int                 -- ^ Current generalization level
   }
 
 emptyEnv :: Env
-emptyEnv = Env Map.empty Map.empty Map.empty 0
+emptyEnv = Env Map.empty Map.empty Map.empty Map.empty Map.empty 0
 
 extendVar :: String -> Type -> Env -> Env
 extendVar name ty env = env { envVars = Map.insert name ty (envVars env) }
@@ -269,9 +271,13 @@ infer _ (StrLit _) = return (Right TStr)
 infer env (Var name) =
   case Map.lookup name (envVars env) of
     Just t  -> return (Right t)
-    Nothing -> case Map.lookup name (envRites env) of
+    Nothing -> case Map.lookup name (envFns env) of
       Just t  -> return (Right t)
-      Nothing -> return (Left $ "Unbound variable: " ++ name)
+      Nothing ->
+        -- Check if it's a nullary variant
+        case Map.lookup name (envVariants env) of
+          Just _ -> return (Right (TRec REmpty))  -- nullary variants are valid expressions
+          Nothing -> return (Left $ "Unbound variable: " ++ name)
 
 infer env (BinOp op e1 e2) = do
   t1 <- infer env e1
@@ -314,28 +320,37 @@ infer env (Record fields) = do
     Left err -> return (Left err)
     Right r  -> return (Right (TRec r))
 
-infer env (Summon altarName fields) = do
-  case Map.lookup altarName (envAltars env) of
-    Nothing -> return (Left $ "Unknown altar: " ++ altarName)
+infer env (NamedRecord typeName fields) = do
+  -- Check structs first, then variants
+  case Map.lookup typeName (envStructs env) of
     Just expectedFields -> do
       row <- inferRecordFields env fields
       case row of
         Left err -> return (Left err)
         Right r -> do
-          -- Build the expected record type and unify
           let expectedRow = foldr (\(n, t) acc -> RExtend n t acc) REmpty expectedFields
           e <- unifyRow r expectedRow
           case e of
-            Left err -> return (Left $ "Altar '" ++ altarName ++ "': " ++ err)
+            Left err -> return (Left $ "Struct '" ++ typeName ++ "': " ++ err)
             Right () -> return (Right (TRec expectedRow))
+    Nothing -> case Map.lookup typeName (envVariants env) of
+      Just (_oneofName, expectedFieldDecls) -> do
+        row <- inferRecordFields env fields
+        case row of
+          Left err -> return (Left err)
+          Right r -> do
+            let expectedFields = map (\(Field n t) -> (n, resolveTypeAnn t)) expectedFieldDecls
+                expectedRow = foldr (\(n, t) acc -> RExtend n t acc) REmpty expectedFields
+            e <- unifyRow r expectedRow
+            case e of
+              Left err -> return (Left $ "Variant '" ++ typeName ++ "': " ++ err)
+              Right () -> return (Right (TRec expectedRow))
+      Nothing -> return (Left $ "Unknown type: " ++ typeName)
 
-infer env (Invoke riteName arg) = do
-  case Map.lookup riteName (envRites env) of
-    Nothing -> return (Left $ "Unknown rite: " ++ riteName)
-    Just _riteTy -> do
-      -- Instantiate fresh type variables for each invocation.
-      -- This implements let-polymorphism: the rite's type is re-derived
-      -- from its clauses for each call site, allowing structural subtyping.
+infer env (Call fnName arg) = do
+  case Map.lookup fnName (envFns env) of
+    Nothing -> return (Left $ "Unknown fn: " ++ fnName)
+    Just _fnTy -> do
       argResult <- infer env arg
       case argResult of
         Left err -> return (Left err)
@@ -349,10 +364,10 @@ infer env (LetIn name value body) = do
     Left err -> return (Left err)
     Right ty -> infer (extendVar name ty env) body
 
-infer _ Hearken = return (Right TStr)
-infer _ Scry = return (Right TInt)
+infer _ ReadLn = return (Right TStr)
+infer _ ReadInt = return (Right TInt)
 
-infer env (Divine scrutinee clauses) = do
+infer env (Match scrutinee clauses) = do
   scrTy <- infer env scrutinee
   case scrTy of
     Left err -> return (Left err)
@@ -423,6 +438,12 @@ inferPattern env (PRec fields) ty = do
   case e of
     Left err -> return (Left $ "Record pattern: " ++ err)
     Right () -> return (Right bindings)
+inferPattern env (PVariant _vname innerPat) _ty = do
+  -- Variant pattern: each variant has its own field set, so use a fresh
+  -- type for the inner pattern to avoid unifying different variant fields
+  -- against each other (which would require all variants' fields in every value).
+  freshScrTy <- freshTVar (envLevel env)
+  inferPattern env innerPat freshScrTy
 inferPattern _ (PLit _) _ = return (Left "Unsupported pattern literal")
 
 -- | Infer row type from pattern fields, collecting bindings.
@@ -448,7 +469,7 @@ inferPatFields env (PatField name mPat : rest) level = do
       _ <- unify fieldTy TStr
       return env1
     Just (PVar typeName) -> do
-      -- Treat as type annotation: look up altar or resolve type name
+      -- Treat as type annotation: look up struct or resolve type name
       case typeName of
         "Int"    -> do _ <- unify fieldTy TInt; return env1
         "String" -> do _ <- unify fieldTy TStr; return env1
@@ -457,8 +478,8 @@ inferPatFields env (PatField name mPat : rest) level = do
   (restRow, env'') <- inferPatFields env' rest level
   return (RExtend name fieldTy restRow, env'')
 
--- | Type-check a sequence of given clauses against a scrutinee type.
-inferClauses :: Env -> Type -> [GivenClause] -> IO (Either TypeError Type)
+-- | Type-check a sequence of case clauses against a scrutinee type.
+inferClauses :: Env -> Type -> [CaseClause] -> IO (Either TypeError Type)
 inferClauses _ _ [] = return (Left "Empty pattern match")
 inferClauses env scrTy clauses = do
   resultTy <- freshTVar (envLevel env)
@@ -467,8 +488,8 @@ inferClauses env scrTy clauses = do
     Left err -> return (Left err)
     Right _  -> return (Right resultTy)
 
-inferClause :: Env -> Type -> Type -> GivenClause -> IO (Either TypeError ())
-inferClause env scrTy _resultTy (GivenClause pat body) = do
+inferClause :: Env -> Type -> Type -> CaseClause -> IO (Either TypeError ())
+inferClause env scrTy _resultTy (CaseClause pat body) = do
   patResult <- inferPattern env pat scrTy
   case patResult of
     Left err -> return (Left err)
@@ -478,7 +499,7 @@ inferClause env scrTy _resultTy (GivenClause pat body) = do
         Left err -> return (Left err)
         Right _ty -> return (Right ())
         -- NOTE: We intentionally do NOT unify clause body types.
-        -- This allows different divine/rite branches to return records
+        -- This allows different match/fn branches to return records
         -- with different field sets (tagged union pattern), which is
         -- essential for the self-hosting compiler's AST representation.
 
@@ -492,12 +513,12 @@ inferStmt env (LetStmt name expr) = do
   case ty of
     Left err -> return (Left err)
     Right t  -> return (Right (extendVar name t env, TVoid))
-inferStmt env (UtterStmt expr) = do
+inferStmt env (PrintStmt expr) = do
   ty <- infer env expr
   case ty of
     Left err -> return (Left err)
     Right _  -> return (Right (env, TVoid))
-inferStmt env (WhisperStmt expr) = do
+inferStmt env (WriteStmt expr) = do
   ty <- infer env expr
   case ty of
     Left err -> return (Left err)
@@ -527,8 +548,8 @@ inferStmts env (s:ss) = do
 
 -- | Type-check a complete badlang program.
 --
--- Validates all declarations: checks that rite bodies are consistent
--- with their pattern types, altar fields are well-formed, and ritual
+-- Validates all declarations: checks that fn bodies are consistent
+-- with their pattern types, struct fields are well-formed, and do
 -- statements type-check. Returns the program unchanged on success, or
 -- a 'TypeError' describing the first error encountered.
 --
@@ -541,7 +562,7 @@ typeCheck prog = unsafePerformIO $ typeCheckIO prog
 typeCheckIO :: Program -> IO (Either TypeError Program)
 typeCheckIO (Program decls) = do
   writeIORef varCounter 0
-  let builtinEnv = registerBuiltinRites emptyEnv
+  let builtinEnv = registerBuiltinFns emptyEnv
   env <- buildEnv builtinEnv decls
   case env of
     Left err -> return (Left err)
@@ -551,10 +572,10 @@ typeCheckIO (Program decls) = do
         Left err -> return (Left err)
         Right () -> return (Right (Program decls))
 
--- | Register built-in rites for IO operations.
-registerBuiltinRites :: Env -> Env
-registerBuiltinRites env = env
-  { envRites = Map.union builtins (envRites env) }
+-- | Register built-in fns for IO operations.
+registerBuiltinFns :: Env -> Env
+registerBuiltinFns env = env
+  { envFns = Map.union builtins (envFns env) }
   where
     builtins = Map.fromList
       -- unearth : {| path: String |} -> String
@@ -591,17 +612,21 @@ buildEnv env (decl : rest) = do
     Right env' -> buildEnv env' rest
 
 addDecl :: Env -> Decl -> IO (Either TypeError Env)
-addDecl env (AltarDecl name fields) = do
+addDecl env (StructDecl name fields) = do
   let fieldTypes = map (\(Field n t) -> (n, resolveTypeAnn t)) fields
-  return (Right env { envAltars = Map.insert name fieldTypes (envAltars env) })
-addDecl env (RiteDecl name _clauses) = do
-  -- Create a fresh function type for this rite
+  return (Right env { envStructs = Map.insert name fieldTypes (envStructs env) })
+addDecl env (OneofDecl name variants) = do
+  let variantMap = Map.fromList [(vname, (name, vfields)) | (vname, vfields) <- variants]
+  return (Right env { envOneofs = Map.insert name variants (envOneofs env)
+                    , envVariants = Map.union variantMap (envVariants env) })
+addDecl env (FnDecl name _clauses) = do
+  -- Create a fresh function type for this fn
   argTy <- freshTVar (envLevel env)
   retTy <- freshTVar (envLevel env)
   let funTy = TFun argTy retTy
-      env' = env { envRites = Map.insert name funTy (envRites env) }
+      env' = env { envFns = Map.insert name funTy (envFns env) }
   return (Right env')
-addDecl env (RitualDecl _ _) = return (Right env)
+addDecl env (DoDecl _ _) = return (Right env)
 
 -- | Resolve a surface type annotation to an internal type.
 resolveTypeAnn :: TypeAnn -> Type
@@ -622,34 +647,35 @@ checkDecls env (decl : rest) = do
     Right () -> checkDecls env rest
 
 checkDecl :: Env -> Decl -> IO (Either TypeError ())
-checkDecl _ (AltarDecl _ _) = return (Right ())
-checkDecl env (RiteDecl name clauses) = do
-  case Map.lookup name (envRites env) of
-    Nothing -> return (Left $ "Internal error: rite '" ++ name ++ "' not in env")
-    Just riteTy -> do
-      riteTy' <- resolveType riteTy
-      case riteTy' of
+checkDecl _ (StructDecl _ _) = return (Right ())
+checkDecl _ (OneofDecl _ _) = return (Right ())
+checkDecl env (FnDecl name clauses) = do
+  case Map.lookup name (envFns env) of
+    Nothing -> return (Left $ "Internal error: fn '" ++ name ++ "' not in env")
+    Just fnTy -> do
+      fnTy' <- resolveType fnTy
+      case fnTy' of
         TFun argTy retTy -> do
           results <- mapM (inferClause env argTy retTy) clauses
           case sequence results of
-            Left err -> return (Left $ "In rite '" ++ name ++ "': " ++ err)
+            Left err -> return (Left $ "In fn '" ++ name ++ "': " ++ err)
             Right _  -> return (Right ())
         _ -> do
-          -- Rite type hasn't been constrained yet, create arg/ret
+          -- Fn type hasn't been constrained yet, create arg/ret
           argTy <- freshTVar (envLevel env)
           retTy <- freshTVar (envLevel env)
-          e <- unify riteTy' (TFun argTy retTy)
+          e <- unify fnTy' (TFun argTy retTy)
           case e of
             Left err -> return (Left err)
             Right () -> do
               results <- mapM (inferClause env argTy retTy) clauses
               case sequence results of
-                Left err -> return (Left $ "In rite '" ++ name ++ "': " ++ err)
+                Left err -> return (Left $ "In fn '" ++ name ++ "': " ++ err)
                 Right _  -> return (Right ())
-checkDecl env (RitualDecl name stmts) = do
+checkDecl env (DoDecl name stmts) = do
   result <- inferStmts env stmts
   case result of
-    Left err -> return (Left $ "In ritual '" ++ name ++ "': " ++ err)
+    Left err -> return (Left $ "In do '" ++ name ++ "': " ++ err)
     Right _  -> return (Right ())
 
 -- ---------------------------------------------------------------------------

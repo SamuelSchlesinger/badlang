@@ -5,15 +5,16 @@ three kinds:
 
 | Declaration | Purpose |
 |-------------|---------|
-| `altar`     | Declare a named record type |
-| `rite`      | Define a pure function by pattern matching |
-| `ritual`    | Define an effectful entry point |
+| `struct`     | Declare a named record type |
+| `fn`      | Define a pure function by pattern matching |
+| `do`    | Define an effectful entry point |
 
-Every declaration is opened by its keyword and closed by `seal`. There are
+Every declaration is opened by its keyword and closed by `end`. There are
 no imports, no modules, and no visibility modifiers — all declarations live in
 a single flat global scope.
 
-Declarations can appear in any order. Rites may reference other rites defined
-later in the file, enabling mutual recursion without forward declarations.
+Declarations can appear in any order. Functions may reference other functions
+defined later in the file, enabling mutual recursion without forward
+declarations.
 
 The following sections cover each declaration form in detail.

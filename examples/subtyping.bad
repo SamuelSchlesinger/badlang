@@ -1,50 +1,50 @@
--- Structural subtyping: rites accept any record with the required fields.
+-- Structural subtyping: fns accept any record with the required fields.
 -- Extra fields are silently permitted (width subtyping).
 
-altar Vec2
+struct Vec2
   x : Int
   y : Int
-seal
+end
 
-altar Vec3
+struct Vec3
   x : Int
   y : Int
   z : Int
-seal
+end
 
--- This rite requires only {| x, y |} — any wider record works.
-rite magnitude_sq
-  given {| x, y |} => x * x + y * y
-seal
+-- This fn requires only {| x, y |} — any wider record works.
+fn magnitude_sq
+  case {| x, y |} => x * x + y * y
+end
 
--- This rite requires {| x, y, z |} — a narrower contract.
-rite magnitude_sq_3d
-  given {| x, y, z |} => x * x + y * y + z * z
-seal
+-- This fn requires {| x, y, z |} — a narrower contract.
+fn magnitude_sq_3d
+  case {| x, y, z |} => x * x + y * y + z * z
+end
 
 -- Pattern matching with literal fields
-rite classify
-  given {| x: 0, y: 0 |} => 0
-  given {| x: 0 |}       => 1
-  given {| y: 0 |}       => 2
-  given {| x, y |}       => 3
-seal
+fn classify
+  case {| x: 0, y: 0 |} => 0
+  case {| x: 0 |}       => 1
+  case {| y: 0 |}       => 2
+  case {| x, y |}       => 3
+end
 
-ritual main
-  let flat = summon Vec2 {| x: 3, y: 4 |}
-  let deep = summon Vec3 {| x: 1, y: 2, z: 3 |}
+do main
+  let flat = Vec2 {| x: 3, y: 4 |}
+  let deep = Vec3 {| x: 1, y: 2, z: 3 |}
 
   -- Width subtyping: Vec3 has x and y, so it works with magnitude_sq
-  utter invoke magnitude_sq flat
-  utter invoke magnitude_sq deep
-  utter invoke magnitude_sq_3d deep
+  print magnitude_sq(flat)
+  print magnitude_sq(deep)
+  print magnitude_sq_3d(deep)
 
   -- Pattern dispatch
-  utter invoke classify {| x: 0, y: 0 |}
-  utter invoke classify {| x: 0, y: 5 |}
-  utter invoke classify {| x: 7, y: 0 |}
-  utter invoke classify {| x: 3, y: 4 |}
+  print classify {| x: 0, y: 0 |}
+  print classify {| x: 0, y: 5 |}
+  print classify {| x: 7, y: 0 |}
+  print classify {| x: 3, y: 4 |}
 
-  -- Anonymous records work too — no altar needed
-  utter invoke magnitude_sq {| x: 10, y: 10, extra: 999 |}
-seal
+  -- Anonymous records work too — no struct needed
+  print magnitude_sq {| x: 10, y: 10, extra: 999 |}
+end

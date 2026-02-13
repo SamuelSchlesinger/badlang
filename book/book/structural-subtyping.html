@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7ed70138.js";
+            window.path_to_searchindex_js = "searchindex-114a12be.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-daf9c5e4.js"></script>
+        <script src="toc-e4e73581.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -179,112 +179,112 @@
 function accepting <code>{| x, y |}</code> will work with <em>any</em> record that has at least
 those fields — regardless of what other fields are present.</p>
 <h2 id="the-core-idea"><a class="header" href="#the-core-idea">The Core Idea</a></h2>
-<p>Consider this rite:</p>
-<pre><code>rite magnitude_sq
-  given {| x, y |} =&gt; x * x + y * y
-seal
+<p>Consider this fn:</p>
+<pre><code>fn magnitude_sq
+  case {| x, y |} =&gt; x * x + y * y
+end
 </code></pre>
 <p>The pattern <code>{| x, y |}</code> declares the <strong>minimum contract</strong>: the argument must
 have fields <code>x</code> and <code>y</code>. But it says nothing about other fields. All of these
 calls work:</p>
-<pre><code>invoke magnitude_sq {| x: 3, y: 4 |}
-invoke magnitude_sq {| x: 1, y: 2, z: 3 |}
-invoke magnitude_sq {| x: 10, y: 10, name: "point", extra: 999 |}
+<pre><code>magnitude_sq {| x: 3, y: 4 |}
+magnitude_sq {| x: 1, y: 2, z: 3 |}
+magnitude_sq {| x: 10, y: 10, name: "point", extra: 999 |}
 </code></pre>
 <p>The extra fields (<code>z</code>, <code>name</code>, <code>extra</code>) are silently ignored. This is
 <strong>width subtyping</strong> — a wider record (more fields) is a subtype of a narrower
 one (fewer fields).</p>
 <h2 id="practical-benefits"><a class="header" href="#practical-benefits">Practical Benefits</a></h2>
 <h3 id="code-reuse"><a class="header" href="#code-reuse">Code Reuse</a></h3>
-<p>A rite that needs only <code>x</code> and <code>y</code> can operate on 2D points, 3D points,
+<p>A fn that needs only <code>x</code> and <code>y</code> can operate on 2D points, 3D points,
 game entities, UI elements — anything with those fields:</p>
-<pre><code>altar Vec2
+<pre><code>struct Vec2
   x : Int
   y : Int
-seal
+end
 
-altar Vec3
+struct Vec3
   x : Int
   y : Int
   z : Int
-seal
+end
 
-rite magnitude_sq
-  given {| x, y |} =&gt; x * x + y * y
-seal
+fn magnitude_sq
+  case {| x, y |} =&gt; x * x + y * y
+end
 
-ritual main
-  let flat = summon Vec2 {| x: 3, y: 4 |}
-  let deep = summon Vec3 {| x: 1, y: 2, z: 3 |}
+do main
+  let flat = Vec2 {| x: 3, y: 4 |}
+  let deep = Vec3 {| x: 1, y: 2, z: 3 |}
 
-  -- Both work with the same rite
-  utter invoke magnitude_sq flat
-  utter invoke magnitude_sq deep
-seal
+  -- Both work with the same fn
+  print magnitude_sq flat
+  print magnitude_sq deep
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>25
 5
 </code></pre>
 <h3 id="incremental-refinement"><a class="header" href="#incremental-refinement">Incremental Refinement</a></h3>
-<p>You can write rites at different levels of specificity:</p>
+<p>You can write functions at different levels of specificity:</p>
 <pre><code>-- Works with any record having x and y
-rite magnitude_sq_2d
-  given {| x, y |} =&gt; x * x + y * y
-seal
+fn magnitude_sq_2d
+  case {| x, y |} =&gt; x * x + y * y
+end
 
 -- Requires x, y, and z
-rite magnitude_sq_3d
-  given {| x, y, z |} =&gt; x * x + y * y + z * z
-seal
+fn magnitude_sq_3d
+  case {| x, y, z |} =&gt; x * x + y * y + z * z
+end
 </code></pre>
 <p>A <code>Vec3</code> record works with both. A <code>Vec2</code> record works only with the 2D
 version. The type system enforces this automatically.</p>
 <h2 id="how-it-works-row-polymorphism"><a class="header" href="#how-it-works-row-polymorphism">How It Works: Row Polymorphism</a></h2>
 <p>Under the hood, structural subtyping is implemented via <strong>row polymorphism</strong>
 (specifically, Remy-style row types).</p>
-<p>When the type checker sees <code>given {| x, y |} =&gt; ...</code>, it infers a type like:</p>
+<p>When the type checker sees <code>case {| x, y |} =&gt; ...</code>, it infers a type like:</p>
 <pre><code>{| x: Int, y: Int | r |} -&gt; Int
 </code></pre>
 <p>The <code>r</code> is a <strong>row variable</strong> — it stands for “any additional fields.” When
-you call this rite with <code>{| x: 3, y: 4, z: 5 |}</code>, the row variable <code>r</code>
+you call this fn with <code>{| x: 3, y: 4, z: 5 |}</code>, the row variable <code>r</code>
 unifies with <code>{| z: Int |}</code>. The required fields are checked; the rest flow
 through <code>r</code>.</p>
 <p>This is fully automatic. You never write row variables yourself — the type
 checker infers them.</p>
 <h2 id="pattern-dispatch-and-subtyping"><a class="header" href="#pattern-dispatch-and-subtyping">Pattern Dispatch and Subtyping</a></h2>
 <p>Width subtyping interacts naturally with multi-clause pattern matching:</p>
-<pre><code>rite classify
-  given {| x: 0, y: 0 |} =&gt; 0   -- origin
-  given {| x: 0 |}       =&gt; 1   -- on y-axis
-  given {| y: 0 |}       =&gt; 2   -- on x-axis
-  given {| x, y |}       =&gt; 3   -- general point
-seal
+<pre><code>fn classify
+  case {| x: 0, y: 0 |} =&gt; 0   -- origin
+  case {| x: 0 |}       =&gt; 1   -- on y-axis
+  case {| y: 0 |}       =&gt; 2   -- on x-axis
+  case {| x, y |}       =&gt; 3   -- general point
+end
 </code></pre>
 <p>Each clause requires different fields. The most specific patterns (requiring
 specific values) are tried first. The last clause is a catch-all that accepts
 any record with <code>x</code> and <code>y</code>.</p>
-<pre><code>ritual main
-  utter invoke classify {| x: 0, y: 0 |}      -- 0
-  utter invoke classify {| x: 0, y: 5 |}      -- 1
-  utter invoke classify {| x: 7, y: 0 |}      -- 2
-  utter invoke classify {| x: 3, y: 4 |}      -- 3
-seal
+<pre><code>do main
+  print classify {| x: 0, y: 0 |}      -- 0
+  print classify {| x: 0, y: 5 |}      -- 1
+  print classify {| x: 7, y: 0 |}      -- 2
+  print classify {| x: 3, y: 4 |}      -- 3
+end
 </code></pre>
 <h2 id="anonymous-records"><a class="header" href="#anonymous-records">Anonymous Records</a></h2>
-<p>You don’t need altars to benefit from structural subtyping. Anonymous records
+<p>You don’t need structs to benefit from structural subtyping. Anonymous records
 work just as well:</p>
-<pre><code>ritual main
-  utter invoke magnitude_sq {| x: 10, y: 10, extra: 999 |}
-seal
+<pre><code>do main
+  print magnitude_sq {| x: 10, y: 10, extra: 999 |}
+end
 </code></pre>
-<p>The <code>extra</code> field is accepted and ignored. No altar declaration needed.</p>
+<p>The <code>extra</code> field is accepted and ignored. No struct declaration needed.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="pattern-matching/divine.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="sum-types.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
@@ -298,7 +298,7 @@ seal
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="pattern-matching/divine.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="sum-types.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 

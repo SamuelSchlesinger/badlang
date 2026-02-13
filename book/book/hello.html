@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7ed70138.js";
+            window.path_to_searchindex_js = "searchindex-114a12be.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-daf9c5e4.js"></script>
+        <script src="toc-e4e73581.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -178,9 +178,9 @@
 <p>Let’s walk through a complete program to get a feel for the language.</p>
 <h2 id="your-first-program"><a class="header" href="#your-first-program">Your First Program</a></h2>
 <p>Create a file called <code>first.bad</code>:</p>
-<pre><code>ritual main
-  utter "Hello, world!"
-seal
+<pre><code>do main
+  print "Hello, world!"
+end
 </code></pre>
 <p>Compile and run it:</p>
 <pre><code class="language-bash">cabal run badlang -- --run first.bad
@@ -188,73 +188,74 @@ seal
 <p>Output:</p>
 <pre><code>Hello, world!
 </code></pre>
-<p>A <code>ritual</code> is an effectful entry point — think of it as <code>main</code> in C. The body
-contains statements that execute for side effects. <code>utter</code> prints a value
-followed by a newline. <code>seal</code> closes the block.</p>
-<h2 id="adding-a-rite"><a class="header" href="#adding-a-rite">Adding a Rite</a></h2>
-<p>A <code>rite</code> is a pure function. Let’s add one:</p>
-<pre><code>rite square
-  given {| n |} =&gt; n * n
-seal
+<p>A <code>do</code> is an effectful entry point — think of it as <code>main</code> in C. The body
+contains statements that execute for side effects. <code>print</code> prints a value
+followed by a newline. <code>end</code> closes the block.</p>
+<h2 id="adding-a-function"><a class="header" href="#adding-a-function">Adding a Function</a></h2>
+<p>A <code>fn</code> is a pure function. Let’s add one:</p>
+<pre><code>fn square
+  case {| n |} =&gt; n * n
+end
 
-ritual main
-  utter invoke square {| n: 5 |}
-seal
+do main
+  print square {| n: 5 |}
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>25
 </code></pre>
-<p>The rite <code>square</code> takes a record with a field <code>n</code> and returns <code>n * n</code>. We call
-it with <code>invoke</code>, passing a record literal <code>{| n: 5 |}</code>.</p>
+<p>The fn <code>square</code> takes a record with a field <code>n</code> and returns <code>n * n</code>. We call
+it by passing a record literal <code>{| n: 5 |}</code>.</p>
 <h2 id="named-record-types"><a class="header" href="#named-record-types">Named Record Types</a></h2>
-<p>You can declare named record types with <code>altar</code>:</p>
-<pre><code>altar Point
+<p>You can declare named record types with <code>struct</code>:</p>
+<pre><code>struct Point
   x : Int
   y : Int
-seal
+end
 
-rite distance_sq
-  given {| a : Point, b : Point |} =&gt;
+fn distance_sq
+  case {| a : Point, b : Point |} =&gt;
     let dx = a.x - b.x
     let dy = a.y - b.y
     dx * dx + dy * dy
-seal
+end
 
-ritual main
-  let origin = summon Point {| x: 0, y: 0 |}
-  let there = summon Point {| x: 3, y: 4 |}
-  utter invoke distance_sq {| a: origin, b: there |}
-seal
+do main
+  let origin = Point {| x: 0, y: 0 |}
+  let there = Point {| x: 3, y: 4 |}
+  print distance_sq {| a: origin, b: there |}
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>25
 </code></pre>
-<p><code>altar</code> declares a record type. <code>summon</code> constructs a value of that type. The
-rite <code>distance_sq</code> pattern-matches its argument, extracting the <code>a</code> and <code>b</code>
-fields, each typed as <code>Point</code>.</p>
+<p><code>struct</code> declares a record type. Construction uses the type name followed by a
+record literal, as in <code>Point {| x: 0, y: 0 |}</code>. The fn <code>distance_sq</code>
+pattern-matches its argument, extracting the <code>a</code> and <code>b</code> fields, each typed
+as <code>Point</code>.</p>
 <h2 id="recursion"><a class="header" href="#recursion">Recursion</a></h2>
-<p>Rites can call themselves:</p>
-<pre><code>rite factorial
-  given {| n: 0 |} =&gt; 1
-  given {| n |} =&gt; n * (invoke factorial {| n: n - 1 |})
-seal
+<p>Functions can call themselves:</p>
+<pre><code>fn factorial
+  case {| n: 0 |} =&gt; 1
+  case {| n |} =&gt; n * (factorial {| n: n - 1 |})
+end
 
-ritual main
-  utter invoke factorial {| n: 10 |}
-seal
+do main
+  print factorial {| n: 10 |}
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>3628800
 </code></pre>
-<p>The first <code>given</code> clause matches when <code>n</code> is literally <code>0</code>. The second matches
+<p>The first <code>case</code> clause matches when <code>n</code> is literally <code>0</code>. The second matches
 any other <code>n</code> and recurses. This is how all branching works in badlang — there
 is no <code>if</code>/<code>else</code>, only pattern matching.</p>
 <h2 id="comments"><a class="header" href="#comments">Comments</a></h2>
 <p>Line comments start with <code>--</code>:</p>
 <pre><code>-- This is a comment
-rite square
-  given {| n |} =&gt; n * n  -- inline comment
-seal
+fn square
+  case {| n |} =&gt; n * n  -- inline comment
+end
 </code></pre>
 <h2 id="whats-next"><a class="header" href="#whats-next">What’s Next</a></h2>
 <p>The following chapters cover each language feature in depth, starting with

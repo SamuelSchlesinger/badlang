@@ -1,27 +1,27 @@
-altar Point
+struct Point
   x : Int
   y : Int
-seal
+end
 
-rite square
-  given {| n |} => n * n
-seal
+fn square
+  case {| n |} => n * n
+end
 
-rite distance
-  given {| a : Point, b : Point |} =>
+fn distance
+  case {| a : Point, b : Point |} =>
     let dx = a.x - b.x
     let dy = a.y - b.y
-    (invoke square {| n: dx |}) + (invoke square {| n: dy |})
-seal
+    (square {| n: dx |}) + (square {| n: dy |})
+end
 
-rite factorial
-  given {| n: 0 |} => 1
-  given {| n |} => n * (invoke factorial {| n: n - 1 |})
-seal
+fn factorial
+  case {| n: 0 |} => 1
+  case {| n |} => n * (factorial {| n: n - 1 |})
+end
 
-ritual main
-  let origin = summon Point {| x: 0, y: 0 |}
-  let there = summon Point {| x: 3, y: 4 |}
-  utter invoke distance {| a: origin, b: there |}
-  utter invoke factorial {| n: 10 |}
-seal
+do main
+  let origin = Point {| x: 0, y: 0 |}
+  let there = Point {| x: 3, y: 4 |}
+  print distance {| a: origin, b: there |}
+  print factorial {| n: 10 |}
+end

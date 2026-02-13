@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Divine - The Badlang Book</title>
+        <title>Do Blocks - The Badlang Book</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7ed70138.js";
+            window.path_to_searchindex_js = "../searchindex-114a12be.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-daf9c5e4.js"></script>
+        <script src="../toc-e4e73581.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -174,96 +174,103 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="divine"><a class="header" href="#divine">Divine</a></h1>
-<p><code>divine</code> is an inline pattern match expression. It evaluates a scrutinee
-expression and matches the result against a series of <code>given</code> clauses, all
-within a single expression context.</p>
+                        <h1 id="do-blocks"><a class="header" href="#do-blocks">Do Blocks</a></h1>
+<p>A <code>do</code> is an effectful entry point — the equivalent of <code>main</code> in C.</p>
 <h2 id="syntax"><a class="header" href="#syntax">Syntax</a></h2>
-<pre><code>divine scrutinee
-  given pattern1 =&gt; body1
-  given pattern2 =&gt; body2
+<pre><code>do name
+  statement1
+  statement2
   ...
-seal
+end
 </code></pre>
-<h2 id="why-divine"><a class="header" href="#why-divine">Why divine?</a></h2>
-<p>badlang has no <code>if</code>/<code>else</code>. Instead, <code>divine</code> fills that role and more. Since
-comparison operators return integers (<code>1</code> for true, <code>0</code> for false), you can
-use <code>divine</code> to branch on conditions:</p>
-<pre><code>rite abs
-  given {| n |} =&gt;
-    divine n &gt;= 0
-      given 1 =&gt; n
-      given 0 =&gt; 0 - n
-    seal
-seal
+<h2 id="the-main-do-block"><a class="header" href="#the-main-do-block">The Main Do Block</a></h2>
+<p>Every executable badlang program must have a <code>do main</code>:</p>
+<pre><code>do main
+  print "Hello, world!"
+end
 </code></pre>
-<h2 id="matching-on-records"><a class="header" href="#matching-on-records">Matching on Records</a></h2>
-<p><code>divine</code> really shines when matching on record shapes:</p>
-<pre><code>rite fizzbuzz
-  given {| n |} =&gt;
-    let by3 = n - (n / 3) * 3
-    let by5 = n - (n / 5) * 5
-    divine {| a: by3, b: by5 |}
-      given {| a: 0, b: 0 |} =&gt; "fizzbuzz"
-      given {| a: 0 |}       =&gt; "fizz"
-      given {| b: 0 |}       =&gt; "buzz"
-      given {| a, b |}       =&gt; ""
-    seal
-seal
+<p>This is where execution begins.</p>
+<h2 id="statements"><a class="header" href="#statements">Statements</a></h2>
+<p>The body of a do is a sequence of <strong>statements</strong>. Statements execute in
+order for their side effects. The available statement forms are:</p>
+<h3 id="print--print-with-newline"><a class="header" href="#print--print-with-newline">print — Print with Newline</a></h3>
+<pre><code>print expr
 </code></pre>
-<p>Here, <code>divine</code> matches a record with fields <code>a</code> and <code>b</code>, dispatching on
-whether they are zero. This is more expressive than a chain of if/else
-statements — it matches on the <em>structure</em> of data.</p>
-<h2 id="matching-on-integers"><a class="header" href="#matching-on-integers">Matching on Integers</a></h2>
-<p>When the scrutinee is a simple integer expression, <code>divine</code> acts like a
-switch statement:</p>
-<pre><code>rite collatz_step
-  given {| n |} =&gt;
-    divine invoke is_even {| n: n |}
-      given 1 =&gt; n / 2
-      given 0 =&gt; n * 3 + 1
-    seal
-seal
+<p>Evaluates <code>expr</code> and prints the result to stdout, followed by a newline.
+Integers print as decimal numbers. Strings print as their contents.</p>
+<pre><code>do main
+  print 42
+  print "hello"
+end
 </code></pre>
-<h2 id="nesting-divine"><a class="header" href="#nesting-divine">Nesting divine</a></h2>
-<p><code>divine</code> expressions can be nested:</p>
-<pre><code>rite classify
-  given {| x, y |} =&gt;
-    divine x == 0
-      given 1 =&gt;
-        divine y == 0
-          given 1 =&gt; "origin"
-          given 0 =&gt; "y-axis"
-        seal
-      given 0 =&gt;
-        divine y == 0
-          given 1 =&gt; "x-axis"
-          given 0 =&gt; "general"
-        seal
-    seal
-seal
+<p>Output:</p>
+<pre><code>42
+hello
 </code></pre>
-<p>However, matching on a record with multiple fields (as in the fizzbuzz
-example) is usually cleaner than nesting.</p>
-<h2 id="divine-vs-multi-clause-rites"><a class="header" href="#divine-vs-multi-clause-rites">divine vs. Multi-Clause Rites</a></h2>
-<p>Both <code>divine</code> and multi-clause rites use <code>given</code> for pattern matching. The
-difference is scope:</p>
-<ul>
-<li><strong>Multi-clause rites</strong> match on the function’s argument at the top level</li>
-<li><strong><code>divine</code></strong> matches on any expression, anywhere within an expression</li>
-</ul>
-<p>Use multi-clause rites when the dispatch is the primary structure of the
-function. Use <code>divine</code> when you need to branch partway through a computation.</p>
+<h3 id="write--print-without-newline"><a class="header" href="#write--print-without-newline">write — Print without Newline</a></h3>
+<pre><code>write expr
+</code></pre>
+<p>Like <code>print</code>, but does <strong>not</strong> append a newline. Useful for building up output
+piece by piece:</p>
+<pre><code>do main
+  write "Hello, "
+  write "world"
+  print "!"
+end
+</code></pre>
+<p>Output:</p>
+<pre><code>Hello, world!
+</code></pre>
+<h3 id="let--bind-a-variable"><a class="header" href="#let--bind-a-variable">let — Bind a Variable</a></h3>
+<pre><code>let name = expr
+</code></pre>
+<p>Evaluates <code>expr</code> and binds the result to <code>name</code> for use in subsequent
+statements:</p>
+<pre><code>do main
+  let x = 5
+  let y = x * x
+  print y
+end
+</code></pre>
+<p>Output:</p>
+<pre><code>25
+</code></pre>
+<h3 id="expression-statements"><a class="header" href="#expression-statements">Expression Statements</a></h3>
+<p>A bare expression can appear as a statement. Its result is discarded. This is
+useful for calling functions with side effects:</p>
+<pre><code>do main
+  inscribe {| path: "out.txt", content: "data" |}
+  print "Done."
+end
+</code></pre>
+<h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
+<pre><code>do main
+  print "=== badlang IO demo ==="
+
+  print "What is your name?"
+  write "&gt; "
+  let name = readln
+  write "Hello, "
+  write name
+  print "!"
+
+  print "Pick a number:"
+  write "&gt; "
+  let n = readint
+  print "You chose:"
+  print n
+end
+</code></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../pattern-matching/patterns.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../declarations/functions.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../structural-subtyping.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../expressions.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -273,11 +280,11 @@ function. Use <code>divine</code> when you need to branch partway through a comp
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../pattern-matching/patterns.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../declarations/functions.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../structural-subtyping.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../expressions.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

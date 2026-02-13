@@ -10,24 +10,24 @@ by both 3 and 5, "fizz" if only by 3, "buzz" if only by 5, or empty
 otherwise.
 
 ```
-rite fizzbuzz
-  given {| n |} =>
+fn fizzbuzz
+  case {| n |} =>
     let by3 = n - (n / 3) * 3
     let by5 = n - (n / 5) * 5
-    divine {| a: by3, b: by5 |}
-      given {| a: 0, b: 0 |} => "fizzbuzz"
-      given {| a: 0 |}       => "fizz"
-      given {| b: 0 |}       => "buzz"
-      given {| a, b |}       => ""
-    seal
-seal
+    match {| a: by3, b: by5 |}
+      case {| a: 0, b: 0 |} => "fizzbuzz"
+      case {| a: 0 |}       => "fizz"
+      case {| b: 0 |}       => "buzz"
+      case {| a, b |}       => ""
+    end
+end
 
-ritual main
-  utter invoke fizzbuzz {| n: 3 |}
-  utter invoke fizzbuzz {| n: 5 |}
-  utter invoke fizzbuzz {| n: 15 |}
-  utter invoke fizzbuzz {| n: 7 |}
-seal
+do main
+  print fizzbuzz {| n: 3 |}
+  print fizzbuzz {| n: 5 |}
+  print fizzbuzz {| n: 15 |}
+  print fizzbuzz {| n: 7 |}
+end
 ```
 
 Output:
@@ -43,58 +43,58 @@ fizzbuzz
 
 - Since there's no modulo operator, we compute the remainder manually:
   `n - (n / 3) * 3`.
-- We pack both remainders into a record and use `divine` to match on the
+- We pack both remainders into a record and use `match` to match on the
   *combination* of values — much cleaner than nested if/else.
-- Width subtyping means `given {| a: 0 |}` matches a record with both `a`
+- Width subtyping means `case {| a: 0 |}` matches a record with both `a`
   and `b` fields, as long as `a` is 0. The `b` field is simply ignored.
 
 ## Geometry with Structural Subtyping
 
 ```
-altar Vec2
+struct Vec2
   x : Int
   y : Int
-seal
+end
 
-altar Vec3
+struct Vec3
   x : Int
   y : Int
   z : Int
-seal
+end
 
-rite magnitude_sq
-  given {| x, y |} => x * x + y * y
-seal
+fn magnitude_sq
+  case {| x, y |} => x * x + y * y
+end
 
-rite magnitude_sq_3d
-  given {| x, y, z |} => x * x + y * y + z * z
-seal
+fn magnitude_sq_3d
+  case {| x, y, z |} => x * x + y * y + z * z
+end
 
-rite classify
-  given {| x: 0, y: 0 |} => 0
-  given {| x: 0 |}       => 1
-  given {| y: 0 |}       => 2
-  given {| x, y |}       => 3
-seal
+fn classify
+  case {| x: 0, y: 0 |} => 0
+  case {| x: 0 |}       => 1
+  case {| y: 0 |}       => 2
+  case {| x, y |}       => 3
+end
 
-ritual main
-  let flat = summon Vec2 {| x: 3, y: 4 |}
-  let deep = summon Vec3 {| x: 1, y: 2, z: 3 |}
+do main
+  let flat = Vec2 {| x: 3, y: 4 |}
+  let deep = Vec3 {| x: 1, y: 2, z: 3 |}
 
   -- Width subtyping: Vec3 works with magnitude_sq
-  utter invoke magnitude_sq flat
-  utter invoke magnitude_sq deep
-  utter invoke magnitude_sq_3d deep
+  print magnitude_sq flat
+  print magnitude_sq deep
+  print magnitude_sq_3d deep
 
   -- Pattern dispatch
-  utter invoke classify {| x: 0, y: 0 |}
-  utter invoke classify {| x: 0, y: 5 |}
-  utter invoke classify {| x: 7, y: 0 |}
-  utter invoke classify {| x: 3, y: 4 |}
+  print classify {| x: 0, y: 0 |}
+  print classify {| x: 0, y: 5 |}
+  print classify {| x: 7, y: 0 |}
+  print classify {| x: 3, y: 4 |}
 
   -- Anonymous records work too
-  utter invoke magnitude_sq {| x: 10, y: 10, extra: 999 |}
-seal
+  print magnitude_sq {| x: 10, y: 10, extra: 999 |}
+end
 ```
 
 Output:
@@ -121,52 +121,52 @@ Output:
 ## A Number Theory Toolkit
 
 ```
-rite is_even
-  given {| n |} =>
+fn is_even
+  case {| n |} =>
     let half = n / 2
-    divine half * 2 == n
-      given 1 => 1
-      given 0 => 0
-    seal
-seal
+    match half * 2 == n
+      case 1 => 1
+      case 0 => 0
+    end
+end
 
-rite gcd
-  given {| a, b: 0 |} => a
-  given {| a: 0, b |} => b
-  given {| a, b |} =>
-    divine a > b
-      given 1 => invoke gcd {| a: a - b, b: b |}
-      given 0 => invoke gcd {| a: a, b: b - a |}
-    seal
-seal
+fn gcd
+  case {| a, b: 0 |} => a
+  case {| a: 0, b |} => b
+  case {| a, b |} =>
+    match a > b
+      case 1 => gcd {| a: a - b, b: b |}
+      case 0 => gcd {| a: a, b: b - a |}
+    end
+end
 
-rite fib
-  given {| n |} => invoke fib_acc {| n: n, a: 0, b: 1 |}
-seal
+fn fib
+  case {| n |} => fib_acc {| n: n, a: 0, b: 1 |}
+end
 
-rite fib_acc
-  given {| n: 0, a, b |} => a
-  given {| n, a, b |} =>
-    invoke fib_acc {| n: n - 1, a: b, b: a + b |}
-seal
+fn fib_acc
+  case {| n: 0, a, b |} => a
+  case {| n, a, b |} =>
+    fib_acc {| n: n - 1, a: b, b: a + b |}
+end
 
-rite collatz_count
-  given {| n: 1, steps |} => steps
-  given {| n, steps |} =>
-    divine invoke is_even {| n: n |}
-      given 1 =>
-        invoke collatz_count {| n: n / 2, steps: steps + 1 |}
-      given 0 =>
-        invoke collatz_count {| n: n * 3 + 1, steps: steps + 1 |}
-    seal
-seal
+fn collatz_count
+  case {| n: 1, steps |} => steps
+  case {| n, steps |} =>
+    match is_even {| n: n |}
+      case 1 =>
+        collatz_count {| n: n / 2, steps: steps + 1 |}
+      case 0 =>
+        collatz_count {| n: n * 3 + 1, steps: steps + 1 |}
+    end
+end
 
-ritual main
-  utter invoke gcd {| a: 252, b: 105 |}
-  utter invoke gcd {| a: 1071, b: 462 |}
-  utter invoke fib {| n: 20 |}
-  utter invoke collatz_count {| n: 27, steps: 0 |}
-seal
+do main
+  print gcd {| a: 252, b: 105 |}
+  print gcd {| a: 1071, b: 462 |}
+  print fib {| n: 20 |}
+  print collatz_count {| n: 27, steps: 0 |}
+end
 ```
 
 Output:
@@ -181,31 +181,31 @@ Output:
 **Key techniques:**
 
 - `is_even` uses the multiply-and-compare trick since there's no modulo.
-- `gcd` uses subtraction-based Euclidean algorithm with `divine` for branching.
+- `gcd` uses subtraction-based Euclidean algorithm with `match` for branching.
 - `fib` wraps an accumulator-passing helper for efficiency.
-- `collatz_count` combines `divine` with recursion for conditional stepping.
+- `collatz_count` combines `match` with recursion for conditional stepping.
 
 ## Interactive Program
 
 ```
-rite factorial
-  given {| n: 0 |} => 1
-  given {| n |} => n * (invoke factorial {| n: n - 1 |})
-seal
+fn factorial
+  case {| n: 0 |} => 1
+  case {| n |} => n * (factorial {| n: n - 1 |})
+end
 
-ritual main
-  utter "Enter a number to compute its factorial:"
-  whisper "> "
-  let n = scry
-  whisper "The factorial of "
-  whisper n
-  whisper " is "
-  utter invoke factorial {| n: n |}
-seal
+do main
+  print "Enter a number to compute its factorial:"
+  write "> "
+  let n = readint
+  write "The factorial of "
+  write n
+  write " is "
+  print factorial {| n: n |}
+end
 ```
 
 **Key techniques:**
 
-- `scry` reads an integer from stdin.
-- `whisper` builds up a line of output without newlines.
-- `utter` finishes the line with a newline.
+- `readint` reads an integer from stdin.
+- `write` builds up a line of output without newlines.
+- `print` finishes the line with a newline.

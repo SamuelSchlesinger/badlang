@@ -36,7 +36,7 @@ This compiles the badlang compiler. You can verify it works:
 cabal run badlang
 ```
 
-This prints usage information if no arguments are given.
+This prints usage information if no arguments are case.
 
 ## Compiling Programs
 

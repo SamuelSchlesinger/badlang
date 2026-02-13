@@ -8,10 +8,10 @@ This chapter covers common recursion patterns.
 The classic factorial:
 
 ```
-rite factorial
-  given {| n: 0 |} => 1
-  given {| n |} => n * (invoke factorial {| n: n - 1 |})
-seal
+fn factorial
+  case {| n: 0 |} => 1
+  case {| n |} => n * (factorial {| n: n - 1 |})
+end
 ```
 
 The first clause is the base case. The second recurses with `n - 1`. Pattern
@@ -23,34 +23,34 @@ Accumulator-passing style avoids deep call stacks by threading state through
 a parameter:
 
 ```
-rite fib_acc
-  given {| n: 0, a, b |} => a
-  given {| n, a, b |} =>
-    invoke fib_acc {| n: n - 1, a: b, b: a + b |}
-seal
+fn fib_acc
+  case {| n: 0, a, b |} => a
+  case {| n, a, b |} =>
+    fib_acc {| n: n - 1, a: b, b: a + b |}
+end
 
-rite fib
-  given {| n |} => invoke fib_acc {| n: n, a: 0, b: 1 |}
-seal
+fn fib
+  case {| n |} => fib_acc {| n: n, a: 0, b: 1 |}
+end
 ```
 
-The public-facing `fib` rite wraps the accumulator version with initial
+The public-facing `fib` fn wraps the accumulator version with initial
 values. Each recursive call is in tail position, making this efficient
 in practice.
 
 Here's another example — summing from 1 to n:
 
 ```
-rite sum_acc
-  given {| n: 0, acc |} => acc
-  given {| n, acc |} =>
-    invoke sum_acc {| n: n - 1, acc: acc + n |}
-seal
+fn sum_acc
+  case {| n: 0, acc |} => acc
+  case {| n, acc |} =>
+    sum_acc {| n: n - 1, acc: acc + n |}
+end
 ```
 
 ## Mutual Recursion
 
-Rites can call each other, enabling mutual recursion. The classic example is
+Functions can call each other, enabling mutual recursion. The classic example is
 Hofstadter's Female and Male sequences:
 
 ```
@@ -58,45 +58,45 @@ Hofstadter's Female and Male sequences:
 -- F(n) = n - M(F(n-1))
 -- M(n) = n - F(M(n-1))
 
-rite female
-  given {| n: 0 |} => 1
-  given {| n |} =>
-    n - (invoke male {|
-      n: invoke female {| n: n - 1 |}
+fn female
+  case {| n: 0 |} => 1
+  case {| n |} =>
+    n - (male {|
+      n: female {| n: n - 1 |}
     |})
-seal
+end
 
-rite male
-  given {| n: 0 |} => 0
-  given {| n |} =>
-    n - (invoke female {|
-      n: invoke male {| n: n - 1 |}
+fn male
+  case {| n: 0 |} => 0
+  case {| n |} =>
+    n - (female {|
+      n: male {| n: n - 1 |}
     |})
-seal
+end
 ```
 
 Declaration order doesn't matter — `female` can reference `male` even though
-`male` is defined later. All rites are visible to each other.
+`male` is defined later. All functions are visible to each other.
 
-## Recursion with divine
+## Recursion with match
 
-Combining recursion with `divine` for conditional logic:
+Combining recursion with `match` for conditional logic:
 
 ```
-rite collatz_count
-  given {| n: 1, steps |} => steps
-  given {| n, steps |} =>
-    divine invoke is_even {| n: n |}
-      given 1 =>
-        invoke collatz_count {| n: n / 2, steps: steps + 1 |}
-      given 0 =>
-        invoke collatz_count {| n: n * 3 + 1, steps: steps + 1 |}
-    seal
-seal
+fn collatz_count
+  case {| n: 1, steps |} => steps
+  case {| n, steps |} =>
+    match is_even {| n: n |}
+      case 1 =>
+        collatz_count {| n: n / 2, steps: steps + 1 |}
+      case 0 =>
+        collatz_count {| n: n * 3 + 1, steps: steps + 1 |}
+    end
+end
 ```
 
 This counts the number of steps for a Collatz sequence to reach 1. The
-`divine` branches on whether `n` is even, then recurses with the appropriate
+`match` branches on whether `n` is even, then recurses with the appropriate
 transformation.
 
 ## The Euclidean Algorithm
@@ -104,19 +104,19 @@ transformation.
 GCD demonstrates recursion with structural dispatch:
 
 ```
-rite gcd
-  given {| a, b: 0 |} => a
-  given {| a: 0, b |} => b
-  given {| a, b |} =>
-    divine a > b
-      given 1 => invoke gcd {| a: a - b, b: b |}
-      given 0 => invoke gcd {| a: a, b: b - a |}
-    seal
-seal
+fn gcd
+  case {| a, b: 0 |} => a
+  case {| a: 0, b |} => b
+  case {| a, b |} =>
+    match a > b
+      case 1 => gcd {| a: a - b, b: b |}
+      case 0 => gcd {| a: a, b: b - a |}
+    end
+end
 ```
 
 The first two clauses handle base cases via literal patterns. The third
-clause uses `divine` to choose which value to reduce.
+clause uses `match` to choose which value to reduce.
 
 ## The Ackermann Function
 
@@ -124,20 +124,20 @@ The Ackermann function is a classic stress test for recursion — it grows
 extremely fast:
 
 ```
-rite ackermann
-  given {| m: 0, n |} => n + 1
-  given {| m, n: 0 |} =>
-    invoke ackermann {| m: m - 1, n: 1 |}
-  given {| m, n |} =>
-    invoke ackermann {|
+fn ackermann
+  case {| m: 0, n |} => n + 1
+  case {| m, n: 0 |} =>
+    ackermann {| m: m - 1, n: 1 |}
+  case {| m, n |} =>
+    ackermann {|
       m: m - 1,
-      n: invoke ackermann {| m: m, n: n - 1 |}
+      n: ackermann {| m: m, n: n - 1 |}
     |}
-seal
+end
 ```
 
 Three clauses, each matching a different combination of base cases and
-recursive cases. The nested `invoke` in the third clause demonstrates how
+recursive cases. The nested call in the third clause demonstrates how
 badlang handles deeply recursive computations.
 
 ## Even/Odd via Mutual Recursion
@@ -145,15 +145,15 @@ badlang handles deeply recursive computations.
 A simple but illustrative example:
 
 ```
-rite is_even
-  given {| n: 0 |} => 1
-  given {| n |} => invoke is_odd {| n: n - 1 |}
-seal
+fn is_even
+  case {| n: 0 |} => 1
+  case {| n |} => is_odd {| n: n - 1 |}
+end
 
-rite is_odd
-  given {| n: 0 |} => 0
-  given {| n |} => invoke is_even {| n: n - 1 |}
-seal
+fn is_odd
+  case {| n: 0 |} => 0
+  case {| n |} => is_even {| n: n - 1 |}
+end
 ```
 
 `is_even` delegates to `is_odd` and vice versa, peeling off one from `n`
@@ -161,7 +161,7 @@ at each step until the base case is reached.
 
 ## Tips
 
-- **Always have a base case.** A literal pattern like `given {| n: 0 |}` is
+- **Always have a base case.** A literal pattern like `case {| n: 0 |}` is
   the most common termination condition.
 - **Use the accumulator pattern** when you're building up a result
   incrementally. Thread an `acc` field through the recursive calls.

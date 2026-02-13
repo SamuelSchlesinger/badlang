@@ -92,7 +92,7 @@ static Value* record_field(Value* rec, const char* name) {
     return NULL;
 }
 
-static void utter(Value* v) {
+static void bl_print(Value* v) {
     switch (v->tag) {
         case TAG_INT:    printf("%lld\n", (long long)v->int_val); break;
         case TAG_STR:    printf("%s\n", v->str_val); break;
@@ -102,7 +102,7 @@ static void utter(Value* v) {
             for (int i = 0; i < v->record.num_fields; i++) {
                 if (i > 0) printf(", ");
                 printf("%s: ", v->record.fields[i].name);
-                utter(v->record.fields[i].value);
+                bl_print(v->record.fields[i].value);
             }
             printf(" |}");
             break;
@@ -110,7 +110,7 @@ static void utter(Value* v) {
     }
 }
 
-static void whisper(Value* v) {
+static void bl_write(Value* v) {
     switch (v->tag) {
         case TAG_INT:    printf("%lld", (long long)v->int_val); break;
         case TAG_STR:    printf("%s", v->str_val); break;
@@ -120,7 +120,7 @@ static void whisper(Value* v) {
             for (int i = 0; i < v->record.num_fields; i++) {
                 if (i > 0) printf(", ");
                 printf("%s: ", v->record.fields[i].name);
-                whisper(v->record.fields[i].value);
+                bl_write(v->record.fields[i].value);
             }
             printf(" |}");
             break;
@@ -128,7 +128,7 @@ static void whisper(Value* v) {
     }
 }
 
-static Value* runtime_hearken(void) {
+static Value* runtime_readln(void) {
     char buf[4096];
     if (fgets(buf, sizeof(buf), stdin) == NULL) {
         return make_str("");
@@ -138,22 +138,22 @@ static Value* runtime_hearken(void) {
     return make_str(buf);
 }
 
-static Value* runtime_scry(void) {
+static Value* runtime_readint(void) {
     long long n = 0;
     if (scanf("%lld", &n) != 1) {
-        fprintf(stderr, "badlang: scry failed to read integer\n");
+        fprintf(stderr, "badlang: readint failed to read integer\n");
         exit(1);
     }
     int c = getchar(); (void)c;
     return make_int((int64_t)n);
 }
 
-/* ── file IO and argv built-in rites ─────────────────────────── */
+/* ── file IO and argv built-in functions ─────────────────────────── */
 
 static int g_argc = 0;
 static char** g_argv = NULL;
 
-static Value* rite_unearth(Value* arg) {
+static Value* fn_unearth(Value* arg) {
     Value* pathVal = record_field(arg, "path");
     if (!pathVal || pathVal->tag != TAG_STR) {
         fprintf(stderr, "badlang: unearth requires path: String\n");
@@ -176,7 +176,7 @@ static Value* rite_unearth(Value* arg) {
     return result;
 }
 
-static Value* rite_inscribe(Value* arg) {
+static Value* fn_inscribe(Value* arg) {
     Value* pathVal = record_field(arg, "path");
     Value* contentVal = record_field(arg, "content");
     if (!pathVal || pathVal->tag != TAG_STR ||
@@ -194,12 +194,12 @@ static Value* rite_inscribe(Value* arg) {
     return make_void();
 }
 
-static Value* rite_argc(Value* arg) {
+static Value* fn_argc(Value* arg) {
     (void)arg;
     return make_int((int64_t)g_argc);
 }
 
-static Value* rite_argv(Value* arg) {
+static Value* fn_argv(Value* arg) {
     Value* nVal = record_field(arg, "n");
     if (!nVal || nVal->tag != TAG_INT) {
         fprintf(stderr, "badlang: argv requires n: Int\n");
@@ -213,14 +213,14 @@ static Value* rite_argv(Value* arg) {
     return make_str(g_argv[idx]);
 }
 
-/* ── string built-in rites ─────────────────────────────────── */
+/* ── string built-in functions ─────────────────────────────────── */
 
-static Value* rite_strlen(Value* arg) {
+static Value* fn_strlen(Value* arg) {
     Value* sVal = record_field(arg, "s");
     return make_int((int64_t)strlen(sVal->str_val));
 }
 
-static Value* rite_char_at(Value* arg) {
+static Value* fn_char_at(Value* arg) {
     Value* sVal = record_field(arg, "s");
     Value* nVal = record_field(arg, "n");
     int64_t idx = nVal->int_val;
@@ -229,7 +229,7 @@ static Value* rite_char_at(Value* arg) {
     return make_int((int64_t)(unsigned char)sVal->str_val[idx]);
 }
 
-static Value* rite_substr(Value* arg) {
+static Value* fn_substr(Value* arg) {
     Value* sVal = record_field(arg, "s");
     Value* startVal = record_field(arg, "start");
     Value* lenVal = record_field(arg, "len");
@@ -247,7 +247,7 @@ static Value* rite_substr(Value* arg) {
     return result;
 }
 
-static Value* rite_concat(Value* arg) {
+static Value* fn_concat(Value* arg) {
     Value* aVal = record_field(arg, "a");
     Value* bVal = record_field(arg, "b");
     size_t la = strlen(aVal->str_val);
@@ -261,20 +261,20 @@ static Value* rite_concat(Value* arg) {
     return result;
 }
 
-static Value* rite_int_to_str(Value* arg) {
+static Value* fn_int_to_str(Value* arg) {
     Value* nVal = record_field(arg, "n");
     char buf[32];
     snprintf(buf, sizeof(buf), "%lld", (long long)nVal->int_val);
     return make_str(buf);
 }
 
-static Value* rite_char_of_int(Value* arg) {
+static Value* fn_char_of_int(Value* arg) {
     Value* nVal = record_field(arg, "n");
     char buf[2] = { (char)nVal->int_val, '\0' };
     return make_str(buf);
 }
 
-static Value* rite_strcmp(Value* arg) {
+static Value* fn_strcmp(Value* arg) {
     Value* aVal = record_field(arg, "a");
     Value* bVal = record_field(arg, "b");
     int r = strcmp(aVal->str_val, bVal->str_val);

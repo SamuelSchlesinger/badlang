@@ -15,7 +15,7 @@ Record literals are written between "pillars" `{|` and `|}`:
 {| |}
 ```
 
-The last form, `{| |}`, is the empty record — used when a rite takes no
+The last form, `{| |}`, is the empty record — used when a fn takes no
 meaningful arguments.
 
 ## Fields
@@ -44,36 +44,35 @@ Records in badlang are **structural**, not nominal. Two records with the same
 fields and types are the same type, regardless of how they were created:
 
 ```
-rite add_xy
-  given {| x, y |} => x + y
-seal
+fn add_xy
+  case {| x, y |} => x + y
+end
 
-ritual main
+do main
   -- All of these are acceptable arguments:
-  utter invoke add_xy {| x: 1, y: 2 |}
-  utter invoke add_xy {| x: 10, y: 20 |}
-  utter invoke add_xy {| x: 5, y: 5, z: 100 |}
-seal
+  print add_xy {| x: 1, y: 2 |}
+  print add_xy {| x: 10, y: 20 |}
+  print add_xy {| x: 5, y: 5, z: 100 |}
+end
 ```
 
-## Named Records with summon
-
-While anonymous records work everywhere, you can use `altar` and `summon` to
-create named record types:
+## Named Records
+While anonymous records work everywhere, you can use `struct` to declare named
+record types and construct them with the type name:
 
 ```
-altar Point
+struct Point
   x : Int
   y : Int
-seal
+end
 
-ritual main
-  let p = summon Point {| x: 3, y: 4 |}
-  utter p.x
-seal
+do main
+  let p = Point {| x: 3, y: 4 |}
+  print p.x
+end
 ```
 
-See [Invoke and Summon](./invoke-summon.md) for details.
+See [Function Calls and Construction](./function-calls.md) for details.
 
 ## Records at Runtime
 

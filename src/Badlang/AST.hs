@@ -3,18 +3,19 @@
 -- A badlang program is a sequence of top-level declarations ('Decl'), each
 -- of which is one of:
 --
--- * __Altar__ ('AltarDecl') — a named record type with typed fields.
--- * __Rite__ ('RiteDecl') — a pure function defined by pattern-matching
---   clauses (@given ... => ...@). Every rite takes a single argument
+-- * __Struct__ ('StructDecl') — a named record type with typed fields.
+-- * __Fn__ ('FnDecl') — a pure function defined by pattern-matching
+--   clauses (@case ... => ...@). Every fn takes a single argument
 --   (typically a record) and dispatches on its shape.
--- * __Ritual__ ('RitualDecl') — an effectful entry point (like @main@),
+-- * __Do__ ('DoDecl') — an effectful entry point (like @main@),
 --   containing a sequence of statements.
+-- * __Oneof__ ('OneofDecl') — a sum type with named variants.
 --
 -- = Core Design
 --
 -- All functions in badlang take a single structural record as their argument.
--- Pattern matching (@given@ clauses) is the only mechanism for inspecting
--- data. Combined with structural subtyping, this means a rite that
+-- Pattern matching (@case@ clauses) is the only mechanism for inspecting
+-- data. Combined with structural subtyping, this means a fn that
 -- pattern-matches @{| x, y |}@ will accept any record with /at least/
 -- those fields — extra fields are silently permitted (width subtyping).
 --
@@ -22,13 +23,13 @@
 --
 -- The 'Expr' type covers integer and string literals, variables, binary
 -- and unary operations, record construction, field access, function
--- invocation, let bindings, and inline pattern matching (@divine@).
+-- invocation, let bindings, and inline pattern matching (@match@).
 module Badlang.AST
   ( -- * Program Structure
     Program(..)
   , Decl(..)
   , Field(..)
-  , GivenClause(..)
+  , CaseClause(..)
   , Stmt(..)
     -- * Expressions
   , Expr(..)
@@ -47,46 +48,47 @@ newtype Program = Program [Decl]
 
 -- | Top-level declarations.
 data Decl
-  = AltarDecl  !String [Field]            -- ^ @altar Point x : Int, y : Int seal@
-  | RiteDecl   !String [GivenClause]      -- ^ @rite f given ... => ... seal@
-  | RitualDecl !String [Stmt]             -- ^ @ritual main ... seal@
+  = StructDecl !String [Field]            -- ^ @struct Point x : Int, y : Int end@
+  | FnDecl     !String [CaseClause]       -- ^ @fn f case ... => ... end@
+  | DoDecl     !String [Stmt]             -- ^ @do main ... end@
+  | OneofDecl  !String [(String, [Field])] -- ^ @oneof Shape Circle { radius : Int } ... end@
   deriving (Show, Eq)
 
--- | A field in an altar declaration.
+-- | A field in a struct declaration.
 data Field = Field
   { fieldName :: !String
   , fieldType :: !TypeAnn
   } deriving (Show, Eq)
 
--- | A pattern-matching clause in a rite definition.
-data GivenClause = GivenClause
-  { givenPattern :: !Pattern
-  , givenBody    :: !Expr
+-- | A pattern-matching clause in a fn definition.
+data CaseClause = CaseClause
+  { casePattern :: !Pattern
+  , caseBody    :: !Expr
   } deriving (Show, Eq)
 
--- | Statements in ritual bodies.
+-- | Statements in do bodies.
 data Stmt
-  = LetStmt  !String !Expr     -- ^ @let name = expr@
-  | UtterStmt !Expr            -- ^ @utter expr@
-  | WhisperStmt !Expr          -- ^ @whisper expr@ (print without newline)
-  | ExprStmt  !Expr            -- ^ bare expression
+  = LetStmt   !String !Expr     -- ^ @let name = expr@
+  | PrintStmt !Expr             -- ^ @print expr@
+  | WriteStmt !Expr             -- ^ @write expr@ (print without newline)
+  | ExprStmt  !Expr             -- ^ bare expression
   deriving (Show, Eq)
 
 -- | Expressions — the heart of computation.
 data Expr
-  = IntLit   !Integer                          -- ^ @42@
-  | StrLit   !String                           -- ^ @"hello"@
-  | Var      !String                           -- ^ @x@
-  | BinOp    !BinOp !Expr !Expr                -- ^ @a + b@
-  | UnOp     !UnOp !Expr                       -- ^ @-x@
-  | FieldAccess !Expr !String                  -- ^ @point.x@
-  | Record   [(String, Expr)]                  -- ^ @{| x: 1, y: 2 |}@
-  | Summon   !String [(String, Expr)]          -- ^ @summon Point {| x: 1, y: 2 |}@
-  | Invoke   !String !Expr                     -- ^ @invoke f {| n: 5 |}@
-  | LetIn    !String !Expr !Expr               -- ^ @let x = e1 in e2@ (desugared from let sequences)
-  | Divine   !Expr [GivenClause]               -- ^ @divine expr given ... seal@
-  | Hearken                                    -- ^ @hearken@ — read line from stdin
-  | Scry                                       -- ^ @scry@ — read integer from stdin
+  = IntLit      !Integer                          -- ^ @42@
+  | StrLit      !String                           -- ^ @"hello"@
+  | Var         !String                           -- ^ @x@
+  | BinOp       !BinOp !Expr !Expr                -- ^ @a + b@
+  | UnOp        !UnOp !Expr                       -- ^ @-x@
+  | FieldAccess !Expr !String                     -- ^ @point.x@
+  | Record      [(String, Expr)]                  -- ^ @{| x: 1, y: 2 |}@
+  | NamedRecord !String [(String, Expr)]          -- ^ @Point {| x: 1, y: 2 |}@
+  | Call        !String !Expr                     -- ^ @call f {| n: 5 |}@
+  | LetIn       !String !Expr !Expr               -- ^ @let x = e1 in e2@ (desugared from let sequences)
+  | Match       !Expr [CaseClause]                -- ^ @match expr case ... end@
+  | ReadLn                                        -- ^ @readln@ — read line from stdin
+  | ReadInt                                       -- ^ @readint@ — read integer from stdin
   deriving (Show, Eq)
 
 -- | Binary operators.
@@ -102,12 +104,13 @@ data UnOp
   | Not   -- ^ @!x@  (reserved for future use)
   deriving (Show, Eq)
 
--- | Patterns for @given@ clauses.
+-- | Patterns for @case@ clauses.
 data Pattern
   = PVar     !String                -- ^ @x@ — binds a variable
   | PLit     !Expr                  -- ^ @0@, @"hello"@ — matches a literal value
   | PRec     [PatField]             -- ^ @{| x: 0, y |}@ — matches a record
   | PWild                           -- ^ @_@ — matches anything
+  | PVariant !String !Pattern       -- ^ @Circle {| radius |}@ — matches a variant
   deriving (Show, Eq)
 
 -- | A field in a record pattern.

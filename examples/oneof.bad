@@ -1,0 +1,58 @@
+-- Sum types with oneof: tagged variants and pattern matching.
+
+oneof Shape
+  Circle { radius : Int }
+  Rect { width : Int, height : Int }
+  Point
+end
+
+oneof Color
+  Red
+  Green
+  Blue
+end
+
+fn area
+  case Circle {| radius |} => radius * radius * 3
+  case Rect {| width, height |} => width * height
+  case Point => 0
+end
+
+fn describe
+  case Circle {| radius |} => "circle"
+  case Rect {| width, height |} => "rect"
+  case Point => "point"
+end
+
+fn color_name
+  case Red => "red"
+  case Green => "green"
+  case Blue => "blue"
+end
+
+do main
+  let c = Circle {| radius: 5 |}
+  let r = Rect {| width: 3, height: 4 |}
+  let p = Point
+
+  print area(c)
+  print area(r)
+  print area(p)
+
+  print describe(c)
+  print describe(r)
+  print describe(p)
+
+  print color_name(Red)
+  print color_name(Green)
+  print color_name(Blue)
+
+  -- Inline match on a sum type
+  let shape = Circle {| radius: 10 |}
+  let label = match shape
+    case Circle {| radius |} => "it's a circle"
+    case Rect {| width, height |} => "it's a rect"
+    case Point => "it's a point"
+  end
+  print label
+end

@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7ed70138.js";
+            window.path_to_searchindex_js = "searchindex-114a12be.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-daf9c5e4.js"></script>
+        <script src="toc-e4e73581.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -201,8 +201,8 @@ compiler, minus the type checker:</p>
 <p>The compiler reads a source file, tokenizes it, parses the token stream into
 an AST, and generates either C code or AArch64 assembly depending on the mode.
 It relies on a shared <code>runtime.c</code> (or <code>runtime_aarch64.c</code> for native mode)
-that provides the value representation, reference counting, and built-in rites
-for file I/O and string manipulation.</p>
+that provides the value representation, reference counting, and built-in
+functions for file I/O and string manipulation.</p>
 <p>The compiler selects its output mode via command-line arguments:</p>
 <ul>
 <li><code>compiler source.bad output.c</code> — emit C (default)</li>
@@ -220,7 +220,7 @@ for file I/O and string manipulation.</p>
 <tr><td>Parser</td><td>Recursive descent into AST nodes</td></tr>
 <tr><td>C code emitter</td><td>AST to C translation</td></tr>
 <tr><td>AArch64 code emitter</td><td>AST to native assembly translation</td></tr>
-<tr><td>Driver</td><td>Main ritual selecting mode and tying it all together</td></tr>
+<tr><td>Driver</td><td>Main do selecting mode and tying it all together</td></tr>
 </tbody>
 </table>
 </div>

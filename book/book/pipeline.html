@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7ed70138.js";
+            window.path_to_searchindex_js = "searchindex-114a12be.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-daf9c5e4.js"></script>
+        <script src="toc-e4e73581.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -211,10 +211,10 @@ and provides functions to convert parse trees into typed AST nodes.</p>
 <p>The AST types (defined in <code>Badlang.AST</code>) include:</p>
 <ul>
 <li><code>Program</code> — a list of declarations</li>
-<li><code>Decl</code> — altar, rite, or ritual</li>
-<li><code>Expr</code> — all expression forms (literals, records, invoke, divine, etc.)</li>
+<li><code>Decl</code> — struct, fn, or do</li>
+<li><code>Expr</code> — all expression forms (literals, records, function calls, match, etc.)</li>
 <li><code>Pattern</code> — all pattern forms (variable, literal, record, wildcard)</li>
-<li><code>Stmt</code> — ritual statements (utter, whisper, let, expression)</li>
+<li><code>Stmt</code> — do statements (print, write, let, expression)</li>
 </ul>
 <h2 id="stage-3-type-checking"><a class="header" href="#stage-3-type-checking">Stage 3: Type Checking</a></h2>
 <p><strong>Module:</strong> <code>Badlang.Types</code></p>
@@ -223,7 +223,7 @@ types</strong>. It works in two passes:</p>
 <ol>
 <li>
 <p><strong>Registration pass:</strong> Collect all declarations into the type environment.
-Each rite gets a fresh type variable; each altar’s fields are recorded.</p>
+Each fn gets a fresh type variable; each struct’s fields are recorded.</p>
 </li>
 <li>
 <p><strong>Checking pass:</strong> For each declaration body, walk the AST generating
@@ -243,7 +243,7 @@ pairwise</li>
 <p><strong>Module:</strong> <code>Badlang.IR</code> + <code>Badlang.Lower</code></p>
 <p>The lowering pass transforms the typed AST into an explicit intermediate
 representation with basic blocks, named temporaries, and flat instructions.
-Pattern matching, divine expressions, and let-in chains are all resolved at
+Pattern matching, match expressions, and let-in chains are all resolved at
 this stage so that backends are purely mechanical translations.</p>
 <p>Key properties of the IR:</p>
 <ul>
@@ -253,7 +253,7 @@ named as a <code>Var</code>.</li>
 instructions.</li>
 <li><strong>Pattern matching decomposed into primitives</strong> — <code>ITagCheck</code>, <code>INullCheck</code>,
 <code>IIntEq</code>, <code>IStrEq</code> plus <code>TBranch</code> terminators create explicit control flow.</li>
-<li><strong>No SSA phi nodes</strong> — join points (divine results) use a pre-declared
+<li><strong>No SSA phi nodes</strong> — join points (match results) use a pre-declared
 result variable written by whichever branch succeeds.</li>
 </ul>
 <h2 id="stage-5-code-generation"><a class="header" href="#stage-5-code-generation">Stage 5: Code Generation</a></h2>

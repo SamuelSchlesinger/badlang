@@ -60,25 +60,25 @@ it is done with the value.
 | `make_record` | Returns owned; **adopts** field values (does not retain them) |
 | `record_field` | Returns **borrowed** (no refcount change) |
 | Variable access | Borrows from local, caller retains to own |
-| Rite call | Caller owns the argument; callee borrows it. Return value is owned. |
-| `utter` / `whisper` | Borrow their argument (caller releases after) |
+| Function call | Caller owns the argument; callee borrows it. Return value is owned. |
+| `print` / `write` | Borrow their argument (caller releases after) |
 
 ## How Constructs Compile
 
-### Rites → C Functions
+### Functions → C Functions
 
-Each rite becomes a C function taking and returning `Value*`:
+Each fn becomes a C function taking and returning `Value*`:
 
 ```
-rite square
-  given {| n |} => n * n
-seal
+fn square
+  case {| n |} => n * n
+end
 ```
 
 Compiles to something like:
 
 ```c
-static Value* rite_square(Value* arg) {
+static Value* fn_square(Value* arg) {
     Value* _f_n = record_field(arg, "n");
     Value* bl_n = _f_n;
     if (_f_n != NULL) {
@@ -100,10 +100,10 @@ Multi-clause pattern matching compiles to cascading if-statements that check
 field values:
 
 ```
-rite factorial
-  given {| n: 0 |} => 1
-  given {| n |} => n * (invoke factorial {| n: n - 1 |})
-seal
+fn factorial
+  case {| n: 0 |} => 1
+  case {| n |} => n * (factorial {| n: n - 1 |})
+end
 ```
 
 Becomes cascading blocks, each extracting fields and checking conditions. On
@@ -156,22 +156,22 @@ rc_release(bl_x);
 This avoids O(N) nesting depth for N sequential bindings, keeping the generated
 C flat regardless of how many `let` bindings appear in a row.
 
-### divine → Local Variable + goto
+### match → Local Variable + goto
 
-`divine` expressions compile to a local result variable and a label for early
+`match` expressions compile to a local result variable and a label for early
 exit, with each clause checking its pattern and jumping to the end on match.
 The scrutinee is released at the label after the matching clause stores its
 result.
 
-### utter/whisper → Print Functions
+### print/write → Print Functions
 
-`utter` and `whisper` borrow their argument — the caller is responsible for
+`print` and `write` borrow their argument — the caller is responsible for
 releasing it afterward.
 
 ```c
-// Generated for: utter expr
+// Generated for: print expr
 Value* _t0 = /* evaluate expr */;
-utter(_t0);
+print(_t0);
 rc_release(_t0);
 ```
 

@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7ed70138.js";
+            window.path_to_searchindex_js = "../searchindex-114a12be.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-daf9c5e4.js"></script>
+        <script src="../toc-e4e73581.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -178,13 +178,13 @@
 <p>The parser transforms a list of tokens into an abstract syntax tree (AST). It
 is a <strong>recursive descent parser</strong> with <strong>precedence climbing</strong> for operators.</p>
 <h2 id="token-stream-interface"><a class="header" href="#token-stream-interface">Token Stream Interface</a></h2>
-<p>The parser consumes tokens through three helper rites:</p>
+<p>The parser consumes tokens through three helper functions:</p>
 <ul>
 <li><code>peek</code> — look at the next token without consuming it</li>
 <li><code>advance</code> — consume the current token and return the rest</li>
 <li><code>expect</code> — consume a token of a specific type, or abort with an error</li>
 </ul>
-<p>Every parse rite takes a <code>tokens</code> parameter and returns a record containing the
+<p>Every parse fn takes a <code>tokens</code> parameter and returns a record containing the
 parsed AST <code>node</code> and the remaining <code>rest</code> tokens.</p>
 <h2 id="ast-node-types"><a class="header" href="#ast-node-types">AST Node Types</a></h2>
 <p>The parser produces tagged records as AST nodes. Each node has a <code>tag</code> field
@@ -203,12 +203,12 @@ that identifies its type.</p>
 <tr><td><code>unop</code></td><td><code>op</code>, <code>operand</code></td><td><code>-x</code></td></tr>
 <tr><td><code>field_access</code></td><td><code>obj</code>, <code>field</code></td><td><code>point.x</code></td></tr>
 <tr><td><code>record</code></td><td><code>fields</code></td><td><code>{| x: 1, y: 2 |}</code></td></tr>
-<tr><td><code>summon</code></td><td><code>name</code>, <code>fields</code></td><td><code>summon Point {| x: 1 |}</code></td></tr>
-<tr><td><code>invoke</code></td><td><code>name</code>, <code>arg</code></td><td><code>invoke factorial {| n: 5 |}</code></td></tr>
+<tr><td><code>named_record</code></td><td><code>name</code>, <code>fields</code></td><td><code>Point {| x: 1 |}</code></td></tr>
+<tr><td><code>call</code></td><td><code>name</code>, <code>arg</code></td><td><code>factorial {| n: 5 |}</code></td></tr>
 <tr><td><code>let_in</code></td><td><code>name</code>, <code>value</code>, <code>body</code></td><td><code>let x = 1</code> (desugared)</td></tr>
-<tr><td><code>divine</code></td><td><code>scrutinee</code>, <code>clauses</code></td><td><code>divine expr given ... seal</code></td></tr>
-<tr><td><code>hearken</code></td><td><em>(none)</em></td><td><code>hearken</code></td></tr>
-<tr><td><code>scry</code></td><td><em>(none)</em></td><td><code>scry</code></td></tr>
+<tr><td><code>match</code></td><td><code>scrutinee</code>, <code>clauses</code></td><td><code>match expr case ... end</code></td></tr>
+<tr><td><code>readln</code></td><td><em>(none)</em></td><td><code>readln</code></td></tr>
+<tr><td><code>readint</code></td><td><em>(none)</em></td><td><code>readint</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -234,19 +234,19 @@ that identifies its type.</p>
 <tr><th>Tag</th><th>Fields</th><th>Example</th></tr>
 </thead>
 <tbody>
-<tr><td><code>decl_rite</code></td><td><code>name</code>, <code>clauses</code></td><td><code>rite factorial given ... seal</code></td></tr>
-<tr><td><code>decl_ritual</code></td><td><code>name</code>, <code>stmts</code></td><td><code>ritual main ... seal</code></td></tr>
-<tr><td><code>decl_altar</code></td><td><code>name</code>, <code>fields</code></td><td><code>altar Point x: Int y: Int seal</code></td></tr>
+<tr><td><code>decl_fn</code></td><td><code>name</code>, <code>clauses</code></td><td><code>fn factorial case ... end</code></td></tr>
+<tr><td><code>decl_do</code></td><td><code>name</code>, <code>stmts</code></td><td><code>do main ... end</code></td></tr>
+<tr><td><code>decl_struct</code></td><td><code>name</code>, <code>fields</code></td><td><code>struct Point x: Int y: Int end</code></td></tr>
 </tbody>
 </table>
 </div>
 <h2 id="operator-precedence"><a class="header" href="#operator-precedence">Operator Precedence</a></h2>
 <p>The parser implements operator precedence via a chain of mutually recursive
-rites, from lowest to highest precedence:</p>
+functions, from lowest to highest precedence:</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Level</th><th>Operators</th><th>Rite</th></tr>
+<tr><th>Level</th><th>Operators</th><th>Function</th></tr>
 </thead>
 <tbody>
 <tr><td>1 (lowest)</td><td><code>||</code></td><td><code>parse_or_expr</code></td></tr>
@@ -271,15 +271,15 @@ right-nested <code>let_in</code> AST nodes:</p>
 let y = x + 1             body: {| tag: "let_in", name: "y", value: ...,
 x * y                              body: {| tag: "binop", ... |} |} |}
 </code></pre>
-<p>The <code>parse_let_bindings</code> rite collects bindings into a list, then
+<p>The <code>parse_let_bindings</code> fn collects bindings into a list, then
 <code>fold_let_bindings</code> converts them into nested <code>let_in</code> nodes where the
 innermost body is the final expression.</p>
-<h2 id="parsing-invoke"><a class="header" href="#parsing-invoke">Parsing Invoke</a></h2>
-<p><code>invoke</code> supports three argument forms:</p>
+<h2 id="parsing-function-calls"><a class="header" href="#parsing-function-calls">Parsing Function Calls</a></h2>
+<p>Function calls support three argument forms:</p>
 <ol>
-<li><strong>Record literal:</strong> <code>invoke f {| x: 1 |}</code></li>
-<li><strong>Parenthesized expression:</strong> <code>invoke f (expr)</code></li>
-<li><strong>Variable:</strong> <code>invoke f x</code></li>
+<li><strong>Record literal:</strong> <code>f {| x: 1 |}</code></li>
+<li><strong>Parenthesized expression:</strong> <code>f (expr)</code></li>
+<li><strong>Variable:</strong> <code>f x</code></li>
 </ol>
 <p>This flexibility lets the programmer choose the most readable form for each
 call site.</p>

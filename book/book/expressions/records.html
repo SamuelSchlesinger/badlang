@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7ed70138.js";
+            window.path_to_searchindex_js = "../searchindex-114a12be.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-daf9c5e4.js"></script>
+        <script src="../toc-e4e73581.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -185,7 +185,7 @@ structured value is a record.</p>
 {| n: 42 |}
 {| |}
 </code></pre>
-<p>The last form, <code>{| |}</code>, is the empty record — used when a rite takes no
+<p>The last form, <code>{| |}</code>, is the empty record — used when a fn takes no
 meaningful arguments.</p>
 <h2 id="fields"><a class="header" href="#fields">Fields</a></h2>
 <p>Each field has a name and a value, separated by a colon:</p>
@@ -200,31 +200,31 @@ meaningful arguments.</p>
 <h2 id="records-are-structural"><a class="header" href="#records-are-structural">Records Are Structural</a></h2>
 <p>Records in badlang are <strong>structural</strong>, not nominal. Two records with the same
 fields and types are the same type, regardless of how they were created:</p>
-<pre><code>rite add_xy
-  given {| x, y |} =&gt; x + y
-seal
+<pre><code>fn add_xy
+  case {| x, y |} =&gt; x + y
+end
 
-ritual main
+do main
   -- All of these are acceptable arguments:
-  utter invoke add_xy {| x: 1, y: 2 |}
-  utter invoke add_xy {| x: 10, y: 20 |}
-  utter invoke add_xy {| x: 5, y: 5, z: 100 |}
-seal
+  print add_xy {| x: 1, y: 2 |}
+  print add_xy {| x: 10, y: 20 |}
+  print add_xy {| x: 5, y: 5, z: 100 |}
+end
 </code></pre>
-<h2 id="named-records-with-summon"><a class="header" href="#named-records-with-summon">Named Records with summon</a></h2>
-<p>While anonymous records work everywhere, you can use <code>altar</code> and <code>summon</code> to
-create named record types:</p>
-<pre><code>altar Point
+<h2 id="named-records"><a class="header" href="#named-records">Named Records</a></h2>
+<p>While anonymous records work everywhere, you can use <code>struct</code> to declare named
+record types and construct them with the type name:</p>
+<pre><code>struct Point
   x : Int
   y : Int
-seal
+end
 
-ritual main
-  let p = summon Point {| x: 3, y: 4 |}
-  utter p.x
-seal
+do main
+  let p = Point {| x: 3, y: 4 |}
+  print p.x
+end
 </code></pre>
-<p>See <a href="./invoke-summon.html">Invoke and Summon</a> for details.</p>
+<p>See <a href="./function-calls.html">Function Calls and Construction</a> for details.</p>
 <h2 id="records-at-runtime"><a class="header" href="#records-at-runtime">Records at Runtime</a></h2>
 <p>At runtime, every record is a tagged value containing an array of
 <code>(name, value)</code> pairs. Field access is by name lookup. This means records are

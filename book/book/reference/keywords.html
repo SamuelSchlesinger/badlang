@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7ed70138.js";
+            window.path_to_searchindex_js = "../searchindex-114a12be.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-daf9c5e4.js"></script>
+        <script src="../toc-e4e73581.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -183,10 +183,10 @@
 <tr><th>Keyword</th><th>Syntax</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>altar</code></td><td><code>altar Name ... seal</code></td><td>Declare a named record type with typed fields</td></tr>
-<tr><td><code>rite</code></td><td><code>rite name given ... seal</code></td><td>Define a pure function by pattern matching</td></tr>
-<tr><td><code>ritual</code></td><td><code>ritual name ... seal</code></td><td>Define an effectful entry point</td></tr>
-<tr><td><code>seal</code></td><td>(closing delimiter)</td><td>Close an altar, rite, ritual, or divine block</td></tr>
+<tr><td><code>struct</code></td><td><code>struct Name ... end</code></td><td>Declare a named record type with typed fields</td></tr>
+<tr><td><code>fn</code></td><td><code>fn name case ... end</code></td><td>Define a pure function by pattern matching</td></tr>
+<tr><td><code>do</code></td><td><code>do name ... end</code></td><td>Define an effectful entry point</td></tr>
+<tr><td><code>end</code></td><td>(closing delimiter)</td><td>Close a struct, fn, do, or match block</td></tr>
 </tbody>
 </table>
 </div>
@@ -197,8 +197,8 @@
 <tr><th>Keyword</th><th>Syntax</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>given</code></td><td><code>given pattern =&gt; body</code></td><td>A pattern clause in a rite or divine</td></tr>
-<tr><td><code>divine</code></td><td><code>divine expr given ... seal</code></td><td>Inline pattern match expression</td></tr>
+<tr><td><code>case</code></td><td><code>case pattern =&gt; body</code></td><td>A pattern clause in a fn or match expression</td></tr>
+<tr><td><code>match</code></td><td><code>match expr case ... end</code></td><td>Inline pattern match expression</td></tr>
 </tbody>
 </table>
 </div>
@@ -209,13 +209,14 @@
 <tr><th>Keyword</th><th>Syntax</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>invoke</code></td><td><code>invoke name arg</code></td><td>Call a rite with an argument</td></tr>
-<tr><td><code>summon</code></td><td>`summon AltarName {</td><td>…</td></tr>
 <tr><td><code>let</code></td><td><code>let name = expr</code></td><td>Bind a local variable</td></tr>
 <tr><td><code>in</code></td><td>(reserved)</td><td>Reserved for future use</td></tr>
 </tbody>
 </table>
 </div>
+<p>Function calls use postfix syntax: <code>name arg</code> (e.g., <code>factorial {| n: 5 |}</code>).
+Named record construction uses the type name followed by a record literal:
+<code>TypeName {| ... |}</code> (e.g., <code>Point {| x: 3, y: 4 |}</code>).</p>
 <h2 id="io-keywords"><a class="header" href="#io-keywords">I/O Keywords</a></h2>
 <div class="table-wrapper">
 <table>
@@ -223,10 +224,10 @@
 <tr><th>Keyword</th><th>Syntax</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>utter</code></td><td><code>utter expr</code></td><td>Print a value to stdout with a newline</td></tr>
-<tr><td><code>whisper</code></td><td><code>whisper expr</code></td><td>Print a value to stdout without a newline</td></tr>
-<tr><td><code>hearken</code></td><td><code>hearken</code></td><td>Read a line from stdin as a String</td></tr>
-<tr><td><code>scry</code></td><td><code>scry</code></td><td>Read an integer from stdin</td></tr>
+<tr><td><code>print</code></td><td><code>print expr</code></td><td>Print a value to stdout with a newline</td></tr>
+<tr><td><code>write</code></td><td><code>write expr</code></td><td>Print a value to stdout without a newline</td></tr>
+<tr><td><code>readln</code></td><td><code>readln</code></td><td>Read a line from stdin as a String</td></tr>
+<tr><td><code>readint</code></td><td><code>readint</code></td><td>Read an integer from stdin</td></tr>
 </tbody>
 </table>
 </div>
@@ -235,7 +236,7 @@
 <li><strong>Identifiers</strong> start with a letter and continue with letters or digits</li>
 <li><strong>Keywords</strong> take priority — you cannot use a keyword as a variable name</li>
 <li><strong>Comments</strong> start with <code>--</code> and extend to the end of the line</li>
-<li><strong>Strings</strong> are delimited by <code>"</code> with no escape sequences</li>
+<li><strong>Strings</strong> are delimited by <code>"</code> with standard escape sequences (<code>\n</code>, <code>\t</code>, <code>\r</code>, <code>\\</code>, <code>\"</code>)</li>
 <li><strong>Integers</strong> are sequences of digits (<code>[0-9]+</code>)</li>
 <li><strong>Records</strong> are delimited by <code>{|</code> and <code>|}</code></li>
 </ul>

@@ -20,7 +20,7 @@ main = do
     ["--run", file]             -> compileAndRun file
     [file]                      -> compile file
     _                           -> do
-      hPutStrLn stderr "badlang — the language of rites and glyphs"
+      hPutStrLn stderr "badlang — a small language with structural records and sum types"
       hPutStrLn stderr ""
       hPutStrLn stderr "Usage:"
       hPutStrLn stderr "  badlang <source.bad>                Compile to C"

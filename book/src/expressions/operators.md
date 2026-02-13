@@ -66,16 +66,16 @@ Use parentheses to override precedence:
 
 ## Combining with Pattern Matching
 
-Since comparisons return integers, they work naturally with `divine`:
+Since comparisons return integers, they work naturally with `match`:
 
 ```
-rite abs
-  given {| n |} =>
-    divine n >= 0
-      given 1 => n
-      given 0 => 0 - n
-    seal
-seal
+fn abs
+  case {| n |} =>
+    match n >= 0
+      case 1 => n
+      case 0 => 0 - n
+    end
+end
 ```
 
 This is the idiomatic way to write conditional logic in badlang.

@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7ed70138.js";
+            window.path_to_searchindex_js = "searchindex-114a12be.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-daf9c5e4.js"></script>
+        <script src="toc-e4e73581.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -179,125 +179,125 @@
 This chapter covers common recursion patterns.</p>
 <h2 id="simple-recursion"><a class="header" href="#simple-recursion">Simple Recursion</a></h2>
 <p>The classic factorial:</p>
-<pre><code>rite factorial
-  given {| n: 0 |} =&gt; 1
-  given {| n |} =&gt; n * (invoke factorial {| n: n - 1 |})
-seal
+<pre><code>fn factorial
+  case {| n: 0 |} =&gt; 1
+  case {| n |} =&gt; n * (factorial {| n: n - 1 |})
+end
 </code></pre>
 <p>The first clause is the base case. The second recurses with <code>n - 1</code>. Pattern
 matching on literals provides the termination condition.</p>
 <h2 id="accumulator-pattern"><a class="header" href="#accumulator-pattern">Accumulator Pattern</a></h2>
 <p>Accumulator-passing style avoids deep call stacks by threading state through
 a parameter:</p>
-<pre><code>rite fib_acc
-  given {| n: 0, a, b |} =&gt; a
-  given {| n, a, b |} =&gt;
-    invoke fib_acc {| n: n - 1, a: b, b: a + b |}
-seal
+<pre><code>fn fib_acc
+  case {| n: 0, a, b |} =&gt; a
+  case {| n, a, b |} =&gt;
+    fib_acc {| n: n - 1, a: b, b: a + b |}
+end
 
-rite fib
-  given {| n |} =&gt; invoke fib_acc {| n: n, a: 0, b: 1 |}
-seal
+fn fib
+  case {| n |} =&gt; fib_acc {| n: n, a: 0, b: 1 |}
+end
 </code></pre>
-<p>The public-facing <code>fib</code> rite wraps the accumulator version with initial
+<p>The public-facing <code>fib</code> fn wraps the accumulator version with initial
 values. Each recursive call is in tail position, making this efficient
 in practice.</p>
 <p>Here’s another example — summing from 1 to n:</p>
-<pre><code>rite sum_acc
-  given {| n: 0, acc |} =&gt; acc
-  given {| n, acc |} =&gt;
-    invoke sum_acc {| n: n - 1, acc: acc + n |}
-seal
+<pre><code>fn sum_acc
+  case {| n: 0, acc |} =&gt; acc
+  case {| n, acc |} =&gt;
+    sum_acc {| n: n - 1, acc: acc + n |}
+end
 </code></pre>
 <h2 id="mutual-recursion"><a class="header" href="#mutual-recursion">Mutual Recursion</a></h2>
-<p>Rites can call each other, enabling mutual recursion. The classic example is
+<p>Functions can call each other, enabling mutual recursion. The classic example is
 Hofstadter’s Female and Male sequences:</p>
 <pre><code>-- F(0) = 1, M(0) = 0
 -- F(n) = n - M(F(n-1))
 -- M(n) = n - F(M(n-1))
 
-rite female
-  given {| n: 0 |} =&gt; 1
-  given {| n |} =&gt;
-    n - (invoke male {|
-      n: invoke female {| n: n - 1 |}
+fn female
+  case {| n: 0 |} =&gt; 1
+  case {| n |} =&gt;
+    n - (male {|
+      n: female {| n: n - 1 |}
     |})
-seal
+end
 
-rite male
-  given {| n: 0 |} =&gt; 0
-  given {| n |} =&gt;
-    n - (invoke female {|
-      n: invoke male {| n: n - 1 |}
+fn male
+  case {| n: 0 |} =&gt; 0
+  case {| n |} =&gt;
+    n - (female {|
+      n: male {| n: n - 1 |}
     |})
-seal
+end
 </code></pre>
 <p>Declaration order doesn’t matter — <code>female</code> can reference <code>male</code> even though
-<code>male</code> is defined later. All rites are visible to each other.</p>
-<h2 id="recursion-with-divine"><a class="header" href="#recursion-with-divine">Recursion with divine</a></h2>
-<p>Combining recursion with <code>divine</code> for conditional logic:</p>
-<pre><code>rite collatz_count
-  given {| n: 1, steps |} =&gt; steps
-  given {| n, steps |} =&gt;
-    divine invoke is_even {| n: n |}
-      given 1 =&gt;
-        invoke collatz_count {| n: n / 2, steps: steps + 1 |}
-      given 0 =&gt;
-        invoke collatz_count {| n: n * 3 + 1, steps: steps + 1 |}
-    seal
-seal
+<code>male</code> is defined later. All functions are visible to each other.</p>
+<h2 id="recursion-with-match"><a class="header" href="#recursion-with-match">Recursion with match</a></h2>
+<p>Combining recursion with <code>match</code> for conditional logic:</p>
+<pre><code>fn collatz_count
+  case {| n: 1, steps |} =&gt; steps
+  case {| n, steps |} =&gt;
+    match is_even {| n: n |}
+      case 1 =&gt;
+        collatz_count {| n: n / 2, steps: steps + 1 |}
+      case 0 =&gt;
+        collatz_count {| n: n * 3 + 1, steps: steps + 1 |}
+    end
+end
 </code></pre>
 <p>This counts the number of steps for a Collatz sequence to reach 1. The
-<code>divine</code> branches on whether <code>n</code> is even, then recurses with the appropriate
+<code>match</code> branches on whether <code>n</code> is even, then recurses with the appropriate
 transformation.</p>
 <h2 id="the-euclidean-algorithm"><a class="header" href="#the-euclidean-algorithm">The Euclidean Algorithm</a></h2>
 <p>GCD demonstrates recursion with structural dispatch:</p>
-<pre><code>rite gcd
-  given {| a, b: 0 |} =&gt; a
-  given {| a: 0, b |} =&gt; b
-  given {| a, b |} =&gt;
-    divine a &gt; b
-      given 1 =&gt; invoke gcd {| a: a - b, b: b |}
-      given 0 =&gt; invoke gcd {| a: a, b: b - a |}
-    seal
-seal
+<pre><code>fn gcd
+  case {| a, b: 0 |} =&gt; a
+  case {| a: 0, b |} =&gt; b
+  case {| a, b |} =&gt;
+    match a &gt; b
+      case 1 =&gt; gcd {| a: a - b, b: b |}
+      case 0 =&gt; gcd {| a: a, b: b - a |}
+    end
+end
 </code></pre>
 <p>The first two clauses handle base cases via literal patterns. The third
-clause uses <code>divine</code> to choose which value to reduce.</p>
+clause uses <code>match</code> to choose which value to reduce.</p>
 <h2 id="the-ackermann-function"><a class="header" href="#the-ackermann-function">The Ackermann Function</a></h2>
 <p>The Ackermann function is a classic stress test for recursion — it grows
 extremely fast:</p>
-<pre><code>rite ackermann
-  given {| m: 0, n |} =&gt; n + 1
-  given {| m, n: 0 |} =&gt;
-    invoke ackermann {| m: m - 1, n: 1 |}
-  given {| m, n |} =&gt;
-    invoke ackermann {|
+<pre><code>fn ackermann
+  case {| m: 0, n |} =&gt; n + 1
+  case {| m, n: 0 |} =&gt;
+    ackermann {| m: m - 1, n: 1 |}
+  case {| m, n |} =&gt;
+    ackermann {|
       m: m - 1,
-      n: invoke ackermann {| m: m, n: n - 1 |}
+      n: ackermann {| m: m, n: n - 1 |}
     |}
-seal
+end
 </code></pre>
 <p>Three clauses, each matching a different combination of base cases and
-recursive cases. The nested <code>invoke</code> in the third clause demonstrates how
+recursive cases. The nested call in the third clause demonstrates how
 badlang handles deeply recursive computations.</p>
 <h2 id="evenodd-via-mutual-recursion"><a class="header" href="#evenodd-via-mutual-recursion">Even/Odd via Mutual Recursion</a></h2>
 <p>A simple but illustrative example:</p>
-<pre><code>rite is_even
-  given {| n: 0 |} =&gt; 1
-  given {| n |} =&gt; invoke is_odd {| n: n - 1 |}
-seal
+<pre><code>fn is_even
+  case {| n: 0 |} =&gt; 1
+  case {| n |} =&gt; is_odd {| n: n - 1 |}
+end
 
-rite is_odd
-  given {| n: 0 |} =&gt; 0
-  given {| n |} =&gt; invoke is_even {| n: n - 1 |}
-seal
+fn is_odd
+  case {| n: 0 |} =&gt; 0
+  case {| n |} =&gt; is_even {| n: n - 1 |}
+end
 </code></pre>
 <p><code>is_even</code> delegates to <code>is_odd</code> and vice versa, peeling off one from <code>n</code>
 at each step until the base case is reached.</p>
 <h2 id="tips"><a class="header" href="#tips">Tips</a></h2>
 <ul>
-<li><strong>Always have a base case.</strong> A literal pattern like <code>given {| n: 0 |}</code> is
+<li><strong>Always have a base case.</strong> A literal pattern like <code>case {| n: 0 |}</code> is
 the most common termination condition.</li>
 <li><strong>Use the accumulator pattern</strong> when you’re building up a result
 incrementally. Thread an <code>acc</code> field through the recursive calls.</li>

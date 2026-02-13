@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7ed70138.js";
+            window.path_to_searchindex_js = "searchindex-114a12be.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-daf9c5e4.js"></script>
+        <script src="toc-e4e73581.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -229,20 +229,20 @@ it is done with the value.</p>
 <tr><td><code>make_record</code></td><td>Returns owned; <strong>adopts</strong> field values (does not retain them)</td></tr>
 <tr><td><code>record_field</code></td><td>Returns <strong>borrowed</strong> (no refcount change)</td></tr>
 <tr><td>Variable access</td><td>Borrows from local, caller retains to own</td></tr>
-<tr><td>Rite call</td><td>Caller owns the argument; callee borrows it. Return value is owned.</td></tr>
-<tr><td><code>utter</code> / <code>whisper</code></td><td>Borrow their argument (caller releases after)</td></tr>
+<tr><td>Function call</td><td>Caller owns the argument; callee borrows it. Return value is owned.</td></tr>
+<tr><td><code>print</code> / <code>write</code></td><td>Borrow their argument (caller releases after)</td></tr>
 </tbody>
 </table>
 </div>
 <h2 id="how-constructs-compile"><a class="header" href="#how-constructs-compile">How Constructs Compile</a></h2>
-<h3 id="rites--c-functions"><a class="header" href="#rites--c-functions">Rites → C Functions</a></h3>
-<p>Each rite becomes a C function taking and returning <code>Value*</code>:</p>
-<pre><code>rite square
-  given {| n |} =&gt; n * n
-seal
+<h3 id="functions--c-functions"><a class="header" href="#functions--c-functions">Functions → C Functions</a></h3>
+<p>Each fn becomes a C function taking and returning <code>Value*</code>:</p>
+<pre><code>fn square
+  case {| n |} =&gt; n * n
+end
 </code></pre>
 <p>Compiles to something like:</p>
-<pre><code class="language-c">static Value* rite_square(Value* arg) {
+<pre><code class="language-c">static Value* fn_square(Value* arg) {
     Value* _f_n = record_field(arg, "n");
     Value* bl_n = _f_n;
     if (_f_n != NULL) {
@@ -260,10 +260,10 @@ seal
 <h3 id="pattern-matching--if-chains"><a class="header" href="#pattern-matching--if-chains">Pattern Matching → if-chains</a></h3>
 <p>Multi-clause pattern matching compiles to cascading if-statements that check
 field values:</p>
-<pre><code>rite factorial
-  given {| n: 0 |} =&gt; 1
-  given {| n |} =&gt; n * (invoke factorial {| n: n - 1 |})
-seal
+<pre><code>fn factorial
+  case {| n: 0 |} =&gt; 1
+  case {| n |} =&gt; n * (factorial {| n: n - 1 |})
+end
 </code></pre>
 <p>Becomes cascading blocks, each extracting fields and checking conditions. On
 match, pattern-bound variables are retained, the body is evaluated, bindings
@@ -299,17 +299,17 @@ rc_release(bl_x);
 </code></pre>
 <p>This avoids O(N) nesting depth for N sequential bindings, keeping the generated
 C flat regardless of how many <code>let</code> bindings appear in a row.</p>
-<h3 id="divine--local-variable--goto"><a class="header" href="#divine--local-variable--goto">divine → Local Variable + goto</a></h3>
-<p><code>divine</code> expressions compile to a local result variable and a label for early
+<h3 id="match--local-variable--goto"><a class="header" href="#match--local-variable--goto">match → Local Variable + goto</a></h3>
+<p><code>match</code> expressions compile to a local result variable and a label for early
 exit, with each clause checking its pattern and jumping to the end on match.
 The scrutinee is released at the label after the matching clause stores its
 result.</p>
-<h3 id="utterwhisper--print-functions"><a class="header" href="#utterwhisper--print-functions">utter/whisper → Print Functions</a></h3>
-<p><code>utter</code> and <code>whisper</code> borrow their argument — the caller is responsible for
+<h3 id="printwrite--print-functions"><a class="header" href="#printwrite--print-functions">print/write → Print Functions</a></h3>
+<p><code>print</code> and <code>write</code> borrow their argument — the caller is responsible for
 releasing it afterward.</p>
-<pre><code class="language-c">// Generated for: utter expr
+<pre><code class="language-c">// Generated for: print expr
 Value* _t0 = /* evaluate expr */;
-utter(_t0);
+print(_t0);
 rc_release(_t0);
 </code></pre>
 <h2 id="identifier-mangling"><a class="header" href="#identifier-mangling">Identifier Mangling</a></h2>

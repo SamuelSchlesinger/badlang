@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7ed70138.js";
+            window.path_to_searchindex_js = "../searchindex-114a12be.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-daf9c5e4.js"></script>
+        <script src="../toc-e4e73581.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -180,13 +180,13 @@ structures. badlang has no built-in lists, so the compiler builds them from
 records.</p>
 <h2 id="linked-lists-from-records"><a class="header" href="#linked-lists-from-records">Linked Lists from Records</a></h2>
 <p>The compiler implements linked lists using tagged records:</p>
-<pre><code>rite nil
-  given {| |} =&gt; {| tag: "nil" |}
-seal
+<pre><code>fn nil
+  case {| |} =&gt; {| tag: "nil" |}
+end
 
-rite cons
-  given {| head, tail |} =&gt; {| tag: "cons", head: head, tail: tail |}
-seal
+fn cons
+  case {| head, tail |} =&gt; {| tag: "cons", head: head, tail: tail |}
+end
 </code></pre>
 <p>A list is either <code>{| tag: "nil" |}</code> or <code>{| tag: "cons", head: x, tail: xs |}</code>.
 Pattern matching on the <code>tag</code> field distinguishes the two cases. This is a
@@ -196,7 +196,7 @@ classic encoding of algebraic data types using structural records.</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Rite</th><th>Purpose</th></tr>
+<tr><th>Function</th><th>Purpose</th></tr>
 </thead>
 <tbody>
 <tr><td><code>is_nil</code></td><td>Returns <code>1</code> if the list is nil, <code>0</code> otherwise</td></tr>
@@ -210,16 +210,16 @@ classic encoding of algebraic data types using structural records.</p>
 </div>
 <p>All recursive list operations use <strong>accumulator-passing style</strong> for
 tail recursion:</p>
-<pre><code>rite list_reverse_acc
-  given {| list, acc |} =&gt;
-    divine invoke is_nil {| list: list |}
-      given 1 =&gt; acc
-      given 0 =&gt;
-        let h = invoke list_head {| list: list |}
-        let t = invoke list_tail {| list: list |}
-        invoke list_reverse_acc {| list: t, acc: invoke cons {| head: h, tail: acc |} |}
-    seal
-seal
+<pre><code>fn list_reverse_acc
+  case {| list, acc |} =&gt;
+    match is_nil {| list: list |}
+      case 1 =&gt; acc
+      case 0 =&gt;
+        let h = list_head {| list: list |}
+        let t = list_tail {| list: list |}
+        list_reverse_acc {| list: t, acc: cons {| head: h, tail: acc |} |}
+    end
+end
 </code></pre>
 <h3 id="the-accumulate-then-reverse-pattern"><a class="header" href="#the-accumulate-then-reverse-pattern">The Accumulate-Then-Reverse Pattern</a></h3>
 <p>Throughout the compiler, recursive parsers accumulate results by <code>cons</code>-ing
@@ -227,11 +227,11 @@ onto the front of a list (which is O(1)), building the list in reverse order.
 When the recursion finishes, a final <code>list_reverse</code> call restores the correct
 order. This pattern appears in the tokenizer, the parser, and the code emitter.</p>
 <h2 id="character-classification"><a class="header" href="#character-classification">Character Classification</a></h2>
-<p>The compiler provides character classification rites for the tokenizer:</p>
+<p>The compiler provides character classification functions for the tokenizer:</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Rite</th><th>Purpose</th></tr>
+<tr><th>Function</th><th>Purpose</th></tr>
 </thead>
 <tbody>
 <tr><td><code>is_digit</code></td><td>ASCII digits 0–9</td></tr>
@@ -242,10 +242,10 @@ order. This pattern appears in the tokenizer, the parser, and the code emitter.<
 </table>
 </div>
 <p>These operate on integer character codes obtained via <code>char_at</code> — one of the
-built-in string rites provided by the runtime.</p>
+built-in string functions provided by the runtime.</p>
 <h2 id="string-helpers"><a class="header" href="#string-helpers">String Helpers</a></h2>
 <p>Since badlang strings are immutable and there is no character type, string
-manipulation uses the built-in rites <code>strlen</code>, <code>char_at</code>, <code>substr</code>, and
+manipulation uses the built-in functions <code>strlen</code>, <code>char_at</code>, <code>substr</code>, and
 <code>concat</code>. The compiler adds convenience wrappers like:</p>
 <ul>
 <li><code>str_eq</code> — string equality via <code>strcmp</code></li>

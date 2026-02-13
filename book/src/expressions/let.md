@@ -2,33 +2,33 @@
 
 `let` introduces a local variable by binding a name to an expression's value.
 
-## In Rite Bodies
+## In Function Bodies
 
-Inside a `given` clause body, `let` bindings precede the final expression:
+Inside a `case` clause body, `let` bindings precede the final expression:
 
 ```
-rite hypotenuse_sq
-  given {| a, b |} =>
+fn hypotenuse_sq
+  case {| a, b |} =>
     let a_sq = a * a
     let b_sq = b * b
     a_sq + b_sq
-seal
+end
 ```
 
 Each `let` binding is visible to all subsequent bindings and to the final
 return expression. The last expression in the body (without a `let`) is the
 return value.
 
-## In Rituals
+## In Do Blocks
 
-In a ritual, `let` bindings introduce variables for subsequent statements:
+In a do block, `let` bindings introduce variables for subsequent statements:
 
 ```
-ritual main
+do main
   let x = 5
   let y = x * 2
-  utter y
-seal
+  print y
+end
 ```
 
 ## Shadowing
@@ -36,31 +36,31 @@ seal
 A `let` binding can shadow a previous binding of the same name:
 
 ```
-rite example
-  given {| n |} =>
+fn example
+  case {| n |} =>
     let n = n + 1
     let n = n * 2
     n
-seal
+end
 ```
 
-Here, `invoke example {| n: 5 |}` evaluates to `12`: the original `n` (5) is
+Here, `example {| n: 5 |}` evaluates to `12`: the original `n` (5) is
 shadowed by `n + 1` (6), which is shadowed by `n * 2` (12).
 
 ## let in Expressions
 
 `let` bindings can appear anywhere a multi-line expression is expected,
-including inside `divine` bodies:
+including inside `match` bodies:
 
 ```
-rite classify
-  given {| n |} =>
+fn classify
+  case {| n |} =>
     let positive = n > 0
-    divine positive
-      given 1 =>
+    match positive
+      case 1 =>
         let doubled = n * 2
         doubled
-      given 0 => 0
-    seal
-seal
+      case 0 => 0
+    end
+end
 ```

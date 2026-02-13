@@ -5,37 +5,37 @@ command-line argument access.
 
 ## Console Output
 
-### utter — Print with Newline
+### print — Print with Newline
 
-`utter` evaluates an expression and prints the result to stdout, followed by
+`print` evaluates an expression and prints the result to stdout, followed by
 a newline:
 
 ```
-utter "Hello, world!"
-utter 42
-utter invoke factorial {| n: 5 |}
+print "Hello, world!"
+print 42
+print factorial {| n: 5 |}
 ```
 
 Integers print as decimal numbers. Strings print as their contents (no
 quotes).
 
-### whisper — Print without Newline
+### write — Print without Newline
 
-`whisper` prints without appending a newline:
-
-```
-whisper "Enter your name: "
-whisper "> "
-```
-
-Use `whisper` to build up output incrementally or to print prompts:
+`write` prints without appending a newline:
 
 ```
-ritual main
-  whisper "Hello, "
-  whisper "world"
-  utter "!"
-seal
+write "Enter your name: "
+write "> "
+```
+
+Use `write` to build up output incrementally or to print prompts:
+
+```
+do main
+  write "Hello, "
+  write "world"
+  print "!"
+end
 ```
 
 Output:
@@ -46,34 +46,34 @@ Hello, world!
 
 ## Console Input
 
-### hearken — Read a String
+### readln — Read a String
 
-`hearken` reads a line from stdin and returns it as a `String`. The trailing
+`readln` reads a line from stdin and returns it as a `String`. The trailing
 newline is stripped:
 
 ```
-ritual main
-  utter "What is your name?"
-  whisper "> "
-  let name = hearken
-  whisper "Hello, "
-  whisper name
-  utter "!"
-seal
+do main
+  print "What is your name?"
+  write "> "
+  let name = readln
+  write "Hello, "
+  write name
+  print "!"
+end
 ```
 
-### scry — Read an Integer
+### readint — Read an Integer
 
-`scry` reads an integer from stdin:
+`readint` reads an integer from stdin:
 
 ```
-ritual main
-  utter "Pick a number:"
-  whisper "> "
-  let n = scry
-  utter "You chose:"
-  utter n
-seal
+do main
+  print "Pick a number:"
+  write "> "
+  let n = readint
+  print "You chose:"
+  print n
+end
 ```
 
 ## File I/O
@@ -83,7 +83,7 @@ seal
 `inscribe` writes a string to a file, creating or overwriting it:
 
 ```
-invoke inscribe {| path: "output.txt", content: "Written by badlang!" |}
+inscribe {| path: "output.txt", content: "Written by badlang!" |}
 ```
 
 The argument is a record with fields `path` (the file path) and `content`
@@ -94,8 +94,8 @@ The argument is a record with fields `path` (the file path) and `content`
 `unearth` reads the entire contents of a file and returns it as a `String`:
 
 ```
-let contents = invoke unearth {| path: "input.txt" |}
-utter contents
+let contents = unearth {| path: "input.txt" |}
+print contents
 ```
 
 The argument is a record with a single field `path`.
@@ -108,7 +108,7 @@ The argument is a record with a single field `path`.
 name):
 
 ```
-utter invoke argc {| |}
+print argc {| |}
 ```
 
 The argument is the empty record `{| |}`.
@@ -118,8 +118,8 @@ The argument is the empty record `{| |}`.
 `argv` returns the nth command-line argument as a string:
 
 ```
-utter invoke argv {| n: 0 |}   -- program name
-utter invoke argv {| n: 1 |}   -- first argument
+print argv {| n: 0 |}   -- program name
+print argv {| n: 1 |}   -- first argument
 ```
 
 The argument is a record with field `n` (the zero-based index).
@@ -127,36 +127,36 @@ The argument is a record with field `n` (the zero-based index).
 ## Complete I/O Example
 
 ```
-ritual main
-  utter "=== badlang IO demo ==="
+do main
+  print "=== badlang IO demo ==="
 
   -- Console I/O
-  utter "What is your name?"
-  whisper "> "
-  let name = hearken
-  whisper "Hello, "
-  whisper name
-  utter "!"
+  print "What is your name?"
+  write "> "
+  let name = readln
+  write "Hello, "
+  write name
+  print "!"
 
-  utter "Pick a number:"
-  whisper "> "
-  let n = scry
-  utter "You chose:"
-  utter n
+  print "Pick a number:"
+  write "> "
+  let n = readint
+  print "You chose:"
+  print n
 
   -- Command-line arguments
-  utter "Number of CLI args:"
-  utter invoke argc {| |}
+  print "Number of CLI args:"
+  print argc {| |}
 
-  utter "Program name:"
-  utter invoke argv {| n: 0 |}
+  print "Program name:"
+  print argv {| n: 0 |}
 
   -- File I/O
-  invoke inscribe {| path: "io_test.txt", content: "Written by badlang!" |}
-  utter "Wrote io_test.txt"
+  inscribe {| path: "io_test.txt", content: "Written by badlang!" |}
+  print "Wrote io_test.txt"
 
-  let contents = invoke unearth {| path: "io_test.txt" |}
-  utter "Read back:"
-  utter contents
-seal
+  let contents = unearth {| path: "io_test.txt" |}
+  print "Read back:"
+  print contents
+end
 ```

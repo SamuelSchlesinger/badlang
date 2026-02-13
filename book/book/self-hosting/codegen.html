@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7ed70138.js";
+            window.path_to_searchindex_js = "../searchindex-114a12be.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-daf9c5e4.js"></script>
+        <script src="../toc-e4e73581.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -178,7 +178,7 @@
 <p>The code emitter translates AST nodes into C code. It generates
 reference-counted <code>Value*</code> operations that work with the shared <code>runtime.c</code>.</p>
 <h2 id="the-emitter-pattern"><a class="header" href="#the-emitter-pattern">The Emitter Pattern</a></h2>
-<p>Every emitter rite follows the same convention. It takes an AST node and a
+<p>Every emitter fn follows the same convention. It takes an AST node and a
 <code>counter</code> (for generating unique variable names), and returns:</p>
 <pre><code>{| code: String, var: String, counter: Int |}
 </code></pre>
@@ -188,20 +188,20 @@ function calls, etc.)</li>
 <li><strong><code>var</code></strong> — the name of the C variable holding the result</li>
 <li><strong><code>counter</code></strong> — the updated counter for the next fresh variable</li>
 </ul>
-<p>The counter is <strong>threaded</strong> through every emitter call: each rite receives
+<p>The counter is <strong>threaded</strong> through every emitter call: each fn receives
 the counter, may allocate fresh variables (incrementing it), and passes the
 updated counter to the next call. This ensures all generated variable names
 are globally unique.</p>
 <h2 id="fresh-variables"><a class="header" href="#fresh-variables">Fresh Variables</a></h2>
-<p>The <code>fresh_var</code> rite generates unique C identifiers:</p>
-<pre><code>invoke fresh_var {| prefix: "_t", counter: 0 |}
+<p>The <code>fresh_var</code> fn generates unique C identifiers:</p>
+<pre><code>fresh_var {| prefix: "_t", counter: 0 |}
 → {| name: "_t0", counter: 1 |}
 </code></pre>
 <p>Generated names include <code>_t0</code>, <code>_t1</code>, … for temporaries, <code>_scr0</code> for
-scrutinees, <code>_dvn0</code> for divine results, and <code>_done0</code> for goto labels.</p>
+scrutinees, <code>_dvn0</code> for match results, and <code>_done0</code> for goto labels.</p>
 <h2 id="identifier-mangling"><a class="header" href="#identifier-mangling">Identifier Mangling</a></h2>
-<p>The <code>c_name</code> rite prefixes badlang identifiers with <code>bl_</code> to avoid collisions
-with C keywords. The special name <code>arg</code> (the rite parameter) is left unmangled
+<p>The <code>c_name</code> fn prefixes badlang identifiers with <code>bl_</code> to avoid collisions
+with C keywords. The special name <code>arg</code> (the fn parameter) is left unmangled
 since it matches the generated C function signature.</p>
 <h2 id="expression-emission"><a class="header" href="#expression-emission">Expression Emission</a></h2>
 <p>The central dispatcher <code>emit_expr</code> pattern-matches on the AST node’s <code>tag</code>
@@ -219,15 +219,15 @@ field and delegates to specialized emitters:</p>
 <tr><td><code>unop</code></td><td><code>emit_unop</code></td><td>Emit operand, negate</td></tr>
 <tr><td><code>field_access</code></td><td><code>emit_field_access</code></td><td><code>record_field(obj, "name")</code> + retain</td></tr>
 <tr><td><code>record</code></td><td><code>emit_record</code></td><td><code>make_record(n, "f1", v1, ...)</code></td></tr>
-<tr><td><code>invoke</code></td><td><code>emit_invoke_expr</code></td><td><code>rite_name(arg)</code></td></tr>
+<tr><td><code>call</code></td><td><code>emit_call_expr</code></td><td><code>fn_name(arg)</code></td></tr>
 <tr><td><code>let_in</code></td><td><code>emit_let_in</code></td><td>Flat sequential bindings (see below)</td></tr>
-<tr><td><code>divine</code></td><td><code>emit_divine</code></td><td>Cascading if-chains with goto</td></tr>
+<tr><td><code>match</code></td><td><code>emit_match</code></td><td>Cascading if-chains with goto</td></tr>
 </tbody>
 </table>
 </div>
 <h3 id="let-binding-chains"><a class="header" href="#let-binding-chains">Let Binding Chains</a></h3>
 <p>The emitter flattens chains of nested <code>let_in</code> nodes into sequential C
-variable declarations. The <code>collect_let_chain</code> rite walks the nested structure
+variable declarations. The <code>collect_let_chain</code> fn walks the nested structure
 and extracts all bindings and the final body. Then <code>emit_let_bindings_loop</code>
 emits each binding as a flat <code>Value*</code> declaration, and all bound variables are
 released in reverse order after the body:</p>
@@ -265,8 +265,8 @@ Value* bl_x = _f_x;
 sub-patterns, it additionally checks the value:</p>
 <pre><code class="language-c">_f_n != NULL &amp;&amp; _f_n-&gt;tag == TAG_INT &amp;&amp; _f_n-&gt;int_val == 0
 </code></pre>
-<h3 id="divine-expressions"><a class="header" href="#divine-expressions">Divine Expressions</a></h3>
-<p><code>divine</code> compiles to a local result variable, a scrutinee, and a series of
+<h3 id="match-expressions"><a class="header" href="#match-expressions">Match Expressions</a></h3>
+<p><code>match</code> compiles to a local result variable, a scrutinee, and a series of
 if-blocks with a shared <code>goto</code> label:</p>
 <pre><code class="language-c">Value* _dvn0;
 Value* _scr0 = /* scrutinee */;
@@ -278,30 +278,30 @@ rc_release(_scr0);
 </code></pre>
 <p>Each clause retains pattern-bound variables on entry and releases them before
 the <code>goto</code>.</p>
-<h2 id="rite-definitions"><a class="header" href="#rite-definitions">Rite Definitions</a></h2>
-<p>Each rite compiles to a static C function:</p>
-<pre><code class="language-c">static Value* rite_factorial(Value* arg) {
+<h2 id="function-definitions"><a class="header" href="#function-definitions">Function Definitions</a></h2>
+<p>Each fn compiles to a static C function:</p>
+<pre><code class="language-c">static Value* fn_factorial(Value* arg) {
     /* clause 1 */
     /* clause 2 */
-    fprintf(stderr, "Pattern match failure in rite 'factorial'\n");
+    fprintf(stderr, "Pattern match failure in fn 'factorial'\n");
     exit(1);
 }
 </code></pre>
 <p>Clauses are emitted as cascading if-blocks. On a successful match, the body is
 evaluated, pattern-bound variables are released, and the result is returned.</p>
-<h2 id="built-in-rites"><a class="header" href="#built-in-rites">Built-in Rites</a></h2>
-<p>Certain rites (<code>unearth</code>, <code>inscribe</code>, <code>concat</code>, <code>strlen</code>, <code>char_at</code>, <code>substr</code>,
-<code>strcmp</code>, <code>int_to_str</code>, <code>char_of_int</code>, <code>argc</code>, <code>argv</code>) are implemented in
-<code>runtime.c</code> rather than generated. The emitter checks <code>is_builtin_rite</code> and
-skips code generation for these — they are available as C functions at link
-time.</p>
+<h2 id="built-in-functions"><a class="header" href="#built-in-functions">Built-in Functions</a></h2>
+<p>Certain functions (<code>unearth</code>, <code>inscribe</code>, <code>concat</code>, <code>strlen</code>, <code>char_at</code>,
+<code>substr</code>, <code>strcmp</code>, <code>int_to_str</code>, <code>char_of_int</code>, <code>argc</code>, <code>argv</code>) are
+implemented in <code>runtime.c</code> rather than generated. The emitter checks
+<code>is_builtin_fn</code> and skips code generation for these — they are available as C
+functions at link time.</p>
 <h2 id="assembling-the-output"><a class="header" href="#assembling-the-output">Assembling the Output</a></h2>
-<p>The top-level <code>emit_c</code> rite assembles the complete C file by concatenating:</p>
+<p>The top-level <code>emit_c</code> fn assembles the complete C file by concatenating:</p>
 <ol>
 <li>The contents of <code>runtime.c</code> (read via <code>unearth</code>)</li>
-<li>Forward declarations for all non-builtin rites</li>
-<li>Rite definitions</li>
-<li>The <code>main()</code> function (from the <code>ritual main</code> declaration)</li>
+<li>Forward declarations for all non-builtin functions</li>
+<li>Function definitions</li>
+<li>The <code>main()</code> function (from the <code>do main</code> declaration)</li>
 </ol>
 <h2 id="the-aarch64-code-generator"><a class="header" href="#the-aarch64-code-generator">The AArch64 Code Generator</a></h2>
 <p>The self-hosting compiler also includes an AArch64 native code generator,
@@ -320,8 +320,8 @@ emitter threads a richer state record:</p>
 <li><strong><code>strs</code></strong> — a linked list of string literals with deduplicated labels</li>
 </ul>
 <h3 id="stack-based-variables"><a class="header" href="#stack-based-variables">Stack-based Variables</a></h3>
-<p>All variables live on the stack. The <code>alloc_slot</code> rite allocates a slot and
-the <code>lookup_slot</code> rite finds one by name. Stack offsets are computed as
+<p>All variables live on the stack. The <code>alloc_slot</code> fn allocates a slot and
+the <code>lookup_slot</code> fn finds one by name. Stack offsets are computed as
 <code>-(16 + (slot+1)*8)</code> relative to the frame pointer (x29), with
 <code>emit_load_slot</code> and <code>emit_store_slot</code> generating the appropriate <code>ldur</code>/<code>stur</code>
 instructions (falling back to register-indirect addressing for large offsets).</p>
@@ -332,12 +332,12 @@ assembly text, <code>var</code> names the stack slot holding the result, and <co
 carries the updated counters, slots, and string table.</p>
 <h3 id="string-table"><a class="header" href="#string-table">String Table</a></h3>
 <p>String literals and field names are collected into a deduplicated string
-table during emission. The <code>emit_string_table</code> rite emits them as <code>.asciz</code>
+table during emission. The <code>emit_string_table</code> fn emits them as <code>.asciz</code>
 directives in a <code>.section __TEXT,__cstring</code> data section at the end of the
 file.</p>
 <h3 id="mode-selection"><a class="header" href="#mode-selection">Mode Selection</a></h3>
-<p>The <code>get_mode</code> rite checks <code>argv[3]</code> for the string <code>"asm"</code>. The main ritual
-uses a <code>divine</code> on the mode to select between <code>emit_c</code> and <code>emit_asm</code>.</p>
+<p>The <code>get_mode</code> fn checks <code>argv[3]</code> for the string <code>"asm"</code>. The main do
+uses a <code>match</code> on the mode to select between <code>emit_c</code> and <code>emit_asm</code>.</p>
 
                     </main>
 

@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7ed70138.js";
+            window.path_to_searchindex_js = "searchindex-114a12be.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-daf9c5e4.js"></script>
+        <script src="toc-e4e73581.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -178,112 +178,112 @@
 <p>badlang provides built-in facilities for console I/O, file I/O, and
 command-line argument access.</p>
 <h2 id="console-output"><a class="header" href="#console-output">Console Output</a></h2>
-<h3 id="utter--print-with-newline"><a class="header" href="#utter--print-with-newline">utter — Print with Newline</a></h3>
-<p><code>utter</code> evaluates an expression and prints the result to stdout, followed by
+<h3 id="print--print-with-newline"><a class="header" href="#print--print-with-newline">print — Print with Newline</a></h3>
+<p><code>print</code> evaluates an expression and prints the result to stdout, followed by
 a newline:</p>
-<pre><code>utter "Hello, world!"
-utter 42
-utter invoke factorial {| n: 5 |}
+<pre><code>print "Hello, world!"
+print 42
+print factorial {| n: 5 |}
 </code></pre>
 <p>Integers print as decimal numbers. Strings print as their contents (no
 quotes).</p>
-<h3 id="whisper--print-without-newline"><a class="header" href="#whisper--print-without-newline">whisper — Print without Newline</a></h3>
-<p><code>whisper</code> prints without appending a newline:</p>
-<pre><code>whisper "Enter your name: "
-whisper "&gt; "
+<h3 id="write--print-without-newline"><a class="header" href="#write--print-without-newline">write — Print without Newline</a></h3>
+<p><code>write</code> prints without appending a newline:</p>
+<pre><code>write "Enter your name: "
+write "&gt; "
 </code></pre>
-<p>Use <code>whisper</code> to build up output incrementally or to print prompts:</p>
-<pre><code>ritual main
-  whisper "Hello, "
-  whisper "world"
-  utter "!"
-seal
+<p>Use <code>write</code> to build up output incrementally or to print prompts:</p>
+<pre><code>do main
+  write "Hello, "
+  write "world"
+  print "!"
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>Hello, world!
 </code></pre>
 <h2 id="console-input"><a class="header" href="#console-input">Console Input</a></h2>
-<h3 id="hearken--read-a-string"><a class="header" href="#hearken--read-a-string">hearken — Read a String</a></h3>
-<p><code>hearken</code> reads a line from stdin and returns it as a <code>String</code>. The trailing
+<h3 id="readln--read-a-string"><a class="header" href="#readln--read-a-string">readln — Read a String</a></h3>
+<p><code>readln</code> reads a line from stdin and returns it as a <code>String</code>. The trailing
 newline is stripped:</p>
-<pre><code>ritual main
-  utter "What is your name?"
-  whisper "&gt; "
-  let name = hearken
-  whisper "Hello, "
-  whisper name
-  utter "!"
-seal
+<pre><code>do main
+  print "What is your name?"
+  write "&gt; "
+  let name = readln
+  write "Hello, "
+  write name
+  print "!"
+end
 </code></pre>
-<h3 id="scry--read-an-integer"><a class="header" href="#scry--read-an-integer">scry — Read an Integer</a></h3>
-<p><code>scry</code> reads an integer from stdin:</p>
-<pre><code>ritual main
-  utter "Pick a number:"
-  whisper "&gt; "
-  let n = scry
-  utter "You chose:"
-  utter n
-seal
+<h3 id="readint--read-an-integer"><a class="header" href="#readint--read-an-integer">readint — Read an Integer</a></h3>
+<p><code>readint</code> reads an integer from stdin:</p>
+<pre><code>do main
+  print "Pick a number:"
+  write "&gt; "
+  let n = readint
+  print "You chose:"
+  print n
+end
 </code></pre>
 <h2 id="file-io"><a class="header" href="#file-io">File I/O</a></h2>
 <h3 id="inscribe--write-to-a-file"><a class="header" href="#inscribe--write-to-a-file">inscribe — Write to a File</a></h3>
 <p><code>inscribe</code> writes a string to a file, creating or overwriting it:</p>
-<pre><code>invoke inscribe {| path: "output.txt", content: "Written by badlang!" |}
+<pre><code>inscribe {| path: "output.txt", content: "Written by badlang!" |}
 </code></pre>
 <p>The argument is a record with fields <code>path</code> (the file path) and <code>content</code>
 (the string to write).</p>
 <h3 id="unearth--read-from-a-file"><a class="header" href="#unearth--read-from-a-file">unearth — Read from a File</a></h3>
 <p><code>unearth</code> reads the entire contents of a file and returns it as a <code>String</code>:</p>
-<pre><code>let contents = invoke unearth {| path: "input.txt" |}
-utter contents
+<pre><code>let contents = unearth {| path: "input.txt" |}
+print contents
 </code></pre>
 <p>The argument is a record with a single field <code>path</code>.</p>
 <h2 id="command-line-arguments"><a class="header" href="#command-line-arguments">Command-Line Arguments</a></h2>
 <h3 id="argc--argument-count"><a class="header" href="#argc--argument-count">argc — Argument Count</a></h3>
 <p><code>argc</code> returns the number of command-line arguments (including the program
 name):</p>
-<pre><code>utter invoke argc {| |}
+<pre><code>print argc {| |}
 </code></pre>
 <p>The argument is the empty record <code>{| |}</code>.</p>
 <h3 id="argv--get-argument-by-index"><a class="header" href="#argv--get-argument-by-index">argv — Get Argument by Index</a></h3>
 <p><code>argv</code> returns the nth command-line argument as a string:</p>
-<pre><code>utter invoke argv {| n: 0 |}   -- program name
-utter invoke argv {| n: 1 |}   -- first argument
+<pre><code>print argv {| n: 0 |}   -- program name
+print argv {| n: 1 |}   -- first argument
 </code></pre>
 <p>The argument is a record with field <code>n</code> (the zero-based index).</p>
 <h2 id="complete-io-example"><a class="header" href="#complete-io-example">Complete I/O Example</a></h2>
-<pre><code>ritual main
-  utter "=== badlang IO demo ==="
+<pre><code>do main
+  print "=== badlang IO demo ==="
 
   -- Console I/O
-  utter "What is your name?"
-  whisper "&gt; "
-  let name = hearken
-  whisper "Hello, "
-  whisper name
-  utter "!"
+  print "What is your name?"
+  write "&gt; "
+  let name = readln
+  write "Hello, "
+  write name
+  print "!"
 
-  utter "Pick a number:"
-  whisper "&gt; "
-  let n = scry
-  utter "You chose:"
-  utter n
+  print "Pick a number:"
+  write "&gt; "
+  let n = readint
+  print "You chose:"
+  print n
 
   -- Command-line arguments
-  utter "Number of CLI args:"
-  utter invoke argc {| |}
+  print "Number of CLI args:"
+  print argc {| |}
 
-  utter "Program name:"
-  utter invoke argv {| n: 0 |}
+  print "Program name:"
+  print argv {| n: 0 |}
 
   -- File I/O
-  invoke inscribe {| path: "io_test.txt", content: "Written by badlang!" |}
-  utter "Wrote io_test.txt"
+  inscribe {| path: "io_test.txt", content: "Written by badlang!" |}
+  print "Wrote io_test.txt"
 
-  let contents = invoke unearth {| path: "io_test.txt" |}
-  utter "Read back:"
-  utter contents
-seal
+  let contents = unearth {| path: "io_test.txt" |}
+  print "Read back:"
+  print contents
+end
 </code></pre>
 
                     </main>

@@ -9,13 +9,13 @@ records.
 The compiler implements linked lists using tagged records:
 
 ```
-rite nil
-  given {| |} => {| tag: "nil" |}
-seal
+fn nil
+  case {| |} => {| tag: "nil" |}
+end
 
-rite cons
-  given {| head, tail |} => {| tag: "cons", head: head, tail: tail |}
-seal
+fn cons
+  case {| head, tail |} => {| tag: "cons", head: head, tail: tail |}
+end
 ```
 
 A list is either `{| tag: "nil" |}` or `{| tag: "cons", head: x, tail: xs |}`.
@@ -26,8 +26,8 @@ classic encoding of algebraic data types using structural records.
 
 The compiler provides a small standard library of list operations:
 
-| Rite | Purpose |
-|------|---------|
+| Function | Purpose |
+|----------|---------|
 | `is_nil` | Returns `1` if the list is nil, `0` otherwise |
 | `list_head` | Returns the head element |
 | `list_tail` | Returns the tail |
@@ -39,16 +39,16 @@ All recursive list operations use **accumulator-passing style** for
 tail recursion:
 
 ```
-rite list_reverse_acc
-  given {| list, acc |} =>
-    divine invoke is_nil {| list: list |}
-      given 1 => acc
-      given 0 =>
-        let h = invoke list_head {| list: list |}
-        let t = invoke list_tail {| list: list |}
-        invoke list_reverse_acc {| list: t, acc: invoke cons {| head: h, tail: acc |} |}
-    seal
-seal
+fn list_reverse_acc
+  case {| list, acc |} =>
+    match is_nil {| list: list |}
+      case 1 => acc
+      case 0 =>
+        let h = list_head {| list: list |}
+        let t = list_tail {| list: list |}
+        list_reverse_acc {| list: t, acc: cons {| head: h, tail: acc |} |}
+    end
+end
 ```
 
 ### The Accumulate-Then-Reverse Pattern
@@ -60,9 +60,9 @@ order. This pattern appears in the tokenizer, the parser, and the code emitter.
 
 ## Character Classification
 
-The compiler provides character classification rites for the tokenizer:
+The compiler provides character classification functions for the tokenizer:
 
-| Rite | Purpose |
+| Function | Purpose |
 |------|---------|
 | `is_digit` | ASCII digits 0–9 |
 | `is_alpha` | ASCII letters a–z, A–Z |
@@ -70,12 +70,12 @@ The compiler provides character classification rites for the tokenizer:
 | `is_ws` | Whitespace (space, newline, CR, tab) |
 
 These operate on integer character codes obtained via `char_at` — one of the
-built-in string rites provided by the runtime.
+built-in string functions provided by the runtime.
 
 ## String Helpers
 
 Since badlang strings are immutable and there is no character type, string
-manipulation uses the built-in rites `strlen`, `char_at`, `substr`, and
+manipulation uses the built-in functions `strlen`, `char_at`, `substr`, and
 `concat`. The compiler adds convenience wrappers like:
 
 - `str_eq` — string equality via `strcmp`

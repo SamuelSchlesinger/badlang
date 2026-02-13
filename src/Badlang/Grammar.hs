@@ -6,12 +6,12 @@
 -- The grammar is built using the combinator EDSL from "Badlang.PEG".
 -- It defines the complete surface syntax of badlang:
 --
--- * __Declarations:__ @altar@, @rite@, @ritual@ (each terminated by @seal@)
+-- * __Declarations:__ @struct@, @fn@, @do@, @oneof@ (each terminated by @end@)
 -- * __Expressions:__ arithmetic, comparisons, boolean operators, records
---   (@{| ... |}@), field access (@.@), @invoke@, @summon@, @divine@, @let@
--- * __Patterns:__ record patterns (@{| x: 0, y |}@), literals, wildcards,
---   variables
--- * __Statements:__ @let@ bindings, @utter@ (print), bare expressions
+--   (@{| ... |}@), field access (@.@), function application, named records, @match@, @let@
+-- * __Patterns:__ record patterns (@{| x: 0, y |}@), variant patterns,
+--   literals, wildcards, variables
+-- * __Statements:__ @let@ bindings, @print@ (print), bare expressions
 --
 -- Expression precedence is encoded via the grammar structure:
 -- @or_expr@ > @and_expr@ > @cmp_expr@ > @add_expr@ > @mul_expr@ >
@@ -47,6 +47,7 @@ module Badlang.Grammar
 import           Badlang.PEG
 import           Badlang.AST
 import qualified Data.Map.Strict as Map
+import           Data.Char (isUpper)
 
 -- ---------------------------------------------------------------------------
 -- The Grammar
@@ -54,9 +55,9 @@ import qualified Data.Map.Strict as Map
 
 -- | Reserved keywords — identifiers must not match these.
 keywords :: [String]
-keywords = [ "altar", "rite", "ritual", "given", "seal"
-           , "let", "in", "invoke", "summon", "utter", "divine"
-           , "hearken", "scry", "whisper" ]
+keywords = [ "struct", "fn", "do", "case", "end"
+           , "let", "in", "print", "match"
+           , "readln", "readint", "write", "oneof" ]
 
 -- | A keyword terminal that ensures it's not followed by an identifier char.
 kw :: String -> PExpr
@@ -65,7 +66,7 @@ kw s = seq_ [lit s, notP letterOrDigit]
 -- | The complete badlang grammar, expressed as a 'Grammar' value.
 --
 -- This is the single source of truth for badlang's surface syntax. Every
--- syntactic construct — from altar declarations to nested divine expressions —
+-- syntactic construct — from struct declarations to nested match expressions —
 -- is defined here using the PEG combinator EDSL from "Badlang.PEG".
 badlangGrammar :: Grammar
 badlangGrammar = Map.fromList
@@ -73,14 +74,14 @@ badlangGrammar = Map.fromList
   -- ── Program ──────────────────────────────────────────────────────────
   [ ("program", ws <.> many (label "decl" (rule "decl") <.> ws))
 
-  , ("decl", rule "altar_decl" </> rule "rite_decl" </> rule "ritual_decl")
+  , ("decl", rule "struct_decl" </> rule "oneof_decl" </> rule "fn_decl" </> rule "do_decl")
 
-  -- ── Altar (record type) ──────────────────────────────────────────────
-  , ("altar_decl", seq_
-      [ kw "altar", ws1
+  -- ── Struct (record type) ───────────────────────────────────────────
+  , ("struct_decl", seq_
+      [ kw "struct", ws1
       , label "name" (rule "ident"), ws
       , label "fields" (many (rule "field_decl" <.> ws))
-      , kw "seal"
+      , kw "end"
       ])
 
   , ("field_decl", seq_
@@ -89,20 +90,40 @@ badlangGrammar = Map.fromList
       , label "ftype" (rule "type_ann")
       ])
 
+  -- ── Oneof (sum type) ──────────────────────────────────────────────
+  , ("oneof_decl", seq_
+      [ kw "oneof", ws1
+      , label "name" (rule "ident"), ws
+      , label "variants" (many1 (rule "variant_def" <.> ws))
+      , kw "end"
+      ])
+
+  , ("variant_def", seq_
+      [ label "vname" (rule "ident"), ws
+      , label "vfields" (opt (seq_
+          [ lit "{", ws
+          , opt (seq_
+              [ rule "field_decl"
+              , many (seq_ [ws, lit ",", ws, rule "field_decl"])
+              ])
+          , ws, lit "}"
+          ]))
+      ])
+
   -- ── Type annotations ─────────────────────────────────────────────────
   , ("type_ann", rule "type_name")  -- v0.1: just names
   , ("type_name", rule "ident")
 
-  -- ── Rite (pure function) ─────────────────────────────────────────────
-  , ("rite_decl", seq_
-      [ kw "rite", ws1
+  -- ── Fn (pure function) ────────────────────────────────────────────
+  , ("fn_decl", seq_
+      [ kw "fn", ws1
       , label "name" (rule "ident"), ws
-      , label "clauses" (many1 (rule "given_clause" <.> ws))
-      , kw "seal"
+      , label "clauses" (many1 (rule "case_clause" <.> ws))
+      , kw "end"
       ])
 
-  , ("given_clause", seq_
-      [ kw "given", ws
+  , ("case_clause", seq_
+      [ kw "case", ws
       , label "pattern" (rule "pattern"), ws
       , lit "=>", ws
       , label "body" (rule "block_expr")
@@ -121,15 +142,15 @@ badlangGrammar = Map.fromList
       , label "lvalue" (rule "expr"), ws
       ])
 
-  -- ── Ritual (effectful entry point) ───────────────────────────────────
-  , ("ritual_decl", seq_
-      [ kw "ritual", ws1
+  -- ── Do (effectful entry point) ─────────────────────────────────────
+  , ("do_decl", seq_
+      [ kw "do", ws1
       , label "name" (rule "ident"), ws
       , label "body" (many1 (rule "stmt" <.> ws))
-      , kw "seal"
+      , kw "end"
       ])
 
-  , ("stmt", rule "let_stmt" </> rule "utter_stmt" </> rule "whisper_stmt" </> rule "expr_stmt")
+  , ("stmt", rule "let_stmt" </> rule "print_stmt" </> rule "write_stmt" </> rule "expr_stmt")
 
   , ("let_stmt", seq_
       [ kw "let", ws1
@@ -138,13 +159,13 @@ badlangGrammar = Map.fromList
       , label "lvalue" (rule "expr")
       ])
 
-  , ("utter_stmt", seq_
-      [ kw "utter", ws1
+  , ("print_stmt", seq_
+      [ kw "print", ws1
       , label "value" (rule "expr")
       ])
 
-  , ("whisper_stmt", seq_
-      [ kw "whisper", ws1
+  , ("write_stmt", seq_
+      [ kw "write", ws1
       , label "value" (rule "expr")
       ])
 
@@ -198,12 +219,13 @@ badlangGrammar = Map.fromList
       rule "int_lit"
       </> rule "str_lit"
       </> rule "paren_expr"
-      </> rule "invoke_expr"
-      </> rule "summon_expr"
-      </> rule "divine_expr"
-      </> rule "hearken_expr"
-      </> rule "scry_expr"
+      </> rule "match_expr"
+      </> rule "readln_expr"
+      </> rule "readint_expr"
       </> rule "record_lit"
+      </> rule "named_record_expr"
+      </> rule "fn_call_record_expr"
+      </> rule "fn_call_paren_expr"
       </> rule "var_expr")
 
   , ("int_lit", label "value" digits)
@@ -220,33 +242,37 @@ badlangGrammar = Map.fromList
 
   , ("paren_expr", seq_ [lit "(", ws, rule "expr", ws, lit ")"])
 
-  , ("invoke_expr", seq_
-      [ kw "invoke", ws1
-      , label "rite" (rule "ident"), ws
-      , label "arg" (rule "invoke_arg")
+  -- Function call with record argument: foo {| ... |}
+  , ("fn_call_record_expr", seq_
+      [ label "fn" (rule "ident"), ws
+      , label "arg" (rule "record_lit")
       ])
 
-  , ("invoke_arg",
-      rule "record_lit"
-      </> rule "paren_expr"
-      </> rule "var_expr")
+  -- Function call with parenthesized argument: foo(expr)
+  , ("fn_call_paren_expr", seq_
+      [ label "fn" (rule "ident")
+      , lit "(", ws
+      , label "arg" (rule "expr")
+      , ws, lit ")"
+      ])
 
-  , ("summon_expr", seq_
-      [ kw "summon", ws1
-      , label "altar" (rule "ident"), ws
+  -- Named record: Identifier followed by {| ... |}
+  -- This handles both struct construction (Point {| ... |}) and variant construction (Circle {| ... |})
+  , ("named_record_expr", seq_
+      [ label "type_name" (rule "upper_ident"), ws
       , label "fields" (rule "record_lit")
       ])
 
-  , ("divine_expr", seq_
-      [ kw "divine", ws1
+  , ("match_expr", seq_
+      [ kw "match", ws1
       , label "scrutinee" (rule "expr"), ws
-      , label "clauses" (many1 (rule "given_clause" <.> ws))
-      , kw "seal"
+      , label "clauses" (many1 (rule "case_clause" <.> ws))
+      , kw "end"
       ])
 
-  , ("hearken_expr", kw "hearken")
+  , ("readln_expr", kw "readln")
 
-  , ("scry_expr", kw "scry")
+  , ("readint_expr", kw "readint")
 
   , ("record_lit", seq_
       [ lit "{|", ws
@@ -267,10 +293,17 @@ badlangGrammar = Map.fromList
 
   -- ── Patterns ─────────────────────────────────────────────────────────
   , ("pattern",
-      rule "record_pat"
+      rule "variant_pat"
+      </> rule "record_pat"
       </> rule "lit_pat"
       </> rule "wild_pat"
       </> rule "var_pat")
+
+  -- Variant pattern: UpperCase identifier followed by a record pattern
+  , ("variant_pat", seq_
+      [ label "vname" (rule "upper_ident"), ws
+      , label "vpat" (rule "record_pat")
+      ])
 
   , ("record_pat", seq_
       [ lit "{|", ws
@@ -294,6 +327,12 @@ badlangGrammar = Map.fromList
   , ("ident", seq_
       [ notP (rule "keyword")
       , label "name" (seq_ [letter, many letterOrDigit])
+      ])
+
+  -- Upper-case identifier (for type names, variant names)
+  , ("upper_ident", seq_
+      [ notP (rule "keyword")
+      , label "name" (seq_ [satisfy "upper-letter" isUpper, many letterOrDigit])
       ])
 
   , ("keyword", choice (map (\k -> seq_ [lit k, notP letterOrDigit]) keywords))
@@ -323,24 +362,38 @@ treeToProgram t = Left $ "Expected program, got: " ++ take 100 (show t)
 
 treeToDecl :: ParseTree -> Either String Decl
 treeToDecl (PTNode "decl" [child]) = treeToDecl child
-treeToDecl (PTNode "altar_decl" children) = do
+treeToDecl (PTNode "struct_decl" children) = do
   name   <- getText =<< find1 "name" children
   fields <- mapM treeToField (findTyped "field_decl" (findAll "fields" children >>= getChildren))
-  return (AltarDecl name fields)
-treeToDecl (PTNode "rite_decl" children) = do
+  return (StructDecl name fields)
+treeToDecl (PTNode "oneof_decl" children) = do
+  name <- getText =<< find1 "name" children
+  let variantNodes = findTyped "variant_def" (findAll "variants" children >>= getChildren)
+  variants <- mapM treeToVariantDef variantNodes
+  return (OneofDecl name variants)
+treeToDecl (PTNode "fn_decl" children) = do
   name    <- getText =<< find1 "name" children
-  clauses <- mapM treeToGivenClause (findTyped "given_clause" (findAll "clauses" children >>= getChildren))
-  return (RiteDecl name clauses)
-treeToDecl (PTNode "ritual_decl" children) = do
+  clauses <- mapM treeToCaseClause (findTyped "case_clause" (findAll "clauses" children >>= getChildren))
+  return (FnDecl name clauses)
+treeToDecl (PTNode "do_decl" children) = do
   name  <- getText =<< find1 "name" children
   let stmtNodes = findAll "body" children >>= getChildren
       stmts'    = filter isStmtNode stmtNodes
   stmts <- mapM treeToStmt stmts'
-  return (RitualDecl name stmts)
+  return (DoDecl name stmts)
   where
-    isStmtNode (PTNode n _) = n `elem` ["let_stmt", "utter_stmt", "whisper_stmt", "expr_stmt", "stmt"]
+    isStmtNode (PTNode n _) = n `elem` ["let_stmt", "print_stmt", "write_stmt", "expr_stmt", "stmt"]
     isStmtNode _ = False
 treeToDecl t = Left $ "Expected declaration, got: " ++ take 100 (show t)
+
+treeToVariantDef :: ParseTree -> Either String (String, [Field])
+treeToVariantDef (PTNode "variant_def" children) = do
+  name <- getText =<< find1 "vname" children
+  let fieldsNodes = findAll "vfields" children >>= getChildren
+      fieldDecls = findTyped "field_decl" fieldsNodes
+  fields <- mapM treeToField fieldDecls
+  return (name, fields)
+treeToVariantDef t = Left $ "Expected variant def, got: " ++ take 100 (show t)
 
 treeToField :: ParseTree -> Either String Field
 treeToField (PTNode "field_decl" children) = do
@@ -365,12 +418,12 @@ treeToTypeAnn t = do
   txt <- getText t
   return (TAName txt)
 
-treeToGivenClause :: ParseTree -> Either String GivenClause
-treeToGivenClause (PTNode "given_clause" children) = do
+treeToCaseClause :: ParseTree -> Either String CaseClause
+treeToCaseClause (PTNode "case_clause" children) = do
   pat  <- treeToPattern =<< find1 "pattern" children
   body <- treeToBlockExpr =<< find1 "body" children
-  return (GivenClause pat body)
-treeToGivenClause t = Left $ "Expected given clause, got: " ++ take 100 (show t)
+  return (CaseClause pat body)
+treeToCaseClause t = Left $ "Expected case clause, got: " ++ take 100 (show t)
 
 treeToBlockExpr :: ParseTree -> Either String Expr
 treeToBlockExpr (PTNode "body" [PTNode "block_expr" cs]) = treeToBlockExpr' cs
@@ -402,12 +455,12 @@ treeToStmt (PTNode "let_stmt" children) = do
   name  <- getText =<< find1 "lname" children
   value <- treeToExpr =<< find1 "lvalue" children
   return (LetStmt name value)
-treeToStmt (PTNode "utter_stmt" children) = do
+treeToStmt (PTNode "print_stmt" children) = do
   value <- treeToExpr =<< find1 "value" children
-  return (UtterStmt value)
-treeToStmt (PTNode "whisper_stmt" children) = do
+  return (PrintStmt value)
+treeToStmt (PTNode "write_stmt" children) = do
   value <- treeToExpr =<< find1 "value" children
-  return (WhisperStmt value)
+  return (WriteStmt value)
 treeToStmt (PTNode "expr_stmt" children) = do
   value <- treeToExpr =<< find1 "value" children
   return (ExprStmt value)
@@ -453,22 +506,26 @@ treeToExpr (PTNode "str_lit" children) = do
   valNode <- find1 "value" children
   txt <- getText valNode
   return (StrLit (processEscapes txt))
-treeToExpr (PTNode "invoke_expr" children) = do
-  riteName <- getText =<< find1 "rite" children
-  argNode  <- find1 "arg" children
-  arg      <- treeToExpr argNode
-  return (Invoke riteName arg)
-treeToExpr (PTNode "summon_expr" children) = do
-  altarName <- getText =<< find1 "altar" children
+treeToExpr (PTNode "fn_call_record_expr" children) = do
+  fnName <- getText =<< find1 "fn" children
+  argNode <- find1 "arg" children
+  arg <- treeToExpr argNode
+  return (Call fnName arg)
+treeToExpr (PTNode "fn_call_paren_expr" children) = do
+  fnName <- getText =<< find1 "fn" children
+  arg <- treeToExpr =<< find1 "arg" children
+  return (Call fnName arg)
+treeToExpr (PTNode "named_record_expr" children) = do
+  typeName <- getText =<< find1 "type_name" children
   fieldsNode <- find1 "fields" children
   fields <- treeToRecordFields fieldsNode
-  return (Summon altarName fields)
-treeToExpr (PTNode "divine_expr" children) = do
+  return (NamedRecord typeName fields)
+treeToExpr (PTNode "match_expr" children) = do
   scrutinee <- treeToExpr =<< find1 "scrutinee" children
-  clauses <- mapM treeToGivenClause (findTyped "given_clause" (findAll "clauses" children >>= getChildren))
-  return (Divine scrutinee clauses)
-treeToExpr (PTNode "hearken_expr" _) = return Hearken
-treeToExpr (PTNode "scry_expr" _) = return Scry
+  clauses <- mapM treeToCaseClause (findTyped "case_clause" (findAll "clauses" children >>= getChildren))
+  return (Match scrutinee clauses)
+treeToExpr (PTNode "readln_expr" _) = return ReadLn
+treeToExpr (PTNode "readint_expr" _) = return ReadInt
 treeToExpr (PTNode "record_lit" children) = do
   let fieldsNode = findAll "fields" children
   fields <- case fieldsNode of
@@ -479,10 +536,11 @@ treeToExpr (PTNode "var_expr" [child]) = treeToExpr child
 treeToExpr (PTNode "ident" children) = do
   name <- getText =<< find1 "name" children
   return (Var name)
+treeToExpr (PTNode "upper_ident" children) = do
+  name <- getText =<< find1 "name" children
+  return (Var name)
 treeToExpr (PTNode "arg" [child]) = treeToExpr child
 treeToExpr (PTNode "arg" children) = treeToExpr (Prelude.head children)
-treeToExpr (PTNode "invoke_arg" [child]) = treeToExpr child
-treeToExpr (PTNode "invoke_arg" children) = treeToExpr (Prelude.head children)
 treeToExpr (PTNode "head" children) =
   case children of
     [child] -> treeToExpr child
@@ -624,6 +682,12 @@ treeToPattern :: ParseTree -> Either String Pattern
 treeToPattern (PTNode "pattern" [child]) = treeToPattern child
 treeToPattern (PTNode "fpat" [child]) = treeToPattern child
 treeToPattern (PTNode "fpat" children) = treeToPattern (Prelude.head children)
+treeToPattern (PTNode "vpat" [child]) = treeToPattern child
+treeToPattern (PTNode "vpat" children) = treeToPattern (Prelude.head children)
+treeToPattern (PTNode "variant_pat" children) = do
+  vname <- getText =<< find1 "vname" children
+  innerPat <- treeToPattern =<< find1 "vpat" children
+  return (PVariant vname innerPat)
 treeToPattern (PTNode "record_pat" children) = do
   let fieldsNode = findAll "fields" children
   fields <- case fieldsNode of
@@ -638,6 +702,9 @@ treeToPattern (PTNode "var_pat" [child]) = do
   name <- getText child
   return (PVar name)
 treeToPattern (PTNode "ident" children) = do
+  name <- getText =<< find1 "name" children
+  return (PVar name)
+treeToPattern (PTNode "upper_ident" children) = do
   name <- getText =<< find1 "name" children
   return (PVar name)
 treeToPattern t = Left $ "Expected pattern, got: " ++ take 100 (show t)

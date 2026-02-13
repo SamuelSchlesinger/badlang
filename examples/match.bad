@@ -1,0 +1,33 @@
+-- match: inline pattern matching as an expression
+
+fn fizzbuzz
+  case {| n |} =>
+    let by3 = n - (n / 3) * 3
+    let by5 = n - (n / 5) * 5
+    match {| a: by3, b: by5 |}
+      case {| a: 0, b: 0 |} => "fizzbuzz"
+      case {| a: 0 |}       => "fizz"
+      case {| b: 0 |}       => "buzz"
+      case {| a, b |}       => ""
+    end
+end
+
+fn range_inner
+  case {| i, n, acc |} =>
+    match i == n
+      case 1 => acc
+      case 0 =>
+        range_inner {|
+          i: i + 1,
+          n: n,
+          acc: acc + (fizzbuzz {| n: i |})
+        |}
+    end
+end
+
+do main
+  print fizzbuzz {| n: 3 |}
+  print fizzbuzz {| n: 5 |}
+  print fizzbuzz {| n: 15 |}
+  print fizzbuzz {| n: 7 |}
+end

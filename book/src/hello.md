@@ -7,9 +7,9 @@ Let's walk through a complete program to get a feel for the language.
 Create a file called `first.bad`:
 
 ```
-ritual main
-  utter "Hello, world!"
-seal
+do main
+  print "Hello, world!"
+end
 ```
 
 Compile and run it:
@@ -24,22 +24,22 @@ Output:
 Hello, world!
 ```
 
-A `ritual` is an effectful entry point — think of it as `main` in C. The body
-contains statements that execute for side effects. `utter` prints a value
-followed by a newline. `seal` closes the block.
+A `do` is an effectful entry point — think of it as `main` in C. The body
+contains statements that execute for side effects. `print` prints a value
+followed by a newline. `end` closes the block.
 
-## Adding a Rite
+## Adding a Function
 
-A `rite` is a pure function. Let's add one:
+A `fn` is a pure function. Let's add one:
 
 ```
-rite square
-  given {| n |} => n * n
-seal
+fn square
+  case {| n |} => n * n
+end
 
-ritual main
-  utter invoke square {| n: 5 |}
-seal
+do main
+  print square {| n: 5 |}
+end
 ```
 
 Output:
@@ -48,31 +48,31 @@ Output:
 25
 ```
 
-The rite `square` takes a record with a field `n` and returns `n * n`. We call
-it with `invoke`, passing a record literal `{| n: 5 |}`.
+The fn `square` takes a record with a field `n` and returns `n * n`. We call
+it by passing a record literal `{| n: 5 |}`.
 
 ## Named Record Types
 
-You can declare named record types with `altar`:
+You can declare named record types with `struct`:
 
 ```
-altar Point
+struct Point
   x : Int
   y : Int
-seal
+end
 
-rite distance_sq
-  given {| a : Point, b : Point |} =>
+fn distance_sq
+  case {| a : Point, b : Point |} =>
     let dx = a.x - b.x
     let dy = a.y - b.y
     dx * dx + dy * dy
-seal
+end
 
-ritual main
-  let origin = summon Point {| x: 0, y: 0 |}
-  let there = summon Point {| x: 3, y: 4 |}
-  utter invoke distance_sq {| a: origin, b: there |}
-seal
+do main
+  let origin = Point {| x: 0, y: 0 |}
+  let there = Point {| x: 3, y: 4 |}
+  print distance_sq {| a: origin, b: there |}
+end
 ```
 
 Output:
@@ -81,23 +81,24 @@ Output:
 25
 ```
 
-`altar` declares a record type. `summon` constructs a value of that type. The
-rite `distance_sq` pattern-matches its argument, extracting the `a` and `b`
-fields, each typed as `Point`.
+`struct` declares a record type. Construction uses the type name followed by a
+record literal, as in `Point {| x: 0, y: 0 |}`. The fn `distance_sq`
+pattern-matches its argument, extracting the `a` and `b` fields, each typed
+as `Point`.
 
 ## Recursion
 
-Rites can call themselves:
+Functions can call themselves:
 
 ```
-rite factorial
-  given {| n: 0 |} => 1
-  given {| n |} => n * (invoke factorial {| n: n - 1 |})
-seal
+fn factorial
+  case {| n: 0 |} => 1
+  case {| n |} => n * (factorial {| n: n - 1 |})
+end
 
-ritual main
-  utter invoke factorial {| n: 10 |}
-seal
+do main
+  print factorial {| n: 10 |}
+end
 ```
 
 Output:
@@ -106,7 +107,7 @@ Output:
 3628800
 ```
 
-The first `given` clause matches when `n` is literally `0`. The second matches
+The first `case` clause matches when `n` is literally `0`. The second matches
 any other `n` and recurses. This is how all branching works in badlang — there
 is no `if`/`else`, only pattern matching.
 
@@ -116,9 +117,9 @@ Line comments start with `--`:
 
 ```
 -- This is a comment
-rite square
-  given {| n |} => n * n  -- inline comment
-seal
+fn square
+  case {| n |} => n * n  -- inline comment
+end
 ```
 
 ## What's Next

@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Built-in Rites - The Badlang Book</title>
+        <title>Built-in Functions - The Badlang Book</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7ed70138.js";
+            window.path_to_searchindex_js = "../searchindex-114a12be.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-daf9c5e4.js"></script>
+        <script src="../toc-e4e73581.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -174,83 +174,83 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="built-in-rites"><a class="header" href="#built-in-rites">Built-in Rites</a></h1>
-<p>badlang provides several built-in rites for I/O and system interaction. These
-are implemented in the C runtime and available in every program.</p>
+                        <h1 id="built-in-functions"><a class="header" href="#built-in-functions">Built-in Functions</a></h1>
+<p>badlang provides several built-in functions for I/O and system interaction.
+These are implemented in the C runtime and available in every program.</p>
 <h2 id="console-io"><a class="header" href="#console-io">Console I/O</a></h2>
-<h3 id="hearken"><a class="header" href="#hearken">hearken</a></h3>
+<h3 id="readln"><a class="header" href="#readln">readln</a></h3>
 <p>Read a line from standard input.</p>
 <ul>
-<li><strong>Syntax:</strong> <code>hearken</code> (expression, not invoked)</li>
+<li><strong>Syntax:</strong> <code>readln</code> (standalone expression)</li>
 <li><strong>Type:</strong> <code>String</code></li>
 <li><strong>Behavior:</strong> Reads characters until a newline, strips the newline, returns
 the result as a string.</li>
 </ul>
-<pre><code>let name = hearken
+<pre><code>let name = readln
 </code></pre>
-<h3 id="scry"><a class="header" href="#scry">scry</a></h3>
+<h3 id="readint"><a class="header" href="#readint">readint</a></h3>
 <p>Read an integer from standard input.</p>
 <ul>
-<li><strong>Syntax:</strong> <code>scry</code> (expression, not invoked)</li>
+<li><strong>Syntax:</strong> <code>readint</code> (standalone expression)</li>
 <li><strong>Type:</strong> <code>Int</code></li>
 <li><strong>Behavior:</strong> Reads an integer from stdin using <code>scanf</code>.</li>
 </ul>
-<pre><code>let n = scry
+<pre><code>let n = readint
 </code></pre>
 <h2 id="file-io"><a class="header" href="#file-io">File I/O</a></h2>
 <h3 id="unearth"><a class="header" href="#unearth">unearth</a></h3>
 <p>Read the contents of a file.</p>
 <ul>
-<li><strong>Invocation:</strong> <code>invoke unearth {| path: "filename.txt" |}</code></li>
+<li><strong>Call:</strong> <code>unearth {| path: "filename.txt" |}</code></li>
 <li><strong>Argument:</strong> <code>{| path: String |}</code></li>
 <li><strong>Returns:</strong> <code>String</code></li>
 <li><strong>Behavior:</strong> Reads the entire file contents into a string.</li>
 </ul>
-<pre><code>let contents = invoke unearth {| path: "data.txt" |}
-utter contents
+<pre><code>let contents = unearth {| path: "data.txt" |}
+print contents
 </code></pre>
 <h3 id="inscribe"><a class="header" href="#inscribe">inscribe</a></h3>
 <p>Write a string to a file.</p>
 <ul>
-<li><strong>Invocation:</strong> <code>invoke inscribe {| path: "filename.txt", content: "data" |}</code></li>
+<li><strong>Call:</strong> <code>inscribe {| path: "filename.txt", content: "data" |}</code></li>
 <li><strong>Argument:</strong> <code>{| path: String, content: String |}</code></li>
 <li><strong>Returns:</strong> <code>Void</code></li>
-<li><strong>Behavior:</strong> Creates or overwrites the file with the given content.</li>
+<li><strong>Behavior:</strong> Creates or overwrites the file with the case content.</li>
 </ul>
-<pre><code>invoke inscribe {| path: "output.txt", content: "Hello from badlang!" |}
+<pre><code>inscribe {| path: "output.txt", content: "Hello from badlang!" |}
 </code></pre>
 <h2 id="command-line-arguments"><a class="header" href="#command-line-arguments">Command-Line Arguments</a></h2>
 <h3 id="argc"><a class="header" href="#argc">argc</a></h3>
 <p>Get the number of command-line arguments.</p>
 <ul>
-<li><strong>Invocation:</strong> <code>invoke argc {| |}</code></li>
+<li><strong>Call:</strong> <code>argc {| |}</code></li>
 <li><strong>Argument:</strong> <code>{| |}</code> (empty record)</li>
 <li><strong>Returns:</strong> <code>Int</code></li>
 <li><strong>Behavior:</strong> Returns the argument count, including the program name.</li>
 </ul>
-<pre><code>let count = invoke argc {| |}
-utter count
+<pre><code>let count = argc {| |}
+print count
 </code></pre>
 <h3 id="argv"><a class="header" href="#argv">argv</a></h3>
 <p>Get a command-line argument by index.</p>
 <ul>
-<li><strong>Invocation:</strong> <code>invoke argv {| n: index |}</code></li>
+<li><strong>Call:</strong> <code>argv {| n: index |}</code></li>
 <li><strong>Argument:</strong> <code>{| n: Int |}</code></li>
 <li><strong>Returns:</strong> <code>String</code></li>
 <li><strong>Behavior:</strong> Returns the nth argument. Index 0 is the program name.</li>
 </ul>
-<pre><code>let program = invoke argv {| n: 0 |}
-let first_arg = invoke argv {| n: 1 |}
+<pre><code>let program = argv {| n: 0 |}
+let first_arg = argv {| n: 1 |}
 </code></pre>
 <h2 id="summary-table"><a class="header" href="#summary-table">Summary Table</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Rite</th><th>Argument</th><th>Returns</th><th>Description</th></tr>
+<tr><th>Function</th><th>Argument</th><th>Returns</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>hearken</code></td><td>(none)</td><td><code>String</code></td><td>Read line from stdin</td></tr>
-<tr><td><code>scry</code></td><td>(none)</td><td><code>Int</code></td><td>Read integer from stdin</td></tr>
+<tr><td><code>readln</code></td><td>(none)</td><td><code>String</code></td><td>Read line from stdin</td></tr>
+<tr><td><code>readint</code></td><td>(none)</td><td><code>Int</code></td><td>Read integer from stdin</td></tr>
 <tr><td><code>unearth</code></td><td>`{</td><td>path: String</td><td>}`</td></tr>
 <tr><td><code>inscribe</code></td><td>`{</td><td>path: String, content: String</td><td>}`</td></tr>
 <tr><td><code>argc</code></td><td>`{</td><td></td><td>}`</td></tr>

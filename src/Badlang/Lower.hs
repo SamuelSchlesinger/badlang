@@ -1,7 +1,7 @@
 -- | Lowering pass: AST to IR.
 --
 -- Transforms a typed badlang 'Program' into an 'IRProgram'. This pass
--- resolves all pattern matching, divine expressions, and let-in chains
+-- resolves all pattern matching, match expressions, and let-in chains
 -- into flat instructions and basic block control flow, so that backends
 -- (C and AArch64) are purely mechanical translations.
 module Badlang.Lower
@@ -12,16 +12,18 @@ import Badlang.AST
 import Badlang.IR
 
 import Control.Monad.Trans.State.Strict (State, evalState, get, modify')
+import qualified Data.Set as Set
 
 -- ---------------------------------------------------------------------------
 -- Lowering monad
 -- ---------------------------------------------------------------------------
 
 data LowerState = LowerState
-  { freshCounter  :: !Int
-  , emittedBlocks :: [Block]     -- accumulated (reversed order)
-  , currentInstrs :: [Instr]     -- current block (reversed order)
-  , currentBlockId :: BlockId
+  { freshCounter    :: !Int
+  , emittedBlocks   :: [Block]     -- accumulated (reversed order)
+  , currentInstrs   :: [Instr]     -- current block (reversed order)
+  , currentBlockId  :: BlockId
+  , nullaryVariants :: Set.Set String  -- names of nullary oneof variants
   }
 
 type Lower = State LowerState
@@ -82,41 +84,48 @@ cName name  = "bl_" ++ name
 lowerProgram :: Program -> IRProgram
 lowerProgram (Program decls) = evalState go initState
   where
-    initState = LowerState 0 [] [] "entry"
+    -- Collect nullary variant names from oneof declarations
+    nullaries = Set.fromList
+      [ vname | OneofDecl _ variants <- decls
+              , (vname, fields) <- variants
+              , null fields
+              ]
+    initState = LowerState 0 [] [] "entry" nullaries
     go = do
       irDecls <- concat <$> mapM lowerDecl decls
       return (IRProgram irDecls)
 
 lowerDecl :: Decl -> Lower [IRDecl]
-lowerDecl (AltarDecl _ _) = return []
-lowerDecl (RiteDecl name clauses) = do
-  body <- lowerRite name clauses
+lowerDecl (StructDecl _ _) = return []
+lowerDecl (OneofDecl _ _) = return []
+lowerDecl (FnDecl name clauses) = do
+  body <- lowerFn name clauses
   return [IRFunc name body]
-lowerDecl (RitualDecl "main" stmts) = do
-  body <- lowerRitual stmts
+lowerDecl (DoDecl "main" stmts) = do
+  body <- lowerDo stmts
   return [IRMain body]
-lowerDecl (RitualDecl _ _) = return []
+lowerDecl (DoDecl _ _) = return []
 
 -- ---------------------------------------------------------------------------
--- Rite lowering
+-- Fn lowering
 -- ---------------------------------------------------------------------------
 
-lowerRite :: String -> [GivenClause] -> Lower IRFuncBody
-lowerRite name clauses = do
+lowerFn :: String -> [CaseClause] -> Lower IRFuncBody
+lowerFn name clauses = do
   -- Reset state for this function
   modify' (\s -> s { emittedBlocks = []
                    , currentInstrs = []
                    , currentBlockId = "entry" })
 
   -- Lower pattern match clauses
-  lowerClauses "arg" clauses ("rite '" ++ name ++ "'") TReturn
+  lowerClauses "arg" clauses ("fn '" ++ name ++ "'") TReturn
 
   blocks <- collectBlocks
   return (IRFuncBody "arg" blocks)
 
--- | Lower a sequence of given clauses into a chain of test blocks.
+-- | Lower a sequence of case clauses into a chain of test blocks.
 -- The continuation says what to do with the result of a successful match.
-lowerClauses :: Var -> [GivenClause] -> String
+lowerClauses :: Var -> [CaseClause] -> String
              -> (Var -> Terminator) -> Lower ()
 lowerClauses scrut clauses failMsg mkTerm = do
   failLbl <- freshBlock "match_fail_"
@@ -130,7 +139,7 @@ lowerClauses scrut clauses failMsg mkTerm = do
   finishBlock (TJump firstLbl) firstLbl
 
   -- Emit each clause
-  mapM_ (\(clauseLbl, nextLbl, GivenClause pat body) ->
+  mapM_ (\(clauseLbl, nextLbl, CaseClause pat body) ->
     lowerClause scrut pat body clauseLbl nextLbl mkTerm
     ) (zip3 clauseLabels nextLabels clauses)
 
@@ -164,8 +173,26 @@ lowerClause scrut pat body clauseLbl nextLbl mkTerm = do
 lowerPatternTest :: Var -> Pattern -> BlockId -> BlockId -> Lower ()
 lowerPatternTest _scrut PWild bodyLbl _nextLbl = do
   finishBlock (TJump bodyLbl) bodyLbl
-lowerPatternTest _scrut (PVar _) bodyLbl _nextLbl = do
-  finishBlock (TJump bodyLbl) bodyLbl
+lowerPatternTest scrut (PVar name) bodyLbl nextLbl = do
+  s <- get
+  if Set.member name (nullaryVariants s)
+    then do
+      -- Nullary variant pattern: check __tag == name
+      tc <- freshVar "_tc"
+      emit (ITagCheck tc scrut TagRecord)
+      tagCheckLbl <- freshBlock "nvtag_"
+      finishBlock (TBranch tc tagCheckLbl nextLbl) tagCheckLbl
+      tagFv <- freshVar "_vtag_"
+      emit (IFieldGet tagFv scrut "__tag")
+      tagNc <- freshVar "_tnc"
+      emit (INullCheck tagNc tagFv)
+      tagEqLbl <- freshBlock "nvteq_"
+      finishBlock (TBranch tagNc tagEqLbl nextLbl) tagEqLbl
+      tagEq <- freshVar "_teq"
+      emit (IStrEq tagEq tagFv name)
+      finishBlock (TBranch tagEq bodyLbl nextLbl) bodyLbl
+    else
+      finishBlock (TJump bodyLbl) bodyLbl
 lowerPatternTest scrut (PLit (IntLit n)) bodyLbl nextLbl = do
   tc <- freshVar "_tc"
   emit (ITagCheck tc scrut TagInt)
@@ -192,6 +219,32 @@ lowerPatternTest scrut (PRec fields) bodyLbl nextLbl = do
       firstFieldLbl <- freshBlock "recfield_"
       finishBlock (TBranch tc firstFieldLbl nextLbl) firstFieldLbl
       lowerRecFieldTests scrut fields bodyLbl nextLbl
+lowerPatternTest scrut (PVariant vname innerPat) bodyLbl nextLbl = do
+  -- Variant pattern: check it's a record, check __tag == vname, then check inner fields
+  tc <- freshVar "_tc"
+  emit (ITagCheck tc scrut TagRecord)
+  tagCheckLbl <- freshBlock "vartag_"
+  finishBlock (TBranch tc tagCheckLbl nextLbl) tagCheckLbl
+  -- Get __tag field
+  tagFv <- freshVar "_vtag_"
+  emit (IFieldGet tagFv scrut "__tag")
+  tagNc <- freshVar "_tnc"
+  emit (INullCheck tagNc tagFv)
+  tagValLbl <- freshBlock "vartagval_"
+  finishBlock (TBranch tagNc tagValLbl nextLbl) tagValLbl
+  -- Check __tag string value
+  tagEq <- freshVar "_teq"
+  emit (IStrEq tagEq tagFv vname)
+  -- Now check inner pattern fields
+  case innerPat of
+    PRec fields ->
+      if null fields
+        then finishBlock (TBranch tagEq bodyLbl nextLbl) bodyLbl
+        else do
+          innerLbl <- freshBlock "varfields_"
+          finishBlock (TBranch tagEq innerLbl nextLbl) innerLbl
+          lowerRecFieldTests scrut fields bodyLbl nextLbl
+    _ -> finishBlock (TBranch tagEq bodyLbl nextLbl) bodyLbl
 lowerPatternTest _ (PLit _) _ nextLbl = do
   finishBlock (TJump nextLbl) nextLbl
 
@@ -279,21 +332,24 @@ lowerRecFieldTests scrut (PatField fname mPat : rest) bodyLbl nextLbl = do
 -- variable names (for subsequent release).
 lowerPatternBindings :: Var -> Pattern -> Lower [Var]
 lowerPatternBindings scrut (PVar name) = do
-  let v = cName name
-  emit (ICopy v scrut)
-  emit (IRetain v)
-  return [v]
+  s <- get
+  if Set.member name (nullaryVariants s)
+    then return []  -- nullary variant pattern: no variables to bind
+    else do
+      let v = cName name
+      emit (ICopy v scrut)
+      emit (IRetain v)
+      return [v]
 lowerPatternBindings _ PWild = return []
 lowerPatternBindings _ (PLit _) = return []
 lowerPatternBindings scrut (PRec fields) =
   concat <$> mapM (lowerFieldBinding scrut) fields
+lowerPatternBindings scrut (PVariant _ innerPat) =
+  lowerPatternBindings scrut innerPat
 
 lowerFieldBinding :: Var -> PatField -> Lower [Var]
 lowerFieldBinding scrut (PatField fname mPat) = do
   let v = cName fname
-  -- We need to get the field value again for binding
-  -- (the test-time variable is in a different block scope in C,
-  -- but in IR we just re-extract since it's cheap)
   fv <- freshVar ("_fb_" ++ fname ++ "_")
   emit (IFieldGet fv scrut fname)
   case mPat of
@@ -335,10 +391,20 @@ lowerExpr (StrLit s) = do
   return t
 
 lowerExpr (Var name) = do
-  t <- freshVar "_t"
-  emit (ICopy t (cName name))
-  emit (IRetain t)
-  return t
+  s <- get
+  if Set.member name (nullaryVariants s)
+    then do
+      -- Nullary variant: construct {| __tag: "Name" |}
+      tagVar <- freshVar "_tag"
+      emit (IConst tagVar (OStr name))
+      t <- freshVar "_t"
+      emit (IRecord t [("__tag", tagVar)])
+      return t
+    else do
+      t <- freshVar "_t"
+      emit (ICopy t (cName name))
+      emit (IRetain t)
+      return t
 
 lowerExpr (BinOp op e1 e2) = do
   v1 <- lowerExpr e1
@@ -366,23 +432,32 @@ lowerExpr (FieldAccess e field) = do
 
 lowerExpr (Record fields) = lowerRecordExpr fields
 
-lowerExpr (Summon _ fields) = lowerRecordExpr fields
+lowerExpr (NamedRecord typeName fields) = do
+  -- Emit a __tag field with the type name, then the user fields
+  tagVar <- freshVar "_tag"
+  emit (IConst tagVar (OStr typeName))
+  fieldResults <- mapM (\(fname, expr) -> do
+    v <- lowerExpr expr
+    return (fname, v)) fields
+  t <- freshVar "_t"
+  emit (IRecord t (("__tag", tagVar) : fieldResults))
+  return t
 
-lowerExpr (Invoke riteName arg) = do
+lowerExpr (Call fnName arg) = do
   varg <- lowerExpr arg
   t <- freshVar "_t"
-  emit (ICall t riteName varg)
+  emit (ICall t fnName varg)
   emit (IRelease varg)
   return t
 
-lowerExpr Hearken = do
+lowerExpr ReadLn = do
   t <- freshVar "_t"
-  emit (IHearken t)
+  emit (IReadLn t)
   return t
 
-lowerExpr Scry = do
+lowerExpr ReadInt = do
   t <- freshVar "_t"
-  emit (IScry t)
+  emit (IReadInt t)
   return t
 
 lowerExpr (LetIn name value body) = do
@@ -401,28 +476,28 @@ lowerExpr (LetIn name value body) = do
   mapM_ (\v -> emit (IRelease v)) (reverse boundNames)
   return result
 
-lowerExpr (Divine scrutinee clauses) = do
+lowerExpr (Match scrutinee clauses) = do
   scrResult <- lowerExpr scrutinee
   scr <- freshVar "_scr"
   emit (ICopy scr scrResult)
 
-  dvn <- freshVar "_dvn"
-  doneLbl <- freshBlock "divine_done_"
+  mch <- freshVar "_mch"
+  doneLbl <- freshBlock "match_done_"
 
-  -- Lower divine clauses
-  lowerDivineClauses scr dvn doneLbl clauses
+  -- Lower match clauses
+  lowerMatchClauses scr mch doneLbl clauses
 
-  -- Done block: release scrutinee, result is in dvn
+  -- Done block: release scrutinee, result is in mch
   modify' (\s -> s { currentBlockId = doneLbl, currentInstrs = [] })
   emit (IRelease scr)
-  return dvn
+  return mch
 
--- | Lower divine clauses - like rite clauses but write to a result var
+-- | Lower match clauses - like fn clauses but write to a result var
 -- and jump to a done label instead of returning.
-lowerDivineClauses :: Var -> Var -> BlockId -> [GivenClause] -> Lower ()
-lowerDivineClauses scrut dvn doneLbl clauses = do
-  failLbl <- freshBlock "divine_fail_"
-  clauseLabels <- mapM (\(i, _) -> freshBlock ("dclause_" ++ show i ++ "_test_")) (zip [(0::Int)..] clauses)
+lowerMatchClauses :: Var -> Var -> BlockId -> [CaseClause] -> Lower ()
+lowerMatchClauses scrut mch doneLbl clauses = do
+  failLbl <- freshBlock "match_fail_"
+  clauseLabels <- mapM (\(i, _) -> freshBlock ("mclause_" ++ show i ++ "_test_")) (zip [(0::Int)..] clauses)
   let nextLabels = drop 1 clauseLabels ++ [failLbl]
 
   let firstLbl = case clauseLabels of
@@ -430,20 +505,20 @@ lowerDivineClauses scrut dvn doneLbl clauses = do
         []    -> failLbl
   finishBlock (TJump firstLbl) firstLbl
 
-  mapM_ (\(clauseLbl, nextLbl, GivenClause pat body) ->
-    lowerDivineClause scrut dvn doneLbl pat body clauseLbl nextLbl
+  mapM_ (\(clauseLbl, nextLbl, CaseClause pat body) ->
+    lowerMatchClause scrut mch doneLbl pat body clauseLbl nextLbl
     ) (zip3 clauseLabels nextLabels clauses)
 
-  -- Divine fail block
+  -- Match fail block
   modify' (\s -> s { currentBlockId = failLbl })
-  finishBlockFinal (TMatchFail "divine")
+  finishBlockFinal (TMatchFail "match")
 
--- | Lower a single divine clause.
-lowerDivineClause :: Var -> Var -> BlockId -> Pattern -> Expr
+-- | Lower a single match clause.
+lowerMatchClause :: Var -> Var -> BlockId -> Pattern -> Expr
                   -> BlockId -> BlockId -> Lower ()
-lowerDivineClause scrut dvn doneLbl pat body clauseLbl nextLbl = do
+lowerMatchClause scrut mch doneLbl pat body clauseLbl nextLbl = do
   modify' (\s -> s { currentBlockId = clauseLbl, currentInstrs = [] })
-  bodyLbl <- freshBlock "dclause_body_"
+  bodyLbl <- freshBlock "mclause_body_"
   lowerPatternTest scrut pat bodyLbl nextLbl
 
   -- Body block
@@ -451,7 +526,7 @@ lowerDivineClause scrut dvn doneLbl pat body clauseLbl nextLbl = do
   bindings <- lowerPatternBindings scrut pat
   result <- lowerExpr body
   mapM_ (\v -> emit (IRelease v)) (reverse bindings)
-  emit (ICopy dvn result)
+  emit (ICopy mch result)
   finishBlock (TJump doneLbl) doneLbl
 
 lowerRecordExpr :: [(String, Expr)] -> Lower Var
@@ -471,11 +546,11 @@ collectLetChain (LetIn n v b) =
 collectLetChain other = ([], other)
 
 -- ---------------------------------------------------------------------------
--- Ritual lowering
+-- Do lowering
 -- ---------------------------------------------------------------------------
 
-lowerRitual :: [Stmt] -> Lower IRFuncBody
-lowerRitual stmts = do
+lowerDo :: [Stmt] -> Lower IRFuncBody
+lowerDo stmts = do
   modify' (\s -> s { emittedBlocks = []
                    , currentInstrs = []
                    , currentBlockId = "entry" })
@@ -509,18 +584,17 @@ lowerStmt (LetStmt name expr) = do
   let mangledName = cName name
   emit (ICopy mangledName v)
   return [mangledName]
-lowerStmt (UtterStmt expr) = do
+lowerStmt (PrintStmt expr) = do
   v <- lowerExpr expr
-  emit (IUtter v)
+  emit (IPrint v)
   emit (IRelease v)
   return []
-lowerStmt (WhisperStmt expr) = do
+lowerStmt (WriteStmt expr) = do
   v <- lowerExpr expr
-  emit (IWhisper v)
+  emit (IWrite v)
   emit (IRelease v)
   return []
 lowerStmt (ExprStmt expr) = do
   v <- lowerExpr expr
   emit (IRelease v)
   return []
-

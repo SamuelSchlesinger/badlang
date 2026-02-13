@@ -1,6 +1,6 @@
 # badlang
 
-A programming language of rites and glyphs.
+A structural pattern-matching language.
 
 badlang is an experiment in the limits of agentic programming. The entire
 language — parser generator, grammar, type system, C code generation, AArch64
@@ -42,48 +42,50 @@ cabal run badlang -- --native --run examples/hello.bad
 
 | Keyword   | Meaning                                         |
 |-----------|------------------------------------------------|
-| `altar`   | Named record type declaration                   |
-| `rite`    | Pure function, defined by pattern clauses       |
-| `ritual`  | Effectful entry point                           |
-| `given`   | Pattern clause: `given pattern => body`         |
-| `seal`    | Closes an altar, rite, ritual, or divine block  |
-| `summon`  | Construct a record from an altar                |
-| `invoke`  | Call a rite                                     |
-| `divine`  | Inline pattern match expression                 |
-| `utter`   | Print a value                                   |
+| `struct`  | Named record type declaration                   |
+| `oneof`   | Sum type declaration with tagged variants        |
+| `fn`      | Pure function, defined by pattern clauses       |
+| `do`      | Effectful entry point (do block)                |
+| `case`    | Pattern clause: `case pattern => body`          |
+| `end`     | Closes a struct, fn, do block, or match block   |
+| `match`   | Inline pattern match expression                 |
+| `print`   | Print a value followed by a newline             |
+| `write`   | Write a value without a trailing newline        |
+| `readln`  | Read a line of input                            |
+| `readint` | Read an integer from input                      |
 | `let`     | Bind a local variable                           |
-| `{| |}` | Record literal delimiters (the "pillars")       |
+| `{\| \|}` | Record literal delimiters (the "pillars")       |
 
 ### Hello, Badlang
 
 ```
-altar Point
+struct Point
   x : Int
   y : Int
-seal
+end
 
-rite square
-  given {| n |} => n * n
-seal
+fn square
+  case {| n |} => n * n
+end
 
-rite distance
-  given {| a : Point, b : Point |} =>
+fn distance
+  case {| a : Point, b : Point |} =>
     let dx = a.x - b.x
     let dy = a.y - b.y
-    (invoke square {| n: dx |}) + (invoke square {| n: dy |})
-seal
+    (square {| n: dx |}) + (square {| n: dy |})
+end
 
-rite factorial
-  given {| n: 0 |} => 1
-  given {| n |} => n * (invoke factorial {| n: n - 1 |})
-seal
+fn factorial
+  case {| n: 0 |} => 1
+  case {| n |} => n * (factorial {| n: n - 1 |})
+end
 
-ritual main
-  let origin = summon Point {| x: 0, y: 0 |}
-  let there = summon Point {| x: 3, y: 4 |}
-  utter invoke distance {| a: origin, b: there |}
-  utter invoke factorial {| n: 10 |}
-seal
+do main
+  let origin = Point {| x: 0, y: 0 |}
+  let there = Point {| x: 3, y: 4 |}
+  print distance {| a: origin, b: there |}
+  print factorial {| n: 10 |}
+end
 ```
 
 Output:
@@ -95,64 +97,86 @@ Output:
 
 ### Structural Subtyping
 
-Every rite takes a single record argument. Pattern matching determines
+Every function takes a single record argument. Pattern matching determines
 which fields are required — any record with *at least* those fields
 will be accepted. Extra fields are silently permitted (width subtyping).
 
 ```
-rite magnitude_sq
-  given {| x, y |} => x * x + y * y
-seal
+fn magnitude_sq
+  case {| x, y |} => x * x + y * y
+end
 
-ritual main
+do main
   -- A 2D point works
-  utter invoke magnitude_sq {| x: 3, y: 4 |}
+  print magnitude_sq {| x: 3, y: 4 |}
 
   -- A 3D point works too — the extra z field is ignored
-  utter invoke magnitude_sq {| x: 1, y: 2, z: 3 |}
-seal
+  print magnitude_sq {| x: 1, y: 2, z: 3 |}
+end
 ```
 
 ### Pattern Matching
 
-Rites dispatch on their argument using `given` clauses. Patterns can
+Functions dispatch on their argument using `case` clauses. Patterns can
 match literal values, bind variables, or destructure records:
 
 ```
-rite collatz_step
-  given {| n |} =>
+fn collatz_step
+  case {| n |} =>
     let half = n / 2
-    divine half * 2 == n
-      given 1 => n / 2
-      given 0 => n * 3 + 1
-    seal
-seal
+    match half * 2 == n
+      case 1 => n / 2
+      case 0 => n * 3 + 1
+    end
+end
 ```
 
-`divine` is an inline pattern match — it evaluates an expression and
-matches the result against a series of `given` clauses, all as a single
+`match` is an inline pattern match — it evaluates an expression and
+matches the result against a series of `case` clauses, all as a single
 expression.
+
+### Sum Types
+
+The `oneof` keyword declares sum types with tagged variants. Each variant
+can optionally carry record fields:
+
+```
+oneof Shape
+  Circle { radius : Int }
+  Rect { width : Int, height : Int }
+  Point
+end
+
+fn area
+  case Circle {| radius |} => radius * radius * 3
+  case Rect {| width, height |} => width * height
+  case Point => 0
+end
+```
+
+Functions pattern-match on variants directly, and `match` expressions work
+with sum types too.
 
 ### Mutual Recursion
 
-Rites can freely call each other:
+Functions can freely call each other:
 
 ```
-rite female
-  given {| n: 0 |} => 1
-  given {| n |} =>
-    n - (invoke male {|
-      n: invoke female {| n: n - 1 |}
+fn female
+  case {| n: 0 |} => 1
+  case {| n |} =>
+    n - (male {|
+      n: female {| n: n - 1 |}
     |})
-seal
+end
 
-rite male
-  given {| n: 0 |} => 0
-  given {| n |} =>
-    n - (invoke female {|
-      n: invoke male {| n: n - 1 |}
+fn male
+  case {| n: 0 |} => 0
+  case {| n |} =>
+    n - (female {|
+      n: male {| n: n - 1 |}
     |})
-seal
+end
 ```
 
 ## Architecture
@@ -205,7 +229,7 @@ whatever `r` unifies with.
 ### Intermediate Representation
 
 Between the type checker and the backends sits an explicit IR with basic
-blocks, named temporaries, and flat instructions. Pattern matching, divine
+blocks, named temporaries, and flat instructions. Pattern matching, match
 expressions, and let-in chains are all resolved at this stage so that
 backends are purely mechanical translations.
 
@@ -226,10 +250,12 @@ provides the same value representation and reference counting.
 
 | Example             | Demonstrates                                     |
 |---------------------|--------------------------------------------------|
-| `examples/hello.bad`     | Altars, rites, summon, invoke, pattern matching |
+| `examples/hello.bad`     | Structs, functions, construction, postfix calls, pattern matching |
 | `examples/subtyping.bad` | Width subtyping, anonymous records              |
-| `examples/divine.bad`    | Inline pattern matching with fizzbuzz            |
+| `examples/match.bad`     | Inline pattern matching with fizzbuzz            |
 | `examples/mutual.bad`    | Mutual recursion, Ackermann, Collatz, GCD, Fibonacci |
+| `examples/oneof.bad`     | Sum types with variants                          |
+| `examples/io.bad`        | IO operations                                    |
 | `examples/compiler/compiler.bad` | Self-hosting compiler (badlang written in badlang) |
 
 ### Self-Hosting Compiler

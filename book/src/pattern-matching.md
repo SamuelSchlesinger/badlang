@@ -6,20 +6,20 @@ records.
 
 There are two places patterns appear:
 
-1. **`given` clauses in rites** — the function dispatches on its argument
-2. **`divine` expressions** — inline pattern matching on any expression
+1. **`case` clauses in functions** — the function dispatches on its argument
+2. **`match` expressions** — inline pattern matching on any expression
 
 In both cases, the structure is the same: a value is matched against a
-sequence of `given` clauses, and the body of the first matching clause is
+sequence of `case` clauses, and the body of the first matching clause is
 evaluated.
 
 ```
-given pattern => body
+case pattern => body
 ```
 
 If no pattern matches, the program crashes at runtime. There is no
 exhaustiveness checking — it is the programmer's responsibility to ensure
 all cases are covered.
 
-The following sections cover the pattern language and the `divine` expression
+The following sections cover the pattern language and the `match` expression
 in detail.

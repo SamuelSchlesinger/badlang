@@ -5,13 +5,13 @@ is a **recursive descent parser** with **precedence climbing** for operators.
 
 ## Token Stream Interface
 
-The parser consumes tokens through three helper rites:
+The parser consumes tokens through three helper functions:
 
 - `peek` — look at the next token without consuming it
 - `advance` — consume the current token and return the rest
 - `expect` — consume a token of a specific type, or abort with an error
 
-Every parse rite takes a `tokens` parameter and returns a record containing the
+Every parse fn takes a `tokens` parameter and returns a record containing the
 parsed AST `node` and the remaining `rest` tokens.
 
 ## AST Node Types
@@ -30,12 +30,12 @@ that identifies its type.
 | `unop` | `op`, `operand` | `-x` |
 | `field_access` | `obj`, `field` | `point.x` |
 | `record` | `fields` | `{\| x: 1, y: 2 \|}` |
-| `summon` | `name`, `fields` | `summon Point {\| x: 1 \|}` |
-| `invoke` | `name`, `arg` | `invoke factorial {\| n: 5 \|}` |
+| `named_record` | `name`, `fields` | `Point {\| x: 1 \|}` |
+| `call` | `name`, `arg` | `factorial {\| n: 5 \|}` |
 | `let_in` | `name`, `value`, `body` | `let x = 1` (desugared) |
-| `divine` | `scrutinee`, `clauses` | `divine expr given ... seal` |
-| `hearken` | *(none)* | `hearken` |
-| `scry` | *(none)* | `scry` |
+| `match` | `scrutinee`, `clauses` | `match expr case ... end` |
+| `readln` | *(none)* | `readln` |
+| `readint` | *(none)* | `readint` |
 
 ### Patterns
 
@@ -51,16 +51,16 @@ that identifies its type.
 
 | Tag | Fields | Example |
 |-----|--------|---------|
-| `decl_rite` | `name`, `clauses` | `rite factorial given ... seal` |
-| `decl_ritual` | `name`, `stmts` | `ritual main ... seal` |
-| `decl_altar` | `name`, `fields` | `altar Point x: Int y: Int seal` |
+| `decl_fn` | `name`, `clauses` | `fn factorial case ... end` |
+| `decl_do` | `name`, `stmts` | `do main ... end` |
+| `decl_struct` | `name`, `fields` | `struct Point x: Int y: Int end` |
 
 ## Operator Precedence
 
 The parser implements operator precedence via a chain of mutually recursive
-rites, from lowest to highest precedence:
+functions, from lowest to highest precedence:
 
-| Level | Operators | Rite |
+| Level | Operators | Function |
 |-------|-----------|------|
 | 1 (lowest) | `\|\|` | `parse_or_expr` |
 | 2 | `&&` | `parse_and_expr` |
@@ -88,17 +88,17 @@ let y = x + 1             body: {| tag: "let_in", name: "y", value: ...,
 x * y                              body: {| tag: "binop", ... |} |} |}
 ```
 
-The `parse_let_bindings` rite collects bindings into a list, then
+The `parse_let_bindings` fn collects bindings into a list, then
 `fold_let_bindings` converts them into nested `let_in` nodes where the
 innermost body is the final expression.
 
-## Parsing Invoke
+## Parsing Function Calls
 
-`invoke` supports three argument forms:
+Function calls support three argument forms:
 
-1. **Record literal:** `invoke f {| x: 1 |}`
-2. **Parenthesized expression:** `invoke f (expr)`
-3. **Variable:** `invoke f x`
+1. **Record literal:** `f {| x: 1 |}`
+2. **Parenthesized expression:** `f (expr)`
+3. **Variable:** `f x`
 
 This flexibility lets the programmer choose the most readable form for each
 call site.

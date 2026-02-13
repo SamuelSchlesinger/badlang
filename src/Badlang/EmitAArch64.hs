@@ -164,10 +164,10 @@ countVars (IRFuncBody _ blocks) =
     instrVars (INullCheck v _)   = [v]
     instrVars (IIntEq v _ _)     = [v]
     instrVars (IStrEq v _ _)     = [v]
-    instrVars (IUtter _)         = []
-    instrVars (IWhisper _)       = []
-    instrVars (IHearken v)       = [v]
-    instrVars (IScry v)          = [v]
+    instrVars (IPrint _)         = []
+    instrVars (IWrite _)         = []
+    instrVars (IReadLn v)        = [v]
+    instrVars (IReadInt v)       = [v]
     instrVars (ICopy v _)        = [v]
 
 -- | Align to 16 bytes.
@@ -195,7 +195,7 @@ emitProgram decls = do
   mapM_ emitDecl decls
 
 emitDecl :: IRDecl -> Asm ()
-emitDecl (IRFunc name body) = emitFunc ("_rite_" ++ name) body
+emitDecl (IRFunc name body) = emitFunc ("_fn_" ++ name) body
 emitDecl (IRMain body) = emitMainFunc body
 
 -- ---------------------------------------------------------------------------
@@ -369,7 +369,7 @@ emitInstrAsm (IFieldGet v rec fld) = do
 
 emitInstrAsm (ICall v riteName arg) = do
   loadVar arg "x0"
-  line $ "  bl _rite_" ++ riteName
+  line $ "  bl _fn_" ++ riteName
   storeVar v "x0"
 
 emitInstrAsm (IRetain v) = do
@@ -413,20 +413,20 @@ emitInstrAsm (IStrEq v op s) = do
   line "  cset w0, eq"
   storeVar v "w0"
 
-emitInstrAsm (IUtter v) = do
+emitInstrAsm (IPrint v) = do
   loadVar v "x0"
-  line "  bl _utter"
+  line "  bl _bl_print"
 
-emitInstrAsm (IWhisper v) = do
+emitInstrAsm (IWrite v) = do
   loadVar v "x0"
-  line "  bl _whisper"
+  line "  bl _bl_write"
 
-emitInstrAsm (IHearken v) = do
-  line "  bl _runtime_hearken"
+emitInstrAsm (IReadLn v) = do
+  line "  bl _runtime_readln"
   storeVar v "x0"
 
-emitInstrAsm (IScry v) = do
-  line "  bl _runtime_scry"
+emitInstrAsm (IReadInt v) = do
+  line "  bl _runtime_readint"
   storeVar v "x0"
 
 emitInstrAsm (ICopy v src) = do

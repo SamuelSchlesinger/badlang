@@ -53,7 +53,7 @@ myPoint
 
 Variables are introduced by:
 
-- **Pattern matching** — field names in `given` clauses become variables
+- **Pattern matching** — field names in `case` clauses become variables
 - **let bindings** — `let x = expr` introduces `x`
 
 ## Reserved Words
@@ -61,7 +61,7 @@ Variables are introduced by:
 The following identifiers are keywords and cannot be used as variable names:
 
 ```
-altar    rite      ritual    given     seal
-let      in        invoke    summon    utter
-divine   hearken   scry      whisper
+struct    fn      do    case     end
+let      in        print
+match   readln   readint      write
 ```

@@ -99,7 +99,7 @@ The bootstrap test establishes several things:
    compiler.
 2. **Correctness** — the self-hosting compiler agrees with the reference
    compiler on the language's semantics (both produce working compilers).
-3. **Determinism** — the compiler produces identical output when given
+3. **Determinism** — the compiler produces identical output when case
    identical input, regardless of which generation compiled it.
 4. **Stability** — changes to the compiler can be validated by re-running the
    bootstrap and checking that the fixed point is preserved.

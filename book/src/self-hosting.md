@@ -32,8 +32,8 @@ Source (.bad) → Tokenize → Parse → Emit C or AArch64 → Write File
 The compiler reads a source file, tokenizes it, parses the token stream into
 an AST, and generates either C code or AArch64 assembly depending on the mode.
 It relies on a shared `runtime.c` (or `runtime_aarch64.c` for native mode)
-that provides the value representation, reference counting, and built-in rites
-for file I/O and string manipulation.
+that provides the value representation, reference counting, and built-in
+functions for file I/O and string manipulation.
 
 The compiler selects its output mode via command-line arguments:
 - `compiler source.bad output.c` — emit C (default)
@@ -48,6 +48,6 @@ The entire compiler is a single file organized into clear sections:
 | Parser | Recursive descent into AST nodes |
 | C code emitter | AST to C translation |
 | AArch64 code emitter | AST to native assembly translation |
-| Driver | Main ritual selecting mode and tying it all together |
+| Driver | Main do selecting mode and tying it all together |
 
 Each section is covered in detail in the following subchapters.

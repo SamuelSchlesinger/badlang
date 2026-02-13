@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7ed70138.js";
+            window.path_to_searchindex_js = "searchindex-114a12be.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-daf9c5e4.js"></script>
+        <script src="toc-e4e73581.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -180,18 +180,18 @@ to inspect values, the only way to branch, and the primary way to destructure
 records.</p>
 <p>There are two places patterns appear:</p>
 <ol>
-<li><strong><code>given</code> clauses in rites</strong> — the function dispatches on its argument</li>
-<li><strong><code>divine</code> expressions</strong> — inline pattern matching on any expression</li>
+<li><strong><code>case</code> clauses in functions</strong> — the function dispatches on its argument</li>
+<li><strong><code>match</code> expressions</strong> — inline pattern matching on any expression</li>
 </ol>
 <p>In both cases, the structure is the same: a value is matched against a
-sequence of <code>given</code> clauses, and the body of the first matching clause is
+sequence of <code>case</code> clauses, and the body of the first matching clause is
 evaluated.</p>
-<pre><code>given pattern =&gt; body
+<pre><code>case pattern =&gt; body
 </code></pre>
 <p>If no pattern matches, the program crashes at runtime. There is no
 exhaustiveness checking — it is the programmer’s responsibility to ensure
 all cases are covered.</p>
-<p>The following sections cover the pattern language and the <code>divine</code> expression
+<p>The following sections cover the pattern language and the <code>match</code> expression
 in detail.</p>
 
                     </main>

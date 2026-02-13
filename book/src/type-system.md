@@ -25,7 +25,7 @@ Records have types determined by their fields:
 ## Open Record Types (Row Polymorphism)
 
 The key insight of badlang's type system is that record types can be **open**.
-When a rite pattern-matches on `{| x, y |}`, the inferred type is:
+When a fn pattern-matches on `{| x, y |}`, the inferred type is:
 
 ```
 {| x: Int, y: Int | r |}
@@ -52,9 +52,9 @@ The type checker follows these rules:
 | `a && b`, `a \|\| b` | Both operands `Int`, result `Int` |
 | `{| x: e1, y: e2 |}` | `{| x: T1, y: T2 |}` |
 | `rec.field` | Type of `field` in `rec`'s type |
-| `invoke f arg` | Return type of `f` |
-| `hearken` | `String` |
-| `scry` | `Int` |
+| `f arg` | Return type of `f` |
+| `readln` | `String` |
+| `readint` | `Int` |
 
 ## How Inference Works
 
@@ -63,10 +63,10 @@ algorithm — extended with **Remy-style row types** for records.
 
 The process:
 
-1. **Collect declarations.** All altars, rites, and rituals are registered in
-   the type environment before any bodies are checked.
+1. **Collect declarations.** All structs, functions, and do blocks are
+   registered in the type environment before any bodies are checked.
 
-2. **Infer each body.** For each rite, the type checker walks the pattern and
+2. **Infer each body.** For each fn, the type checker walks the pattern and
    body, generating type constraints. For each record pattern, a fresh row
    variable is created to allow extra fields.
 
@@ -80,20 +80,20 @@ The process:
 
 ## Pragmatic Let-Polymorphism
 
-Each call to `invoke` creates **fresh type variables** for the callee. This
-means a rite can be called with structurally different arguments at different
+Each function call creates **fresh type variables** for the callee. This
+means a fn can be called with structurally different arguments at different
 call sites:
 
 ```
-rite get_x
-  given {| x |} => x
-seal
+fn get_x
+  case {| x |} => x
+end
 
-ritual main
+do main
   -- Called with different record types at each site:
-  utter invoke get_x {| x: 42 |}
-  utter invoke get_x {| x: "hello" |}
-seal
+  print get_x {| x: 42 |}
+  print get_x {| x: "hello" |}
+end
 ```
 
 This is a pragmatic form of let-polymorphism that avoids the complexity of
@@ -108,27 +108,27 @@ The type checker catches errors like:
 - Passing a record that's missing required fields
 
 ```
-rite needs_xyz
-  given {| x, y, z |} => x + y + z
-seal
+fn needs_xyz
+  case {| x, y, z |} => x + y + z
+end
 
-ritual main
+do main
   -- Type error: record is missing field z
-  utter invoke needs_xyz {| x: 1, y: 2 |}
-seal
+  print needs_xyz {| x: 1, y: 2 |}
+end
 ```
 
 ## No Explicit Type Annotations
 
-Type annotations appear in only one place: altar field declarations.
+Type annotations appear in only one place: struct field declarations.
 
 ```
-altar Point
+struct Point
   x : Int
   y : Int
-seal
+end
 ```
 
-Everywhere else — rite bodies, ritual statements, let bindings — types are
+Everywhere else — fn bodies, do statements, let bindings — types are
 inferred. There is no syntax for writing type annotations on expressions or
 function signatures.

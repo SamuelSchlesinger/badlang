@@ -11,11 +11,11 @@ record.fieldName
 ## Basic Usage
 
 ```
-ritual main
+do main
   let p = {| x: 3, y: 4 |}
-  utter p.x
-  utter p.y
-seal
+  print p.x
+  print p.y
+end
 ```
 
 Output:
@@ -25,23 +25,23 @@ Output:
 4
 ```
 
-## In Rite Bodies
+## In Function Bodies
 
 Field access is commonly used after pattern matching to drill into nested
 records:
 
 ```
-altar Point
+struct Point
   x : Int
   y : Int
-seal
+end
 
-rite distance_sq
-  given {| a : Point, b : Point |} =>
+fn distance_sq
+  case {| a : Point, b : Point |} =>
     let dx = a.x - b.x
     let dy = a.y - b.y
     dx * dx + dy * dy
-seal
+end
 ```
 
 ## Chaining
@@ -49,11 +49,11 @@ seal
 Field access can be chained to access nested records:
 
 ```
-ritual main
+do main
   let line = {| start: {| x: 0, y: 0 |}, end: {| x: 3, y: 4 |} |}
-  utter line.start.x
-  utter line.end.y
-seal
+  print line.start.x
+  print line.end.y
+end
 ```
 
 Output:

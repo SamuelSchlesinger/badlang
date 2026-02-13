@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7ed70138.js";
+            window.path_to_searchindex_js = "../searchindex-114a12be.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-daf9c5e4.js"></script>
+        <script src="../toc-e4e73581.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -189,7 +189,7 @@ token is a record with a <code>type</code> and a <code>value</code>:</p>
 <tr><th>Category</th><th>Types</th></tr>
 </thead>
 <tbody>
-<tr><td>Keywords</td><td><code>rite</code>, <code>ritual</code>, <code>altar</code>, <code>given</code>, <code>seal</code>, <code>let</code>, <code>invoke</code>, <code>summon</code>, <code>divine</code>, <code>hearken</code>, <code>scry</code>, <code>utter</code>, <code>whisper</code></td></tr>
+<tr><td>Keywords</td><td><code>fn</code>, <code>do</code>, <code>struct</code>, <code>case</code>, <code>end</code>, <code>let</code>, <code>match</code>, <code>readln</code>, <code>readint</code>, <code>print</code>, <code>write</code>, <code>oneof</code></td></tr>
 <tr><td>Identifiers</td><td><code>ident</code></td></tr>
 <tr><td>Literals</td><td><code>int</code>, <code>str</code></td></tr>
 <tr><td>Operators</td><td><code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>%</code>, <code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code>, <code>&amp;&amp;</code>, <code>||</code></td></tr>
@@ -216,7 +216,7 @@ characters.</p>
 <li>
 <p><strong>Letters or <code>_</code></strong> → <code>lex_word</code>: Scan to the end of the alphanumeric
 sequence. Check against the keyword list with <code>is_keyword</code>. If it matches,
-the token type is the keyword itself (e.g., <code>"rite"</code>). A lone <code>_</code> becomes
+the token type is the keyword itself (e.g., <code>"fn"</code>). A lone <code>_</code> becomes
 the wildcard token. Otherwise, it’s an <code>ident</code>.</p>
 </li>
 <li>
@@ -227,17 +227,17 @@ single-character tokens.</p>
 </ol>
 <h2 id="the-tokenization-loop"><a class="header" href="#the-tokenization-loop">The Tokenization Loop</a></h2>
 <p>The main loop (<code>tokenize_loop</code>) is tail-recursive with an accumulator:</p>
-<pre><code>rite tokenize_loop
-  given {| src, pos, acc |} =&gt;
+<pre><code>fn tokenize_loop
+  case {| src, pos, acc |} =&gt;
     -- skip whitespace and comments
     -- if at end of string, reverse acc and append EOF
     -- otherwise, lex next token, cons onto acc, recurse
-seal
+end
 </code></pre>
 <p>Tokens accumulate in reverse order via <code>cons</code> and are reversed at the end.
 The final token list always ends with an <code>{| type: "eof", value: "" |}</code> sentinel.</p>
 <h2 id="whitespace-and-comments"><a class="header" href="#whitespace-and-comments">Whitespace and Comments</a></h2>
-<p>The <code>skip_ws_cmt</code> rite handles both whitespace and line comments recursively:</p>
+<p>The <code>skip_ws_cmt</code> fn handles both whitespace and line comments recursively:</p>
 <ul>
 <li>Skip any whitespace characters</li>
 <li>If the next two characters are <code>--</code>, skip to end of line</li>

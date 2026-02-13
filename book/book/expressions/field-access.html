@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7ed70138.js";
+            window.path_to_searchindex_js = "../searchindex-114a12be.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-daf9c5e4.js"></script>
+        <script src="../toc-e4e73581.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -180,38 +180,38 @@
 <pre><code>record.fieldName
 </code></pre>
 <h2 id="basic-usage"><a class="header" href="#basic-usage">Basic Usage</a></h2>
-<pre><code>ritual main
+<pre><code>do main
   let p = {| x: 3, y: 4 |}
-  utter p.x
-  utter p.y
-seal
+  print p.x
+  print p.y
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>3
 4
 </code></pre>
-<h2 id="in-rite-bodies"><a class="header" href="#in-rite-bodies">In Rite Bodies</a></h2>
+<h2 id="in-function-bodies"><a class="header" href="#in-function-bodies">In Function Bodies</a></h2>
 <p>Field access is commonly used after pattern matching to drill into nested
 records:</p>
-<pre><code>altar Point
+<pre><code>struct Point
   x : Int
   y : Int
-seal
+end
 
-rite distance_sq
-  given {| a : Point, b : Point |} =&gt;
+fn distance_sq
+  case {| a : Point, b : Point |} =&gt;
     let dx = a.x - b.x
     let dy = a.y - b.y
     dx * dx + dy * dy
-seal
+end
 </code></pre>
 <h2 id="chaining"><a class="header" href="#chaining">Chaining</a></h2>
 <p>Field access can be chained to access nested records:</p>
-<pre><code>ritual main
+<pre><code>do main
   let line = {| start: {| x: 0, y: 0 |}, end: {| x: 3, y: 4 |} |}
-  utter line.start.x
-  utter line.end.y
-seal
+  print line.start.x
+  print line.end.y
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>0

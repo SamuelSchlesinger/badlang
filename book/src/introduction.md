@@ -1,6 +1,6 @@
 # Introduction
 
-**badlang** is an experimental programming language of rites and glyphs.
+**badlang** is an experimental programming language built on structural pattern matching.
 
 It is built from first principles — parser generator, grammar, type system, and
 C code generation — all implemented in Haskell with no external parsing
@@ -17,7 +17,7 @@ badlang is designed around a few core ideas:
   just records with named fields.
 
 - **Pattern matching is the only way to inspect values.** There is no
-  `if`/`else`. Instead, you use `given` clauses to match on the shape and
+  `if`/`else`. Instead, you use `case` clauses to match on the shape and
   content of records. This is both the branching mechanism and the
   destructuring mechanism.
 
@@ -32,14 +32,14 @@ badlang is designed around a few core ideas:
 ## A Taste
 
 ```
-rite factorial
-  given {| n: 0 |} => 1
-  given {| n |} => n * (invoke factorial {| n: n - 1 |})
-seal
+fn factorial
+  case {| n: 0 |} => 1
+  case {| n |} => n * (factorial {| n: n - 1 |})
+end
 
-ritual main
-  utter invoke factorial {| n: 10 |}
-seal
+do main
+  print factorial {| n: 10 |}
+end
 ```
 
 Output:
@@ -48,10 +48,10 @@ Output:
 3628800
 ```
 
-A `rite` is a pure function defined by pattern matching. A `ritual` is an
-effectful entry point. `invoke` calls a rite. `utter` prints a value.
-`{| ... |}` are record literals — the "pillars" that hold the language
-together.
+A `fn` is a pure function defined by pattern matching. A `do` is an
+effectful entry point. Functions are called by placing an argument after the
+function name. `print` prints a value. `{| ... |}` are record literals — the
+"pillars" that hold the language together.
 
 ## What This Book Covers
 
@@ -63,4 +63,4 @@ This book is a complete guide to the badlang language. It covers:
 - Input and output: reading from stdin, writing files, command-line arguments
 - Patterns and techniques for writing idiomatic badlang
 - How the compilation pipeline works under the hood
-- A complete reference for all keywords, operators, and built-in rites
+- A complete reference for all keywords, operators, and built-in functions

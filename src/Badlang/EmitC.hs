@@ -4,7 +4,7 @@
 -- The generated code includes an embedded runtime with reference counting
 -- and can be compiled directly with @cc@ (GCC or Clang).
 --
--- The IR has already resolved all pattern matching, divine expressions,
+-- The IR has already resolved all pattern matching, match expressions,
 -- and let-in chains into flat instructions and basic block control flow.
 -- This backend is a mechanical translation: each IR instruction maps to
 -- one or two lines of C, and basic blocks map to labeled sections with
@@ -116,7 +116,7 @@ cRuntime = unlines
   , "    return NULL;"
   , "}"
   , ""
-  , "static void utter(Value* v) {"
+  , "static void bl_print(Value* v) {"
   , "    switch (v->tag) {"
   , "        case TAG_INT:    printf(\"%lld\\n\", (long long)v->int_val); break;"
   , "        case TAG_STR:    printf(\"%s\\n\", v->str_val); break;"
@@ -126,7 +126,7 @@ cRuntime = unlines
   , "            for (int i = 0; i < v->record.num_fields; i++) {"
   , "                if (i > 0) printf(\", \");"
   , "                printf(\"%s: \", v->record.fields[i].name);"
-  , "                utter(v->record.fields[i].value);"
+  , "                bl_print(v->record.fields[i].value);"
   , "            }"
   , "            printf(\" |}\");"
   , "            break;"
@@ -134,7 +134,7 @@ cRuntime = unlines
   , "    }"
   , "}"
   , ""
-  , "static void whisper(Value* v) {"
+  , "static void bl_write(Value* v) {"
   , "    switch (v->tag) {"
   , "        case TAG_INT:    printf(\"%lld\", (long long)v->int_val); break;"
   , "        case TAG_STR:    printf(\"%s\", v->str_val); break;"
@@ -144,7 +144,7 @@ cRuntime = unlines
   , "            for (int i = 0; i < v->record.num_fields; i++) {"
   , "                if (i > 0) printf(\", \");"
   , "                printf(\"%s: \", v->record.fields[i].name);"
-  , "                whisper(v->record.fields[i].value);"
+  , "                bl_write(v->record.fields[i].value);"
   , "            }"
   , "            printf(\" |}\");"
   , "            break;"
@@ -152,7 +152,7 @@ cRuntime = unlines
   , "    }"
   , "}"
   , ""
-  , "static Value* runtime_hearken(void) {"
+  , "static Value* runtime_readln(void) {"
   , "    char buf[4096];"
   , "    if (fgets(buf, sizeof(buf), stdin) == NULL) {"
   , "        return make_str(\"\");"
@@ -162,10 +162,10 @@ cRuntime = unlines
   , "    return make_str(buf);"
   , "}"
   , ""
-  , "static Value* runtime_scry(void) {"
+  , "static Value* runtime_readint(void) {"
   , "    long long n = 0;"
   , "    if (scanf(\"%lld\", &n) != 1) {"
-  , "        fprintf(stderr, \"badlang: scry failed to read integer\\n\");"
+  , "        fprintf(stderr, \"badlang: readint failed to read integer\\n\");"
   , "        exit(1);"
   , "    }"
   , "    int c = getchar(); (void)c;"
@@ -177,7 +177,7 @@ cRuntime = unlines
   , "static int g_argc = 0;"
   , "static char** g_argv = NULL;"
   , ""
-  , "static Value* rite_unearth(Value* arg) {"
+  , "static Value* fn_unearth(Value* arg) {"
   , "    Value* pathVal = record_field(arg, \"path\");"
   , "    if (!pathVal || pathVal->tag != TAG_STR) {"
   , "        fprintf(stderr, \"badlang: unearth requires path: String\\n\");"
@@ -200,7 +200,7 @@ cRuntime = unlines
   , "    return result;"
   , "}"
   , ""
-  , "static Value* rite_inscribe(Value* arg) {"
+  , "static Value* fn_inscribe(Value* arg) {"
   , "    Value* pathVal = record_field(arg, \"path\");"
   , "    Value* contentVal = record_field(arg, \"content\");"
   , "    if (!pathVal || pathVal->tag != TAG_STR ||"
@@ -218,12 +218,12 @@ cRuntime = unlines
   , "    return make_void();"
   , "}"
   , ""
-  , "static Value* rite_argc(Value* arg) {"
+  , "static Value* fn_argc(Value* arg) {"
   , "    (void)arg;"
   , "    return make_int((int64_t)g_argc);"
   , "}"
   , ""
-  , "static Value* rite_argv(Value* arg) {"
+  , "static Value* fn_argv(Value* arg) {"
   , "    Value* nVal = record_field(arg, \"n\");"
   , "    if (!nVal || nVal->tag != TAG_INT) {"
   , "        fprintf(stderr, \"badlang: argv requires n: Int\\n\");"
@@ -239,12 +239,12 @@ cRuntime = unlines
   , ""
   , "/* ── string built-in rites ─────────────────────────────────── */"
   , ""
-  , "static Value* rite_strlen(Value* arg) {"
+  , "static Value* fn_strlen(Value* arg) {"
   , "    Value* sVal = record_field(arg, \"s\");"
   , "    return make_int((int64_t)strlen(sVal->str_val));"
   , "}"
   , ""
-  , "static Value* rite_char_at(Value* arg) {"
+  , "static Value* fn_char_at(Value* arg) {"
   , "    Value* sVal = record_field(arg, \"s\");"
   , "    Value* nVal = record_field(arg, \"n\");"
   , "    int64_t idx = nVal->int_val;"
@@ -253,7 +253,7 @@ cRuntime = unlines
   , "    return make_int((int64_t)(unsigned char)sVal->str_val[idx]);"
   , "}"
   , ""
-  , "static Value* rite_substr(Value* arg) {"
+  , "static Value* fn_substr(Value* arg) {"
   , "    Value* sVal = record_field(arg, \"s\");"
   , "    Value* startVal = record_field(arg, \"start\");"
   , "    Value* lenVal = record_field(arg, \"len\");"
@@ -271,7 +271,7 @@ cRuntime = unlines
   , "    return result;"
   , "}"
   , ""
-  , "static Value* rite_concat(Value* arg) {"
+  , "static Value* fn_concat(Value* arg) {"
   , "    Value* aVal = record_field(arg, \"a\");"
   , "    Value* bVal = record_field(arg, \"b\");"
   , "    size_t la = strlen(aVal->str_val);"
@@ -285,20 +285,20 @@ cRuntime = unlines
   , "    return result;"
   , "}"
   , ""
-  , "static Value* rite_int_to_str(Value* arg) {"
+  , "static Value* fn_int_to_str(Value* arg) {"
   , "    Value* nVal = record_field(arg, \"n\");"
   , "    char buf[32];"
   , "    snprintf(buf, sizeof(buf), \"%lld\", (long long)nVal->int_val);"
   , "    return make_str(buf);"
   , "}"
   , ""
-  , "static Value* rite_char_of_int(Value* arg) {"
+  , "static Value* fn_char_of_int(Value* arg) {"
   , "    Value* nVal = record_field(arg, \"n\");"
   , "    char buf[2] = { (char)nVal->int_val, '\\0' };"
   , "    return make_str(buf);"
   , "}"
   , ""
-  , "static Value* rite_strcmp(Value* arg) {"
+  , "static Value* fn_strcmp(Value* arg) {"
   , "    Value* aVal = record_field(arg, \"a\");"
   , "    Value* bVal = record_field(arg, \"b\");"
   , "    int r = strcmp(aVal->str_val, bVal->str_val);"
@@ -328,7 +328,7 @@ emitCFromIR (IRProgram decls) =
   cRuntime
   ++ "\n/* ── forward declarations ──────────────────────────────────── */\n\n"
   ++ concatMap emitForwardDecl decls
-  ++ "\n/* ── rite definitions ──────────────────────────────────────── */\n\n"
+  ++ "\n/* ── fn definitions ────────────────────────────────────────── */\n\n"
   ++ concatMap emitIRDecl [d | d@(IRFunc _ _) <- decls]
   ++ "\n/* ── entry point ──────────────────────────────────────────── */\n\n"
   ++ emitMainDecl decls
@@ -337,13 +337,13 @@ emitCFromIR (IRProgram decls) =
 emitForwardDecl :: IRDecl -> String
 emitForwardDecl (IRFunc name _)
   | name `elem` builtinRiteNames = ""
-  | otherwise = "static Value* rite_" ++ name ++ "(Value* arg);\n"
+  | otherwise = "static Value* fn_" ++ name ++ "(Value* arg);\n"
 emitForwardDecl (IRMain _) = ""
 
 -- | Emit a rite or main function.
 emitIRDecl :: IRDecl -> String
 emitIRDecl (IRFunc name body) =
-  "static Value* rite_" ++ name ++ "(Value* arg) {\n" ++
+  "static Value* fn_" ++ name ++ "(Value* arg) {\n" ++
   emitVarDecls body ++
   emitFuncBlocks body ++
   "}\n\n"
@@ -385,8 +385,8 @@ collectVarDecls blocks = foldl addBlock (Set.empty, Set.empty) blocks
       INullCheck v _   -> (ptrs, Set.insert v ints)
       IIntEq v _ _     -> (ptrs, Set.insert v ints)
       IStrEq v _ _     -> (ptrs, Set.insert v ints)
-      IHearken v       -> (Set.insert v ptrs, ints)
-      IScry v          -> (Set.insert v ptrs, ints)
+      IReadLn v        -> (Set.insert v ptrs, ints)
+      IReadInt v       -> (Set.insert v ptrs, ints)
       ICopy v _        -> (Set.insert v ptrs, ints)
       _                -> (ptrs, ints)
 
@@ -432,8 +432,8 @@ emitInstr (IRecord v fields) =
   ");\n"
 emitInstr (IFieldGet v rec fld) =
   v ++ " = record_field(" ++ rec ++ ", " ++ cString fld ++ ");\n"
-emitInstr (ICall v riteName arg) =
-  v ++ " = rite_" ++ riteName ++ "(" ++ arg ++ ");\n"
+emitInstr (ICall v fnName arg) =
+  v ++ " = fn_" ++ fnName ++ "(" ++ arg ++ ");\n"
 emitInstr (IRetain v) =
   "rc_retain(" ++ v ++ ");\n"
 emitInstr (IRelease v) =
@@ -446,14 +446,14 @@ emitInstr (IIntEq v op n) =
   v ++ " = (" ++ op ++ "->int_val == " ++ show n ++ ");\n"
 emitInstr (IStrEq v op s) =
   v ++ " = (strcmp(" ++ op ++ "->str_val, " ++ cString s ++ ") == 0);\n"
-emitInstr (IUtter v) =
-  "utter(" ++ v ++ ");\n"
-emitInstr (IWhisper v) =
-  "whisper(" ++ v ++ ");\n"
-emitInstr (IHearken v) =
-  v ++ " = runtime_hearken();\n"
-emitInstr (IScry v) =
-  v ++ " = runtime_scry();\n"
+emitInstr (IPrint v) =
+  "bl_print(" ++ v ++ ");\n"
+emitInstr (IWrite v) =
+  "bl_write(" ++ v ++ ");\n"
+emitInstr (IReadLn v) =
+  v ++ " = runtime_readln();\n"
+emitInstr (IReadInt v) =
+  v ++ " = runtime_readint();\n"
 emitInstr (ICopy v src) =
   v ++ " = " ++ src ++ ";\n"
 

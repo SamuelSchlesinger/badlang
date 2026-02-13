@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7ed70138.js";
+            window.path_to_searchindex_js = "searchindex-114a12be.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-daf9c5e4.js"></script>
+        <script src="toc-e4e73581.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -181,24 +181,24 @@ badlang’s features combine in practice.</p>
 <p>The classic interview problem: for a number n, return “fizzbuzz” if divisible
 by both 3 and 5, “fizz” if only by 3, “buzz” if only by 5, or empty
 otherwise.</p>
-<pre><code>rite fizzbuzz
-  given {| n |} =&gt;
+<pre><code>fn fizzbuzz
+  case {| n |} =&gt;
     let by3 = n - (n / 3) * 3
     let by5 = n - (n / 5) * 5
-    divine {| a: by3, b: by5 |}
-      given {| a: 0, b: 0 |} =&gt; "fizzbuzz"
-      given {| a: 0 |}       =&gt; "fizz"
-      given {| b: 0 |}       =&gt; "buzz"
-      given {| a, b |}       =&gt; ""
-    seal
-seal
+    match {| a: by3, b: by5 |}
+      case {| a: 0, b: 0 |} =&gt; "fizzbuzz"
+      case {| a: 0 |}       =&gt; "fizz"
+      case {| b: 0 |}       =&gt; "buzz"
+      case {| a, b |}       =&gt; ""
+    end
+end
 
-ritual main
-  utter invoke fizzbuzz {| n: 3 |}
-  utter invoke fizzbuzz {| n: 5 |}
-  utter invoke fizzbuzz {| n: 15 |}
-  utter invoke fizzbuzz {| n: 7 |}
-seal
+do main
+  print fizzbuzz {| n: 3 |}
+  print fizzbuzz {| n: 5 |}
+  print fizzbuzz {| n: 15 |}
+  print fizzbuzz {| n: 7 |}
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>fizz
@@ -210,56 +210,56 @@ fizzbuzz
 <ul>
 <li>Since there’s no modulo operator, we compute the remainder manually:
 <code>n - (n / 3) * 3</code>.</li>
-<li>We pack both remainders into a record and use <code>divine</code> to match on the
+<li>We pack both remainders into a record and use <code>match</code> to match on the
 <em>combination</em> of values — much cleaner than nested if/else.</li>
-<li>Width subtyping means <code>given {| a: 0 |}</code> matches a record with both <code>a</code>
+<li>Width subtyping means <code>case {| a: 0 |}</code> matches a record with both <code>a</code>
 and <code>b</code> fields, as long as <code>a</code> is 0. The <code>b</code> field is simply ignored.</li>
 </ul>
 <h2 id="geometry-with-structural-subtyping"><a class="header" href="#geometry-with-structural-subtyping">Geometry with Structural Subtyping</a></h2>
-<pre><code>altar Vec2
+<pre><code>struct Vec2
   x : Int
   y : Int
-seal
+end
 
-altar Vec3
+struct Vec3
   x : Int
   y : Int
   z : Int
-seal
+end
 
-rite magnitude_sq
-  given {| x, y |} =&gt; x * x + y * y
-seal
+fn magnitude_sq
+  case {| x, y |} =&gt; x * x + y * y
+end
 
-rite magnitude_sq_3d
-  given {| x, y, z |} =&gt; x * x + y * y + z * z
-seal
+fn magnitude_sq_3d
+  case {| x, y, z |} =&gt; x * x + y * y + z * z
+end
 
-rite classify
-  given {| x: 0, y: 0 |} =&gt; 0
-  given {| x: 0 |}       =&gt; 1
-  given {| y: 0 |}       =&gt; 2
-  given {| x, y |}       =&gt; 3
-seal
+fn classify
+  case {| x: 0, y: 0 |} =&gt; 0
+  case {| x: 0 |}       =&gt; 1
+  case {| y: 0 |}       =&gt; 2
+  case {| x, y |}       =&gt; 3
+end
 
-ritual main
-  let flat = summon Vec2 {| x: 3, y: 4 |}
-  let deep = summon Vec3 {| x: 1, y: 2, z: 3 |}
+do main
+  let flat = Vec2 {| x: 3, y: 4 |}
+  let deep = Vec3 {| x: 1, y: 2, z: 3 |}
 
   -- Width subtyping: Vec3 works with magnitude_sq
-  utter invoke magnitude_sq flat
-  utter invoke magnitude_sq deep
-  utter invoke magnitude_sq_3d deep
+  print magnitude_sq flat
+  print magnitude_sq deep
+  print magnitude_sq_3d deep
 
   -- Pattern dispatch
-  utter invoke classify {| x: 0, y: 0 |}
-  utter invoke classify {| x: 0, y: 5 |}
-  utter invoke classify {| x: 7, y: 0 |}
-  utter invoke classify {| x: 3, y: 4 |}
+  print classify {| x: 0, y: 0 |}
+  print classify {| x: 0, y: 5 |}
+  print classify {| x: 7, y: 0 |}
+  print classify {| x: 3, y: 4 |}
 
   -- Anonymous records work too
-  utter invoke magnitude_sq {| x: 10, y: 10, extra: 999 |}
-seal
+  print magnitude_sq {| x: 10, y: 10, extra: 999 |}
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>25
@@ -280,52 +280,52 @@ are zero.</li>
 <li>Anonymous records with extra fields work seamlessly.</li>
 </ul>
 <h2 id="a-number-theory-toolkit"><a class="header" href="#a-number-theory-toolkit">A Number Theory Toolkit</a></h2>
-<pre><code>rite is_even
-  given {| n |} =&gt;
+<pre><code>fn is_even
+  case {| n |} =&gt;
     let half = n / 2
-    divine half * 2 == n
-      given 1 =&gt; 1
-      given 0 =&gt; 0
-    seal
-seal
+    match half * 2 == n
+      case 1 =&gt; 1
+      case 0 =&gt; 0
+    end
+end
 
-rite gcd
-  given {| a, b: 0 |} =&gt; a
-  given {| a: 0, b |} =&gt; b
-  given {| a, b |} =&gt;
-    divine a &gt; b
-      given 1 =&gt; invoke gcd {| a: a - b, b: b |}
-      given 0 =&gt; invoke gcd {| a: a, b: b - a |}
-    seal
-seal
+fn gcd
+  case {| a, b: 0 |} =&gt; a
+  case {| a: 0, b |} =&gt; b
+  case {| a, b |} =&gt;
+    match a &gt; b
+      case 1 =&gt; gcd {| a: a - b, b: b |}
+      case 0 =&gt; gcd {| a: a, b: b - a |}
+    end
+end
 
-rite fib
-  given {| n |} =&gt; invoke fib_acc {| n: n, a: 0, b: 1 |}
-seal
+fn fib
+  case {| n |} =&gt; fib_acc {| n: n, a: 0, b: 1 |}
+end
 
-rite fib_acc
-  given {| n: 0, a, b |} =&gt; a
-  given {| n, a, b |} =&gt;
-    invoke fib_acc {| n: n - 1, a: b, b: a + b |}
-seal
+fn fib_acc
+  case {| n: 0, a, b |} =&gt; a
+  case {| n, a, b |} =&gt;
+    fib_acc {| n: n - 1, a: b, b: a + b |}
+end
 
-rite collatz_count
-  given {| n: 1, steps |} =&gt; steps
-  given {| n, steps |} =&gt;
-    divine invoke is_even {| n: n |}
-      given 1 =&gt;
-        invoke collatz_count {| n: n / 2, steps: steps + 1 |}
-      given 0 =&gt;
-        invoke collatz_count {| n: n * 3 + 1, steps: steps + 1 |}
-    seal
-seal
+fn collatz_count
+  case {| n: 1, steps |} =&gt; steps
+  case {| n, steps |} =&gt;
+    match is_even {| n: n |}
+      case 1 =&gt;
+        collatz_count {| n: n / 2, steps: steps + 1 |}
+      case 0 =&gt;
+        collatz_count {| n: n * 3 + 1, steps: steps + 1 |}
+    end
+end
 
-ritual main
-  utter invoke gcd {| a: 252, b: 105 |}
-  utter invoke gcd {| a: 1071, b: 462 |}
-  utter invoke fib {| n: 20 |}
-  utter invoke collatz_count {| n: 27, steps: 0 |}
-seal
+do main
+  print gcd {| a: 252, b: 105 |}
+  print gcd {| a: 1071, b: 462 |}
+  print fib {| n: 20 |}
+  print collatz_count {| n: 27, steps: 0 |}
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>21
@@ -336,31 +336,31 @@ seal
 <p><strong>Key techniques:</strong></p>
 <ul>
 <li><code>is_even</code> uses the multiply-and-compare trick since there’s no modulo.</li>
-<li><code>gcd</code> uses subtraction-based Euclidean algorithm with <code>divine</code> for branching.</li>
+<li><code>gcd</code> uses subtraction-based Euclidean algorithm with <code>match</code> for branching.</li>
 <li><code>fib</code> wraps an accumulator-passing helper for efficiency.</li>
-<li><code>collatz_count</code> combines <code>divine</code> with recursion for conditional stepping.</li>
+<li><code>collatz_count</code> combines <code>match</code> with recursion for conditional stepping.</li>
 </ul>
 <h2 id="interactive-program"><a class="header" href="#interactive-program">Interactive Program</a></h2>
-<pre><code>rite factorial
-  given {| n: 0 |} =&gt; 1
-  given {| n |} =&gt; n * (invoke factorial {| n: n - 1 |})
-seal
+<pre><code>fn factorial
+  case {| n: 0 |} =&gt; 1
+  case {| n |} =&gt; n * (factorial {| n: n - 1 |})
+end
 
-ritual main
-  utter "Enter a number to compute its factorial:"
-  whisper "&gt; "
-  let n = scry
-  whisper "The factorial of "
-  whisper n
-  whisper " is "
-  utter invoke factorial {| n: n |}
-seal
+do main
+  print "Enter a number to compute its factorial:"
+  write "&gt; "
+  let n = readint
+  write "The factorial of "
+  write n
+  write " is "
+  print factorial {| n: n |}
+end
 </code></pre>
 <p><strong>Key techniques:</strong></p>
 <ul>
-<li><code>scry</code> reads an integer from stdin.</li>
-<li><code>whisper</code> builds up a line of output without newlines.</li>
-<li><code>utter</code> finishes the line with a newline.</li>
+<li><code>readint</code> reads an integer from stdin.</li>
+<li><code>write</code> builds up a line of output without newlines.</li>
+<li><code>print</code> finishes the line with a newline.</li>
 </ul>
 
                     </main>

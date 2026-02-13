@@ -46,10 +46,10 @@ and provides functions to convert parse trees into typed AST nodes.
 The AST types (defined in `Badlang.AST`) include:
 
 - `Program` — a list of declarations
-- `Decl` — altar, rite, or ritual
-- `Expr` — all expression forms (literals, records, invoke, divine, etc.)
+- `Decl` — struct, fn, or do
+- `Expr` — all expression forms (literals, records, function calls, match, etc.)
 - `Pattern` — all pattern forms (variable, literal, record, wildcard)
-- `Stmt` — ritual statements (utter, whisper, let, expression)
+- `Stmt` — do statements (print, write, let, expression)
 
 ## Stage 3: Type Checking
 
@@ -59,7 +59,7 @@ The type checker implements **Algorithm W** extended with **Remy-style row
 types**. It works in two passes:
 
 1. **Registration pass:** Collect all declarations into the type environment.
-   Each rite gets a fresh type variable; each altar's fields are recorded.
+   Each fn gets a fresh type variable; each struct's fields are recorded.
 
 2. **Checking pass:** For each declaration body, walk the AST generating
    type constraints. Unify constraints as they arise using IORef-based
@@ -79,7 +79,7 @@ Type errors are reported with the expression that caused the mismatch.
 
 The lowering pass transforms the typed AST into an explicit intermediate
 representation with basic blocks, named temporaries, and flat instructions.
-Pattern matching, divine expressions, and let-in chains are all resolved at
+Pattern matching, match expressions, and let-in chains are all resolved at
 this stage so that backends are purely mechanical translations.
 
 Key properties of the IR:
@@ -90,7 +90,7 @@ Key properties of the IR:
   instructions.
 - **Pattern matching decomposed into primitives** — `ITagCheck`, `INullCheck`,
   `IIntEq`, `IStrEq` plus `TBranch` terminators create explicit control flow.
-- **No SSA phi nodes** — join points (divine results) use a pre-declared
+- **No SSA phi nodes** — join points (match results) use a pre-declared
   result variable written by whichever branch succeeds.
 
 ## Stage 5: Code Generation

@@ -9,7 +9,7 @@ fails (moving to the next clause).
 A bare identifier matches any value and binds it:
 
 ```
-given x => ...
+case x => ...
 ```
 
 After matching, `x` holds the matched value.
@@ -19,7 +19,7 @@ After matching, `x` holds the matched value.
 An underscore matches any value without binding:
 
 ```
-given _ => ...
+case _ => ...
 ```
 
 Use `_` when you need to accept a value but don't need to refer to it.
@@ -29,8 +29,8 @@ Use `_` when you need to accept a value but don't need to refer to it.
 An integer literal matches only that exact integer:
 
 ```
-given 0 => ...
-given 42 => ...
+case 0 => ...
+case 42 => ...
 ```
 
 ## String Literal Pattern
@@ -38,7 +38,7 @@ given 42 => ...
 A string literal matches only that exact string:
 
 ```
-given "hello" => ...
+case "hello" => ...
 ```
 
 ## Record Pattern
@@ -49,7 +49,7 @@ field name and can nest other patterns inside:
 ### Binding Fields
 
 ```
-given {| x, y |} => x + y
+case {| x, y |} => x + y
 ```
 
 This matches a record with at least fields `x` and `y`, binding both as
@@ -58,7 +58,7 @@ variables. Extra fields are ignored (width subtyping).
 ### Matching Literal Fields
 
 ```
-given {| n: 0 |} => ...
+case {| n: 0 |} => ...
 ```
 
 This matches a record whose `n` field is exactly `0`.
@@ -66,9 +66,9 @@ This matches a record whose `n` field is exactly `0`.
 ### Mixing Bindings and Literals
 
 ```
-given {| x: 0, y |} => y
-given {| x, y: 0 |} => x
-given {| x, y |}    => x + y
+case {| x: 0, y |} => y
+case {| x, y: 0 |} => x
+case {| x, y |}    => x + y
 ```
 
 The first clause matches when `x` is `0`. The second when `y` is `0`. The
@@ -79,25 +79,25 @@ third is a catch-all.
 Patterns can nest record patterns:
 
 ```
-given {| a: {| x: 0, y: 0 |} |} => "origin"
-given {| a: {| x, y |} |}       => "elsewhere"
+case {| a: {| x: 0, y: 0 |} |} => "origin"
+case {| a: {| x, y |} |}       => "elsewhere"
 ```
 
 ### Empty Record Pattern
 
 ```
-given {| |} => ...
+case {| |} => ...
 ```
 
 Matches any record (since every record has at least zero fields).
 
 ### Type-Annotated Fields
 
-Fields can be annotated with altar types:
+Fields can be annotated with struct types:
 
 ```
-given {| p : Point |} => p.x + p.y
-given {| a : Point, b : Point |} => ...
+case {| p : Point |} => p.x + p.y
+case {| a : Point, b : Point |} => ...
 ```
 
 The annotation constrains the type but does not change the matching behavior.
@@ -109,11 +109,11 @@ Clauses are tried top to bottom. The first match wins. Place more specific
 patterns before more general ones:
 
 ```
-rite describe
-  given {| n: 0 |}    => "zero"
-  given {| n: 1 |}    => "one"
-  given {| n |} => "something else"
-seal
+fn describe
+  case {| n: 0 |}    => "zero"
+  case {| n: 1 |}    => "one"
+  case {| n |} => "something else"
+end
 ```
 
 If you put the general pattern `{| n |}` first, the literal patterns would
@@ -126,21 +126,21 @@ specify the **minimum required fields**. A pattern `{| x, y |}` matches any
 record with at least `x` and `y`, regardless of additional fields:
 
 ```
-rite magnitude_sq
-  given {| x, y |} => x * x + y * y
-seal
+fn magnitude_sq
+  case {| x, y |} => x * x + y * y
+end
 
-ritual main
+do main
   -- 2D point
-  utter invoke magnitude_sq {| x: 3, y: 4 |}
+  print magnitude_sq {| x: 3, y: 4 |}
 
   -- 3D point (z is ignored)
-  utter invoke magnitude_sq {| x: 1, y: 2, z: 3 |}
+  print magnitude_sq {| x: 1, y: 2, z: 3 |}
 
   -- Record with extra metadata (extra is ignored)
-  utter invoke magnitude_sq {| x: 10, y: 10, extra: 999 |}
-seal
+  print magnitude_sq {| x: 10, y: 10, extra: 999 |}
+end
 ```
 
-This is structural subtyping in action — the rite doesn't care about fields
+This is structural subtyping in action — the fn doesn't care about fields
 it didn't ask for.

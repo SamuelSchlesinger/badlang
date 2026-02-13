@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7ed70138.js";
+            window.path_to_searchindex_js = "searchindex-114a12be.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-daf9c5e4.js"></script>
+        <script src="toc-e4e73581.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -176,7 +176,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
-<p><strong>badlang</strong> is an experimental programming language of rites and glyphs.</p>
+<p><strong>badlang</strong> is an experimental programming language built on structural pattern matching.</p>
 <p>It is built from first principles — parser generator, grammar, type system, and
 C code generation — all implemented in Haskell with no external parsing
 libraries. badlang draws from pattern calculus and structural subtyping to
@@ -192,7 +192,7 @@ just records with named fields.</p>
 </li>
 <li>
 <p><strong>Pattern matching is the only way to inspect values.</strong> There is no
-<code>if</code>/<code>else</code>. Instead, you use <code>given</code> clauses to match on the shape and
+<code>if</code>/<code>else</code>. Instead, you use <code>case</code> clauses to match on the shape and
 content of records. This is both the branching mechanism and the
 destructuring mechanism.</p>
 </li>
@@ -208,22 +208,22 @@ generated code can be inspected, debugged, and compiled with any C compiler.</p>
 </li>
 </ul>
 <h2 id="a-taste"><a class="header" href="#a-taste">A Taste</a></h2>
-<pre><code>rite factorial
-  given {| n: 0 |} =&gt; 1
-  given {| n |} =&gt; n * (invoke factorial {| n: n - 1 |})
-seal
+<pre><code>fn factorial
+  case {| n: 0 |} =&gt; 1
+  case {| n |} =&gt; n * (factorial {| n: n - 1 |})
+end
 
-ritual main
-  utter invoke factorial {| n: 10 |}
-seal
+do main
+  print factorial {| n: 10 |}
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>3628800
 </code></pre>
-<p>A <code>rite</code> is a pure function defined by pattern matching. A <code>ritual</code> is an
-effectful entry point. <code>invoke</code> calls a rite. <code>utter</code> prints a value.
-<code>{| ... |}</code> are record literals — the “pillars” that hold the language
-together.</p>
+<p>A <code>fn</code> is a pure function defined by pattern matching. A <code>do</code> is an
+effectful entry point. Functions are called by placing an argument after the
+function name. <code>print</code> prints a value. <code>{| ... |}</code> are record literals — the
+“pillars” that hold the language together.</p>
 <h2 id="what-this-book-covers"><a class="header" href="#what-this-book-covers">What This Book Covers</a></h2>
 <p>This book is a complete guide to the badlang language. It covers:</p>
 <ul>
@@ -233,7 +233,7 @@ together.</p>
 <li>Input and output: reading from stdin, writing files, command-line arguments</li>
 <li>Patterns and techniques for writing idiomatic badlang</li>
 <li>How the compilation pipeline works under the hood</li>
-<li>A complete reference for all keywords, operators, and built-in rites</li>
+<li>A complete reference for all keywords, operators, and built-in functions</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
@@ -260,7 +260,7 @@ cabal build
 <p>This compiles the badlang compiler. You can verify it works:</p>
 <pre><code class="language-bash">cabal run badlang
 </code></pre>
-<p>This prints usage information if no arguments are given.</p>
+<p>This prints usage information if no arguments are case.</p>
 <h2 id="compiling-programs"><a class="header" href="#compiling-programs">Compiling Programs</a></h2>
 <p>To compile a <code>.bad</code> source file to C:</p>
 <pre><code class="language-bash">cabal run badlang -- examples/hello.bad
@@ -284,9 +284,9 @@ resulting binary in one step:</p>
 <p>Let’s walk through a complete program to get a feel for the language.</p>
 <h2 id="your-first-program"><a class="header" href="#your-first-program">Your First Program</a></h2>
 <p>Create a file called <code>first.bad</code>:</p>
-<pre><code>ritual main
-  utter "Hello, world!"
-seal
+<pre><code>do main
+  print "Hello, world!"
+end
 </code></pre>
 <p>Compile and run it:</p>
 <pre><code class="language-bash">cabal run badlang -- --run first.bad
@@ -294,73 +294,74 @@ seal
 <p>Output:</p>
 <pre><code>Hello, world!
 </code></pre>
-<p>A <code>ritual</code> is an effectful entry point — think of it as <code>main</code> in C. The body
-contains statements that execute for side effects. <code>utter</code> prints a value
-followed by a newline. <code>seal</code> closes the block.</p>
-<h2 id="adding-a-rite"><a class="header" href="#adding-a-rite">Adding a Rite</a></h2>
-<p>A <code>rite</code> is a pure function. Let’s add one:</p>
-<pre><code>rite square
-  given {| n |} =&gt; n * n
-seal
+<p>A <code>do</code> is an effectful entry point — think of it as <code>main</code> in C. The body
+contains statements that execute for side effects. <code>print</code> prints a value
+followed by a newline. <code>end</code> closes the block.</p>
+<h2 id="adding-a-function"><a class="header" href="#adding-a-function">Adding a Function</a></h2>
+<p>A <code>fn</code> is a pure function. Let’s add one:</p>
+<pre><code>fn square
+  case {| n |} =&gt; n * n
+end
 
-ritual main
-  utter invoke square {| n: 5 |}
-seal
+do main
+  print square {| n: 5 |}
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>25
 </code></pre>
-<p>The rite <code>square</code> takes a record with a field <code>n</code> and returns <code>n * n</code>. We call
-it with <code>invoke</code>, passing a record literal <code>{| n: 5 |}</code>.</p>
+<p>The fn <code>square</code> takes a record with a field <code>n</code> and returns <code>n * n</code>. We call
+it by passing a record literal <code>{| n: 5 |}</code>.</p>
 <h2 id="named-record-types"><a class="header" href="#named-record-types">Named Record Types</a></h2>
-<p>You can declare named record types with <code>altar</code>:</p>
-<pre><code>altar Point
+<p>You can declare named record types with <code>struct</code>:</p>
+<pre><code>struct Point
   x : Int
   y : Int
-seal
+end
 
-rite distance_sq
-  given {| a : Point, b : Point |} =&gt;
+fn distance_sq
+  case {| a : Point, b : Point |} =&gt;
     let dx = a.x - b.x
     let dy = a.y - b.y
     dx * dx + dy * dy
-seal
+end
 
-ritual main
-  let origin = summon Point {| x: 0, y: 0 |}
-  let there = summon Point {| x: 3, y: 4 |}
-  utter invoke distance_sq {| a: origin, b: there |}
-seal
+do main
+  let origin = Point {| x: 0, y: 0 |}
+  let there = Point {| x: 3, y: 4 |}
+  print distance_sq {| a: origin, b: there |}
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>25
 </code></pre>
-<p><code>altar</code> declares a record type. <code>summon</code> constructs a value of that type. The
-rite <code>distance_sq</code> pattern-matches its argument, extracting the <code>a</code> and <code>b</code>
-fields, each typed as <code>Point</code>.</p>
+<p><code>struct</code> declares a record type. Construction uses the type name followed by a
+record literal, as in <code>Point {| x: 0, y: 0 |}</code>. The fn <code>distance_sq</code>
+pattern-matches its argument, extracting the <code>a</code> and <code>b</code> fields, each typed
+as <code>Point</code>.</p>
 <h2 id="recursion"><a class="header" href="#recursion">Recursion</a></h2>
-<p>Rites can call themselves:</p>
-<pre><code>rite factorial
-  given {| n: 0 |} =&gt; 1
-  given {| n |} =&gt; n * (invoke factorial {| n: n - 1 |})
-seal
+<p>Functions can call themselves:</p>
+<pre><code>fn factorial
+  case {| n: 0 |} =&gt; 1
+  case {| n |} =&gt; n * (factorial {| n: n - 1 |})
+end
 
-ritual main
-  utter invoke factorial {| n: 10 |}
-seal
+do main
+  print factorial {| n: 10 |}
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>3628800
 </code></pre>
-<p>The first <code>given</code> clause matches when <code>n</code> is literally <code>0</code>. The second matches
+<p>The first <code>case</code> clause matches when <code>n</code> is literally <code>0</code>. The second matches
 any other <code>n</code> and recurses. This is how all branching works in badlang — there
 is no <code>if</code>/<code>else</code>, only pattern matching.</p>
 <h2 id="comments"><a class="header" href="#comments">Comments</a></h2>
 <p>Line comments start with <code>--</code>:</p>
 <pre><code>-- This is a comment
-rite square
-  given {| n |} =&gt; n * n  -- inline comment
-seal
+fn square
+  case {| n |} =&gt; n * n  -- inline comment
+end
 </code></pre>
 <h2 id="whats-next"><a class="header" href="#whats-next">What’s Next</a></h2>
 <p>The following chapters cover each language feature in depth, starting with
@@ -375,50 +376,51 @@ three kinds:</p>
 <tr><th>Declaration</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>altar</code></td><td>Declare a named record type</td></tr>
-<tr><td><code>rite</code></td><td>Define a pure function by pattern matching</td></tr>
-<tr><td><code>ritual</code></td><td>Define an effectful entry point</td></tr>
+<tr><td><code>struct</code></td><td>Declare a named record type</td></tr>
+<tr><td><code>fn</code></td><td>Define a pure function by pattern matching</td></tr>
+<tr><td><code>do</code></td><td>Define an effectful entry point</td></tr>
 </tbody>
 </table>
 </div>
-<p>Every declaration is opened by its keyword and closed by <code>seal</code>. There are
+<p>Every declaration is opened by its keyword and closed by <code>end</code>. There are
 no imports, no modules, and no visibility modifiers — all declarations live in
 a single flat global scope.</p>
-<p>Declarations can appear in any order. Rites may reference other rites defined
-later in the file, enabling mutual recursion without forward declarations.</p>
+<p>Declarations can appear in any order. Functions may reference other functions
+defined later in the file, enabling mutual recursion without forward
+declarations.</p>
 <p>The following sections cover each declaration form in detail.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="altars"><a class="header" href="#altars">Altars</a></h1>
-<p>An <code>altar</code> declares a named record type.</p>
+<h1 id="structs"><a class="header" href="#structs">Structs</a></h1>
+<p>A <code>struct</code> declares a named record type.</p>
 <h2 id="syntax"><a class="header" href="#syntax">Syntax</a></h2>
-<pre><code>altar TypeName
+<pre><code>struct TypeName
   field1 : Type
   field2 : Type
   ...
-seal
+end
 </code></pre>
 <h2 id="example"><a class="header" href="#example">Example</a></h2>
-<pre><code>altar Point
+<pre><code>struct Point
   x : Int
   y : Int
-seal
+end
 
-altar Person
+struct Person
   name : String
   age : Int
-seal
+end
 </code></pre>
 <h2 id="semantics"><a class="header" href="#semantics">Semantics</a></h2>
-<p>An altar gives a name to a specific set of typed fields. Once declared, you can:</p>
+<p>An struct gives a name to a specific set of typed fields. Once declared, you can:</p>
 <ul>
-<li>Use the type name in pattern annotations: <code>given {| p : Point |} =&gt; ...</code></li>
-<li>Construct values of that type with <code>summon</code>: <code>summon Point {| x: 3, y: 4 |}</code></li>
+<li>Use the type name in pattern annotations: <code>case {| p : Point |} =&gt; ...</code></li>
+<li>Construct values of that type: <code>Point {| x: 3, y: 4 |}</code></li>
 </ul>
-<p>Altar declarations are <strong>erased at runtime</strong>. They exist only to guide type
-checking. The fields you declare in an altar become the expected fields when
-you <code>summon</code> a value of that type.</p>
+<p>Struct declarations are <strong>erased at runtime</strong>. They exist only to guide type
+checking. The fields you declare in a struct become the expected fields when
+you construct a value of that type.</p>
 <h2 id="available-types"><a class="header" href="#available-types">Available Types</a></h2>
-<p>Field types in altar declarations can be:</p>
+<p>Field types in struct declarations can be:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -427,174 +429,174 @@ you <code>summon</code> a value of that type.</p>
 <tbody>
 <tr><td><code>Int</code></td><td>64-bit signed integer</td></tr>
 <tr><td><code>String</code></td><td>Immutable string</td></tr>
-<tr><td><em>AltarName</em></td><td>A previously declared altar type</td></tr>
+<tr><td><em>StructName</em></td><td>A previously declared struct type</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="using-altars-in-patterns"><a class="header" href="#using-altars-in-patterns">Using Altars in Patterns</a></h2>
-<p>When a pattern annotates a field with an altar type, the type checker ensures
+<h2 id="using-structs-in-patterns"><a class="header" href="#using-structs-in-patterns">Using Structs in Patterns</a></h2>
+<p>When a pattern annotates a field with an struct type, the type checker ensures
 the argument at that position has the required fields:</p>
-<pre><code>altar Pair
+<pre><code>struct Pair
   fst : Int
   snd : Int
-seal
+end
 
-rite swap
-  given {| p : Pair |} =&gt; summon Pair {| fst: p.snd, snd: p.fst |}
-seal
+fn swap
+  case {| p : Pair |} =&gt; Pair {| fst: p.snd, snd: p.fst |}
+end
 </code></pre>
-<h2 id="altars-are-optional"><a class="header" href="#altars-are-optional">Altars Are Optional</a></h2>
-<p>You do not need to declare an altar to use records. Anonymous record literals
+<h2 id="structs-are-optional"><a class="header" href="#structs-are-optional">Structs Are Optional</a></h2>
+<p>You do not need to declare an struct to use records. Anonymous record literals
 work everywhere:</p>
-<pre><code>rite add_xy
-  given {| x, y |} =&gt; x + y
-seal
+<pre><code>fn add_xy
+  case {| x, y |} =&gt; x + y
+end
 
-ritual main
-  -- No altar needed
-  utter invoke add_xy {| x: 3, y: 4 |}
-seal
+do main
+  -- No struct needed
+  print add_xy {| x: 3, y: 4 |}
+end
 </code></pre>
-<p>Altars are useful when you want to give a meaningful name to a recurring
+<p>Structs are useful when you want to give a meaningful name to a recurring
 record shape, or when you want type annotations in patterns.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="rites"><a class="header" href="#rites">Rites</a></h1>
-<p>A <code>rite</code> is a pure function defined by one or more pattern-matching clauses.</p>
+<h1 id="functions"><a class="header" href="#functions">Functions</a></h1>
+<p>A <code>fn</code> is a pure function defined by one or more pattern-matching clauses.</p>
 <h2 id="syntax-1"><a class="header" href="#syntax-1">Syntax</a></h2>
-<pre><code>rite name
-  given pattern1 =&gt; body1
-  given pattern2 =&gt; body2
+<pre><code>fn name
+  case pattern1 =&gt; body1
+  case pattern2 =&gt; body2
   ...
-seal
+end
 </code></pre>
-<h2 id="how-rites-work"><a class="header" href="#how-rites-work">How Rites Work</a></h2>
-<p>Every rite:</p>
+<h2 id="how-functions-work"><a class="header" href="#how-functions-work">How Functions Work</a></h2>
+<p>Every fn:</p>
 <ol>
 <li>Takes a <strong>single argument</strong> (always a record)</li>
-<li>Tries each <code>given</code> clause <strong>in order</strong> from top to bottom</li>
+<li>Tries each <code>case</code> clause <strong>in order</strong> from top to bottom</li>
 <li>Returns the body of the <strong>first matching clause</strong></li>
 </ol>
 <p>If no clause matches, the program crashes at runtime (there is no exhaustiveness
 checking yet).</p>
-<h2 id="single-clause-rites"><a class="header" href="#single-clause-rites">Single-Clause Rites</a></h2>
-<p>The simplest rites have one clause that binds the fields of the argument:</p>
-<pre><code>rite square
-  given {| n |} =&gt; n * n
-seal
+<h2 id="single-clause-functions"><a class="header" href="#single-clause-functions">Single-Clause Functions</a></h2>
+<p>The simplest functions have one clause that binds the fields of the argument:</p>
+<pre><code>fn square
+  case {| n |} =&gt; n * n
+end
 
-rite greet
-  given {| name |} =&gt; "Hello"
-seal
+fn greet
+  case {| name |} =&gt; "Hello"
+end
 </code></pre>
-<h2 id="multi-clause-rites"><a class="header" href="#multi-clause-rites">Multi-Clause Rites</a></h2>
+<h2 id="multi-clause-functions"><a class="header" href="#multi-clause-functions">Multi-Clause Functions</a></h2>
 <p>Multiple clauses enable dispatch based on the shape or content of the argument:</p>
-<pre><code>rite factorial
-  given {| n: 0 |} =&gt; 1
-  given {| n |} =&gt; n * (invoke factorial {| n: n - 1 |})
-seal
+<pre><code>fn factorial
+  case {| n: 0 |} =&gt; 1
+  case {| n |} =&gt; n * (factorial {| n: n - 1 |})
+end
 </code></pre>
 <p>The first clause matches when <code>n</code> is literally <code>0</code>. The second matches any
 other value of <code>n</code>. Clause order matters — the first match wins.</p>
 <h2 id="let-bindings-in-bodies"><a class="header" href="#let-bindings-in-bodies">Let Bindings in Bodies</a></h2>
 <p>A clause body can contain <code>let</code> bindings before the final expression:</p>
-<pre><code>rite distance_sq
-  given {| a : Point, b : Point |} =&gt;
+<pre><code>fn distance_sq
+  case {| a : Point, b : Point |} =&gt;
     let dx = a.x - b.x
     let dy = a.y - b.y
     dx * dx + dy * dy
-seal
+end
 </code></pre>
 <p>Each <code>let</code> introduces a local variable visible to subsequent bindings and the
 final expression.</p>
-<h2 id="calling-other-rites"><a class="header" href="#calling-other-rites">Calling Other Rites</a></h2>
-<p>Rites call other rites with <code>invoke</code>:</p>
-<pre><code>rite hypotenuse_sq
-  given {| a : Point, b : Point |} =&gt;
+<h2 id="calling-other-functions"><a class="header" href="#calling-other-functions">Calling Other Functions</a></h2>
+<p>Functions call other functions by placing an argument after the function name:</p>
+<pre><code>fn hypotenuse_sq
+  case {| a : Point, b : Point |} =&gt;
     let dx = a.x - b.x
     let dy = a.y - b.y
-    (invoke square {| n: dx |}) + (invoke square {| n: dy |})
-seal
+    (square {| n: dx |}) + (square {| n: dy |})
+end
 </code></pre>
 <h2 id="recursion-1"><a class="header" href="#recursion-1">Recursion</a></h2>
-<p>Rites can call themselves recursively:</p>
-<pre><code>rite fib_acc
-  given {| n: 0, a, b |} =&gt; a
-  given {| n, a, b |} =&gt;
-    invoke fib_acc {| n: n - 1, a: b, b: a + b |}
-seal
+<p>Functions can call themselves recursively:</p>
+<pre><code>fn fib_acc
+  case {| n: 0, a, b |} =&gt; a
+  case {| n, a, b |} =&gt;
+    fib_acc {| n: n - 1, a: b, b: a + b |}
+end
 </code></pre>
 <h2 id="mutual-recursion"><a class="header" href="#mutual-recursion">Mutual Recursion</a></h2>
-<p>Rites can call each other freely, regardless of declaration order:</p>
-<pre><code>rite is_even
-  given {| n: 0 |} =&gt; 1
-  given {| n |} =&gt; invoke is_odd {| n: n - 1 |}
-seal
+<p>Functions can call each other freely, regardless of declaration order:</p>
+<pre><code>fn is_even
+  case {| n: 0 |} =&gt; 1
+  case {| n |} =&gt; is_odd {| n: n - 1 |}
+end
 
-rite is_odd
-  given {| n: 0 |} =&gt; 0
-  given {| n |} =&gt; invoke is_even {| n: n - 1 |}
-seal
+fn is_odd
+  case {| n: 0 |} =&gt; 0
+  case {| n |} =&gt; is_even {| n: n - 1 |}
+end
 </code></pre>
 <h2 id="structural-subtyping"><a class="header" href="#structural-subtyping">Structural Subtyping</a></h2>
-<p>A rite’s pattern determines the <strong>minimum</strong> set of required fields. Any record
+<p>A fn’s pattern determines the <strong>minimum</strong> set of required fields. Any record
 with at least those fields will be accepted:</p>
-<pre><code>rite magnitude_sq
-  given {| x, y |} =&gt; x * x + y * y
-seal
+<pre><code>fn magnitude_sq
+  case {| x, y |} =&gt; x * x + y * y
+end
 
-ritual main
+do main
   -- All of these work:
-  utter invoke magnitude_sq {| x: 3, y: 4 |}
-  utter invoke magnitude_sq {| x: 1, y: 2, z: 3 |}
-  utter invoke magnitude_sq {| x: 10, y: 10, extra: 999 |}
-seal
+  print magnitude_sq {| x: 3, y: 4 |}
+  print magnitude_sq {| x: 1, y: 2, z: 3 |}
+  print magnitude_sq {| x: 10, y: 10, extra: 999 |}
+end
 </code></pre>
 <p>The extra fields <code>z</code> and <code>extra</code> are silently ignored. This is width subtyping
 at work.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="rituals"><a class="header" href="#rituals">Rituals</a></h1>
-<p>A <code>ritual</code> is an effectful entry point — the equivalent of <code>main</code> in C.</p>
+<h1 id="do-blocks"><a class="header" href="#do-blocks">Do Blocks</a></h1>
+<p>A <code>do</code> is an effectful entry point — the equivalent of <code>main</code> in C.</p>
 <h2 id="syntax-2"><a class="header" href="#syntax-2">Syntax</a></h2>
-<pre><code>ritual name
+<pre><code>do name
   statement1
   statement2
   ...
-seal
+end
 </code></pre>
-<h2 id="the-main-ritual"><a class="header" href="#the-main-ritual">The Main Ritual</a></h2>
-<p>Every executable badlang program must have a <code>ritual main</code>:</p>
-<pre><code>ritual main
-  utter "Hello, world!"
-seal
+<h2 id="the-main-do-block"><a class="header" href="#the-main-do-block">The Main Do Block</a></h2>
+<p>Every executable badlang program must have a <code>do main</code>:</p>
+<pre><code>do main
+  print "Hello, world!"
+end
 </code></pre>
 <p>This is where execution begins.</p>
 <h2 id="statements"><a class="header" href="#statements">Statements</a></h2>
-<p>The body of a ritual is a sequence of <strong>statements</strong>. Statements execute in
+<p>The body of a do is a sequence of <strong>statements</strong>. Statements execute in
 order for their side effects. The available statement forms are:</p>
-<h3 id="utter--print-with-newline"><a class="header" href="#utter--print-with-newline">utter — Print with Newline</a></h3>
-<pre><code>utter expr
+<h3 id="print--print-with-newline"><a class="header" href="#print--print-with-newline">print — Print with Newline</a></h3>
+<pre><code>print expr
 </code></pre>
 <p>Evaluates <code>expr</code> and prints the result to stdout, followed by a newline.
 Integers print as decimal numbers. Strings print as their contents.</p>
-<pre><code>ritual main
-  utter 42
-  utter "hello"
-seal
+<pre><code>do main
+  print 42
+  print "hello"
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>42
 hello
 </code></pre>
-<h3 id="whisper--print-without-newline"><a class="header" href="#whisper--print-without-newline">whisper — Print without Newline</a></h3>
-<pre><code>whisper expr
+<h3 id="write--print-without-newline"><a class="header" href="#write--print-without-newline">write — Print without Newline</a></h3>
+<pre><code>write expr
 </code></pre>
-<p>Like <code>utter</code>, but does <strong>not</strong> append a newline. Useful for building up output
+<p>Like <code>print</code>, but does <strong>not</strong> append a newline. Useful for building up output
 piece by piece:</p>
-<pre><code>ritual main
-  whisper "Hello, "
-  whisper "world"
-  utter "!"
-seal
+<pre><code>do main
+  write "Hello, "
+  write "world"
+  print "!"
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>Hello, world!
@@ -604,40 +606,40 @@ seal
 </code></pre>
 <p>Evaluates <code>expr</code> and binds the result to <code>name</code> for use in subsequent
 statements:</p>
-<pre><code>ritual main
+<pre><code>do main
   let x = 5
   let y = x * x
-  utter y
-seal
+  print y
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>25
 </code></pre>
 <h3 id="expression-statements"><a class="header" href="#expression-statements">Expression Statements</a></h3>
 <p>A bare expression can appear as a statement. Its result is discarded. This is
-useful for calling rites with side effects:</p>
-<pre><code>ritual main
-  invoke inscribe {| path: "out.txt", content: "data" |}
-  utter "Done."
-seal
+useful for calling functions with side effects:</p>
+<pre><code>do main
+  inscribe {| path: "out.txt", content: "data" |}
+  print "Done."
+end
 </code></pre>
 <h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
-<pre><code>ritual main
-  utter "=== badlang IO demo ==="
+<pre><code>do main
+  print "=== badlang IO demo ==="
 
-  utter "What is your name?"
-  whisper "&gt; "
-  let name = hearken
-  whisper "Hello, "
-  whisper name
-  utter "!"
+  print "What is your name?"
+  write "&gt; "
+  let name = readln
+  write "Hello, "
+  write name
+  print "!"
 
-  utter "Pick a number:"
-  whisper "&gt; "
-  let n = scry
-  utter "You chose:"
-  utter n
-seal
+  print "Pick a number:"
+  write "&gt; "
+  let n = readint
+  print "You chose:"
+  print n
+end
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="expressions"><a class="header" href="#expressions">Expressions</a></h1>
@@ -649,7 +651,7 @@ calls, pattern matching, and I/O reads.</p>
 <li><strong>Literals and variables</strong> — integers, strings, and identifiers</li>
 <li><strong>Records</strong> — the universal data structure</li>
 <li><strong>Operators</strong> — arithmetic, comparison, and boolean</li>
-<li><strong>Invoke and summon</strong> — calling rites and constructing typed records</li>
+<li><strong>Function calls and construction</strong> — calling functions and constructing typed records</li>
 <li><strong>Let bindings</strong> — introducing local variables</li>
 <li><strong>Field access</strong> — extracting values from records</li>
 </ul>
@@ -697,14 +699,14 @@ myPoint
 </code></pre>
 <p>Variables are introduced by:</p>
 <ul>
-<li><strong>Pattern matching</strong> — field names in <code>given</code> clauses become variables</li>
+<li><strong>Pattern matching</strong> — field names in <code>case</code> clauses become variables</li>
 <li><strong>let bindings</strong> — <code>let x = expr</code> introduces <code>x</code></li>
 </ul>
 <h2 id="reserved-words"><a class="header" href="#reserved-words">Reserved Words</a></h2>
 <p>The following identifiers are keywords and cannot be used as variable names:</p>
-<pre><code>altar    rite      ritual    given     seal
-let      in        invoke    summon    utter
-divine   hearken   scry      whisper
+<pre><code>struct    fn      do    case     end
+let      in        print
+match   readln   readint      write
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="records"><a class="header" href="#records">Records</a></h1>
@@ -718,7 +720,7 @@ structured value is a record.</p>
 {| n: 42 |}
 {| |}
 </code></pre>
-<p>The last form, <code>{| |}</code>, is the empty record — used when a rite takes no
+<p>The last form, <code>{| |}</code>, is the empty record — used when a fn takes no
 meaningful arguments.</p>
 <h2 id="fields"><a class="header" href="#fields">Fields</a></h2>
 <p>Each field has a name and a value, separated by a colon:</p>
@@ -733,31 +735,31 @@ meaningful arguments.</p>
 <h2 id="records-are-structural"><a class="header" href="#records-are-structural">Records Are Structural</a></h2>
 <p>Records in badlang are <strong>structural</strong>, not nominal. Two records with the same
 fields and types are the same type, regardless of how they were created:</p>
-<pre><code>rite add_xy
-  given {| x, y |} =&gt; x + y
-seal
+<pre><code>fn add_xy
+  case {| x, y |} =&gt; x + y
+end
 
-ritual main
+do main
   -- All of these are acceptable arguments:
-  utter invoke add_xy {| x: 1, y: 2 |}
-  utter invoke add_xy {| x: 10, y: 20 |}
-  utter invoke add_xy {| x: 5, y: 5, z: 100 |}
-seal
+  print add_xy {| x: 1, y: 2 |}
+  print add_xy {| x: 10, y: 20 |}
+  print add_xy {| x: 5, y: 5, z: 100 |}
+end
 </code></pre>
-<h2 id="named-records-with-summon"><a class="header" href="#named-records-with-summon">Named Records with summon</a></h2>
-<p>While anonymous records work everywhere, you can use <code>altar</code> and <code>summon</code> to
-create named record types:</p>
-<pre><code>altar Point
+<h2 id="named-records"><a class="header" href="#named-records">Named Records</a></h2>
+<p>While anonymous records work everywhere, you can use <code>struct</code> to declare named
+record types and construct them with the type name:</p>
+<pre><code>struct Point
   x : Int
   y : Int
-seal
+end
 
-ritual main
-  let p = summon Point {| x: 3, y: 4 |}
-  utter p.x
-seal
+do main
+  let p = Point {| x: 3, y: 4 |}
+  print p.x
+end
 </code></pre>
-<p>See <a href="#invoke-and-summon">Invoke and Summon</a> for details.</p>
+<p>See <a href="#function-calls-and-construction">Function Calls and Construction</a> for details.</p>
 <h2 id="records-at-runtime"><a class="header" href="#records-at-runtime">Records at Runtime</a></h2>
 <p>At runtime, every record is a tagged value containing an array of
 <code>(name, value)</code> pairs. Field access is by name lookup. This means records are
@@ -841,120 +843,120 @@ operands must be <code>Int</code>.</p>
 <pre><code>(a + b) * c
 </code></pre>
 <h2 id="combining-with-pattern-matching"><a class="header" href="#combining-with-pattern-matching">Combining with Pattern Matching</a></h2>
-<p>Since comparisons return integers, they work naturally with <code>divine</code>:</p>
-<pre><code>rite abs
-  given {| n |} =&gt;
-    divine n &gt;= 0
-      given 1 =&gt; n
-      given 0 =&gt; 0 - n
-    seal
-seal
+<p>Since comparisons return integers, they work naturally with <code>match</code>:</p>
+<pre><code>fn abs
+  case {| n |} =&gt;
+    match n &gt;= 0
+      case 1 =&gt; n
+      case 0 =&gt; 0 - n
+    end
+end
 </code></pre>
 <p>This is the idiomatic way to write conditional logic in badlang.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="invoke-and-summon"><a class="header" href="#invoke-and-summon">Invoke and Summon</a></h1>
-<h2 id="invoke--calling-a-rite"><a class="header" href="#invoke--calling-a-rite">invoke — Calling a Rite</a></h2>
-<p><code>invoke</code> calls a rite with an argument:</p>
-<pre><code>invoke riteName argument
+<h1 id="function-calls-and-construction"><a class="header" href="#function-calls-and-construction">Function Calls and Construction</a></h1>
+<h2 id="calling-a-function"><a class="header" href="#calling-a-function">Calling a Function</a></h2>
+<p>A function is called by placing an argument after the function name:</p>
+<pre><code>riteName argument
 </code></pre>
 <p>The argument is typically a record literal:</p>
-<pre><code>invoke square {| n: 5 |}
-invoke distance {| a: p1, b: p2 |}
-invoke factorial {| n: 10 |}
+<pre><code>square {| n: 5 |}
+distance {| a: p1, b: p2 |}
+factorial {| n: 10 |}
 </code></pre>
 <p>The argument can also be a variable or parenthesized expression:</p>
 <pre><code>let args = {| n: 5 |}
-invoke square args
+square args
 
-invoke square (args)
+square (args)
 </code></pre>
-<h3 id="nested-invocations"><a class="header" href="#nested-invocations">Nested Invocations</a></h3>
-<p>Invoke expressions can be nested. The inner invocation must be wrapped in the
-record literal or parenthesized:</p>
-<pre><code>invoke ackermann {|
+<h3 id="nested-calls"><a class="header" href="#nested-calls">Nested Calls</a></h3>
+<p>Function calls can be nested. The inner call must be wrapped in the record
+literal or parenthesized:</p>
+<pre><code>ackermann {|
   m: m - 1,
-  n: invoke ackermann {| m: m, n: n - 1 |}
+  n: ackermann {| m: m, n: n - 1 |}
 |}
 </code></pre>
-<h3 id="invoke-in-statements"><a class="header" href="#invoke-in-statements">invoke in Statements</a></h3>
-<p>In a ritual, <code>invoke</code> can appear as a statement (result discarded) or as part
-of an <code>utter</code>/<code>whisper</code>:</p>
-<pre><code>ritual main
-  utter invoke factorial {| n: 10 |}
-  invoke inscribe {| path: "out.txt", content: "hello" |}
-seal
+<h3 id="in-statements"><a class="header" href="#in-statements">In Statements</a></h3>
+<p>In a do block, a function call can appear as a statement (result discarded) or
+as part of a <code>print</code>/<code>write</code>:</p>
+<pre><code>do main
+  print factorial {| n: 10 |}
+  inscribe {| path: "out.txt", content: "hello" |}
+end
 </code></pre>
-<h2 id="summon--constructing-named-records"><a class="header" href="#summon--constructing-named-records">summon — Constructing Named Records</a></h2>
-<p><code>summon</code> creates a record of a specific altar type:</p>
-<pre><code>summon AltarName {| field1: value1, field2: value2, ... |}
+<h2 id="constructing-named-records"><a class="header" href="#constructing-named-records">Constructing Named Records</a></h2>
+<p>Construction uses the type name followed by a record literal:</p>
+<pre><code>TypeName {| field1: value1, field2: value2, ... |}
 </code></pre>
 <h3 id="example-1"><a class="header" href="#example-1">Example</a></h3>
-<pre><code>altar Point
+<pre><code>struct Point
   x : Int
   y : Int
-seal
+end
 
-ritual main
-  let p = summon Point {| x: 3, y: 4 |}
-  utter p.x
-  utter p.y
-seal
+do main
+  let p = Point {| x: 3, y: 4 |}
+  print p.x
+  print p.y
+end
 </code></pre>
-<h3 id="when-to-use-summon"><a class="header" href="#when-to-use-summon">When to Use summon</a></h3>
-<p><code>summon</code> is optional. You can use anonymous record literals anywhere a named
-type is expected. These two are equivalent:</p>
-<pre><code>let p = summon Point {| x: 3, y: 4 |}
+<h3 id="when-to-use-named-construction"><a class="header" href="#when-to-use-named-construction">When to Use Named Construction</a></h3>
+<p>Named construction is optional. You can use anonymous record literals anywhere a
+named type is expected. These two are equivalent:</p>
+<pre><code>let p = Point {| x: 3, y: 4 |}
 let p = {| x: 3, y: 4 |}
 </code></pre>
-<p><code>summon</code> is useful for documentation and clarity — it makes the intent
-explicit and ensures the fields match the altar declaration.</p>
+<p>Named construction is useful for documentation and clarity — it makes the
+intent explicit and ensures the fields match the struct declaration.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="let-bindings"><a class="header" href="#let-bindings">Let Bindings</a></h1>
 <p><code>let</code> introduces a local variable by binding a name to an expression’s value.</p>
-<h2 id="in-rite-bodies"><a class="header" href="#in-rite-bodies">In Rite Bodies</a></h2>
-<p>Inside a <code>given</code> clause body, <code>let</code> bindings precede the final expression:</p>
-<pre><code>rite hypotenuse_sq
-  given {| a, b |} =&gt;
+<h2 id="in-function-bodies"><a class="header" href="#in-function-bodies">In Function Bodies</a></h2>
+<p>Inside a <code>case</code> clause body, <code>let</code> bindings precede the final expression:</p>
+<pre><code>fn hypotenuse_sq
+  case {| a, b |} =&gt;
     let a_sq = a * a
     let b_sq = b * b
     a_sq + b_sq
-seal
+end
 </code></pre>
 <p>Each <code>let</code> binding is visible to all subsequent bindings and to the final
 return expression. The last expression in the body (without a <code>let</code>) is the
 return value.</p>
-<h2 id="in-rituals"><a class="header" href="#in-rituals">In Rituals</a></h2>
-<p>In a ritual, <code>let</code> bindings introduce variables for subsequent statements:</p>
-<pre><code>ritual main
+<h2 id="in-do-blocks"><a class="header" href="#in-do-blocks">In Do Blocks</a></h2>
+<p>In a do block, <code>let</code> bindings introduce variables for subsequent statements:</p>
+<pre><code>do main
   let x = 5
   let y = x * 2
-  utter y
-seal
+  print y
+end
 </code></pre>
 <h2 id="shadowing"><a class="header" href="#shadowing">Shadowing</a></h2>
 <p>A <code>let</code> binding can shadow a previous binding of the same name:</p>
-<pre><code>rite example
-  given {| n |} =&gt;
+<pre><code>fn example
+  case {| n |} =&gt;
     let n = n + 1
     let n = n * 2
     n
-seal
+end
 </code></pre>
-<p>Here, <code>invoke example {| n: 5 |}</code> evaluates to <code>12</code>: the original <code>n</code> (5) is
+<p>Here, <code>example {| n: 5 |}</code> evaluates to <code>12</code>: the original <code>n</code> (5) is
 shadowed by <code>n + 1</code> (6), which is shadowed by <code>n * 2</code> (12).</p>
 <h2 id="let-in-expressions"><a class="header" href="#let-in-expressions">let in Expressions</a></h2>
 <p><code>let</code> bindings can appear anywhere a multi-line expression is expected,
-including inside <code>divine</code> bodies:</p>
-<pre><code>rite classify
-  given {| n |} =&gt;
+including inside <code>match</code> bodies:</p>
+<pre><code>fn classify
+  case {| n |} =&gt;
     let positive = n &gt; 0
-    divine positive
-      given 1 =&gt;
+    match positive
+      case 1 =&gt;
         let doubled = n * 2
         doubled
-      given 0 =&gt; 0
-    seal
-seal
+      case 0 =&gt; 0
+    end
+end
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="field-access"><a class="header" href="#field-access">Field Access</a></h1>
@@ -963,38 +965,38 @@ seal
 <pre><code>record.fieldName
 </code></pre>
 <h2 id="basic-usage"><a class="header" href="#basic-usage">Basic Usage</a></h2>
-<pre><code>ritual main
+<pre><code>do main
   let p = {| x: 3, y: 4 |}
-  utter p.x
-  utter p.y
-seal
+  print p.x
+  print p.y
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>3
 4
 </code></pre>
-<h2 id="in-rite-bodies-1"><a class="header" href="#in-rite-bodies-1">In Rite Bodies</a></h2>
+<h2 id="in-function-bodies-1"><a class="header" href="#in-function-bodies-1">In Function Bodies</a></h2>
 <p>Field access is commonly used after pattern matching to drill into nested
 records:</p>
-<pre><code>altar Point
+<pre><code>struct Point
   x : Int
   y : Int
-seal
+end
 
-rite distance_sq
-  given {| a : Point, b : Point |} =&gt;
+fn distance_sq
+  case {| a : Point, b : Point |} =&gt;
     let dx = a.x - b.x
     let dy = a.y - b.y
     dx * dx + dy * dy
-seal
+end
 </code></pre>
 <h2 id="chaining"><a class="header" href="#chaining">Chaining</a></h2>
 <p>Field access can be chained to access nested records:</p>
-<pre><code>ritual main
+<pre><code>do main
   let line = {| start: {| x: 0, y: 0 |}, end: {| x: 3, y: 4 |} |}
-  utter line.start.x
-  utter line.end.y
-seal
+  print line.start.x
+  print line.end.y
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>0
@@ -1011,18 +1013,18 @@ to inspect values, the only way to branch, and the primary way to destructure
 records.</p>
 <p>There are two places patterns appear:</p>
 <ol>
-<li><strong><code>given</code> clauses in rites</strong> — the function dispatches on its argument</li>
-<li><strong><code>divine</code> expressions</strong> — inline pattern matching on any expression</li>
+<li><strong><code>case</code> clauses in functions</strong> — the function dispatches on its argument</li>
+<li><strong><code>match</code> expressions</strong> — inline pattern matching on any expression</li>
 </ol>
 <p>In both cases, the structure is the same: a value is matched against a
-sequence of <code>given</code> clauses, and the body of the first matching clause is
+sequence of <code>case</code> clauses, and the body of the first matching clause is
 evaluated.</p>
-<pre><code>given pattern =&gt; body
+<pre><code>case pattern =&gt; body
 </code></pre>
 <p>If no pattern matches, the program crashes at runtime. There is no
 exhaustiveness checking — it is the programmer’s responsibility to ensure
 all cases are covered.</p>
-<p>The following sections cover the pattern language and the <code>divine</code> expression
+<p>The following sections cover the pattern language and the <code>match</code> expression
 in detail.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="patterns"><a class="header" href="#patterns">Patterns</a></h1>
@@ -1031,66 +1033,66 @@ matched against a pattern, the match either succeeds (binding variables) or
 fails (moving to the next clause).</p>
 <h2 id="variable-pattern"><a class="header" href="#variable-pattern">Variable Pattern</a></h2>
 <p>A bare identifier matches any value and binds it:</p>
-<pre><code>given x =&gt; ...
+<pre><code>case x =&gt; ...
 </code></pre>
 <p>After matching, <code>x</code> holds the matched value.</p>
 <h2 id="wildcard-pattern"><a class="header" href="#wildcard-pattern">Wildcard Pattern</a></h2>
 <p>An underscore matches any value without binding:</p>
-<pre><code>given _ =&gt; ...
+<pre><code>case _ =&gt; ...
 </code></pre>
 <p>Use <code>_</code> when you need to accept a value but don’t need to refer to it.</p>
 <h2 id="integer-literal-pattern"><a class="header" href="#integer-literal-pattern">Integer Literal Pattern</a></h2>
 <p>An integer literal matches only that exact integer:</p>
-<pre><code>given 0 =&gt; ...
-given 42 =&gt; ...
+<pre><code>case 0 =&gt; ...
+case 42 =&gt; ...
 </code></pre>
 <h2 id="string-literal-pattern"><a class="header" href="#string-literal-pattern">String Literal Pattern</a></h2>
 <p>A string literal matches only that exact string:</p>
-<pre><code>given "hello" =&gt; ...
+<pre><code>case "hello" =&gt; ...
 </code></pre>
 <h2 id="record-pattern"><a class="header" href="#record-pattern">Record Pattern</a></h2>
 <p>Record patterns are the most important pattern form. They match records by
 field name and can nest other patterns inside:</p>
 <h3 id="binding-fields"><a class="header" href="#binding-fields">Binding Fields</a></h3>
-<pre><code>given {| x, y |} =&gt; x + y
+<pre><code>case {| x, y |} =&gt; x + y
 </code></pre>
 <p>This matches a record with at least fields <code>x</code> and <code>y</code>, binding both as
 variables. Extra fields are ignored (width subtyping).</p>
 <h3 id="matching-literal-fields"><a class="header" href="#matching-literal-fields">Matching Literal Fields</a></h3>
-<pre><code>given {| n: 0 |} =&gt; ...
+<pre><code>case {| n: 0 |} =&gt; ...
 </code></pre>
 <p>This matches a record whose <code>n</code> field is exactly <code>0</code>.</p>
 <h3 id="mixing-bindings-and-literals"><a class="header" href="#mixing-bindings-and-literals">Mixing Bindings and Literals</a></h3>
-<pre><code>given {| x: 0, y |} =&gt; y
-given {| x, y: 0 |} =&gt; x
-given {| x, y |}    =&gt; x + y
+<pre><code>case {| x: 0, y |} =&gt; y
+case {| x, y: 0 |} =&gt; x
+case {| x, y |}    =&gt; x + y
 </code></pre>
 <p>The first clause matches when <code>x</code> is <code>0</code>. The second when <code>y</code> is <code>0</code>. The
 third is a catch-all.</p>
 <h3 id="nested-patterns"><a class="header" href="#nested-patterns">Nested Patterns</a></h3>
 <p>Patterns can nest record patterns:</p>
-<pre><code>given {| a: {| x: 0, y: 0 |} |} =&gt; "origin"
-given {| a: {| x, y |} |}       =&gt; "elsewhere"
+<pre><code>case {| a: {| x: 0, y: 0 |} |} =&gt; "origin"
+case {| a: {| x, y |} |}       =&gt; "elsewhere"
 </code></pre>
 <h3 id="empty-record-pattern"><a class="header" href="#empty-record-pattern">Empty Record Pattern</a></h3>
-<pre><code>given {| |} =&gt; ...
+<pre><code>case {| |} =&gt; ...
 </code></pre>
 <p>Matches any record (since every record has at least zero fields).</p>
 <h3 id="type-annotated-fields"><a class="header" href="#type-annotated-fields">Type-Annotated Fields</a></h3>
-<p>Fields can be annotated with altar types:</p>
-<pre><code>given {| p : Point |} =&gt; p.x + p.y
-given {| a : Point, b : Point |} =&gt; ...
+<p>Fields can be annotated with struct types:</p>
+<pre><code>case {| p : Point |} =&gt; p.x + p.y
+case {| a : Point, b : Point |} =&gt; ...
 </code></pre>
 <p>The annotation constrains the type but does not change the matching behavior.
 The field is still bound as a variable.</p>
 <h2 id="pattern-matching-order"><a class="header" href="#pattern-matching-order">Pattern Matching Order</a></h2>
 <p>Clauses are tried top to bottom. The first match wins. Place more specific
 patterns before more general ones:</p>
-<pre><code>rite describe
-  given {| n: 0 |}    =&gt; "zero"
-  given {| n: 1 |}    =&gt; "one"
-  given {| n |} =&gt; "something else"
-seal
+<pre><code>fn describe
+  case {| n: 0 |}    =&gt; "zero"
+  case {| n: 1 |}    =&gt; "one"
+  case {| n |} =&gt; "something else"
+end
 </code></pre>
 <p>If you put the general pattern <code>{| n |}</code> first, the literal patterns would
 never be reached.</p>
@@ -1098,210 +1100,274 @@ never be reached.</p>
 <p>A key feature of badlang’s pattern matching is that record patterns only
 specify the <strong>minimum required fields</strong>. A pattern <code>{| x, y |}</code> matches any
 record with at least <code>x</code> and <code>y</code>, regardless of additional fields:</p>
-<pre><code>rite magnitude_sq
-  given {| x, y |} =&gt; x * x + y * y
-seal
+<pre><code>fn magnitude_sq
+  case {| x, y |} =&gt; x * x + y * y
+end
 
-ritual main
+do main
   -- 2D point
-  utter invoke magnitude_sq {| x: 3, y: 4 |}
+  print magnitude_sq {| x: 3, y: 4 |}
 
   -- 3D point (z is ignored)
-  utter invoke magnitude_sq {| x: 1, y: 2, z: 3 |}
+  print magnitude_sq {| x: 1, y: 2, z: 3 |}
 
   -- Record with extra metadata (extra is ignored)
-  utter invoke magnitude_sq {| x: 10, y: 10, extra: 999 |}
-seal
+  print magnitude_sq {| x: 10, y: 10, extra: 999 |}
+end
 </code></pre>
-<p>This is structural subtyping in action — the rite doesn’t care about fields
+<p>This is structural subtyping in action — the fn doesn’t care about fields
 it didn’t ask for.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="divine"><a class="header" href="#divine">Divine</a></h1>
-<p><code>divine</code> is an inline pattern match expression. It evaluates a scrutinee
-expression and matches the result against a series of <code>given</code> clauses, all
+<h1 id="match"><a class="header" href="#match">Match</a></h1>
+<p><code>match</code> is an inline pattern match expression. It evaluates a scrutinee
+expression and matches the result against a series of <code>case</code> clauses, all
 within a single expression context.</p>
 <h2 id="syntax-4"><a class="header" href="#syntax-4">Syntax</a></h2>
-<pre><code>divine scrutinee
-  given pattern1 =&gt; body1
-  given pattern2 =&gt; body2
+<pre><code>match scrutinee
+  case pattern1 =&gt; body1
+  case pattern2 =&gt; body2
   ...
-seal
+end
 </code></pre>
-<h2 id="why-divine"><a class="header" href="#why-divine">Why divine?</a></h2>
-<p>badlang has no <code>if</code>/<code>else</code>. Instead, <code>divine</code> fills that role and more. Since
+<h2 id="why-match"><a class="header" href="#why-match">Why match?</a></h2>
+<p>badlang has no <code>if</code>/<code>else</code>. Instead, <code>match</code> fills that role and more. Since
 comparison operators return integers (<code>1</code> for true, <code>0</code> for false), you can
-use <code>divine</code> to branch on conditions:</p>
-<pre><code>rite abs
-  given {| n |} =&gt;
-    divine n &gt;= 0
-      given 1 =&gt; n
-      given 0 =&gt; 0 - n
-    seal
-seal
+use <code>match</code> to branch on conditions:</p>
+<pre><code>fn abs
+  case {| n |} =&gt;
+    match n &gt;= 0
+      case 1 =&gt; n
+      case 0 =&gt; 0 - n
+    end
+end
 </code></pre>
 <h2 id="matching-on-records"><a class="header" href="#matching-on-records">Matching on Records</a></h2>
-<p><code>divine</code> really shines when matching on record shapes:</p>
-<pre><code>rite fizzbuzz
-  given {| n |} =&gt;
+<p><code>match</code> really shines when matching on record shapes:</p>
+<pre><code>fn fizzbuzz
+  case {| n |} =&gt;
     let by3 = n - (n / 3) * 3
     let by5 = n - (n / 5) * 5
-    divine {| a: by3, b: by5 |}
-      given {| a: 0, b: 0 |} =&gt; "fizzbuzz"
-      given {| a: 0 |}       =&gt; "fizz"
-      given {| b: 0 |}       =&gt; "buzz"
-      given {| a, b |}       =&gt; ""
-    seal
-seal
+    match {| a: by3, b: by5 |}
+      case {| a: 0, b: 0 |} =&gt; "fizzbuzz"
+      case {| a: 0 |}       =&gt; "fizz"
+      case {| b: 0 |}       =&gt; "buzz"
+      case {| a, b |}       =&gt; ""
+    end
+end
 </code></pre>
-<p>Here, <code>divine</code> matches a record with fields <code>a</code> and <code>b</code>, dispatching on
+<p>Here, <code>match</code> matches a record with fields <code>a</code> and <code>b</code>, dispatching on
 whether they are zero. This is more expressive than a chain of if/else
 statements — it matches on the <em>structure</em> of data.</p>
 <h2 id="matching-on-integers"><a class="header" href="#matching-on-integers">Matching on Integers</a></h2>
-<p>When the scrutinee is a simple integer expression, <code>divine</code> acts like a
+<p>When the scrutinee is a simple integer expression, <code>match</code> acts like a
 switch statement:</p>
-<pre><code>rite collatz_step
-  given {| n |} =&gt;
-    divine invoke is_even {| n: n |}
-      given 1 =&gt; n / 2
-      given 0 =&gt; n * 3 + 1
-    seal
-seal
+<pre><code>fn collatz_step
+  case {| n |} =&gt;
+    match is_even {| n: n |}
+      case 1 =&gt; n / 2
+      case 0 =&gt; n * 3 + 1
+    end
+end
 </code></pre>
-<h2 id="nesting-divine"><a class="header" href="#nesting-divine">Nesting divine</a></h2>
-<p><code>divine</code> expressions can be nested:</p>
-<pre><code>rite classify
-  given {| x, y |} =&gt;
-    divine x == 0
-      given 1 =&gt;
-        divine y == 0
-          given 1 =&gt; "origin"
-          given 0 =&gt; "y-axis"
-        seal
-      given 0 =&gt;
-        divine y == 0
-          given 1 =&gt; "x-axis"
-          given 0 =&gt; "general"
-        seal
-    seal
-seal
+<h2 id="nesting-match"><a class="header" href="#nesting-match">Nesting match</a></h2>
+<p><code>match</code> expressions can be nested:</p>
+<pre><code>fn classify
+  case {| x, y |} =&gt;
+    match x == 0
+      case 1 =&gt;
+        match y == 0
+          case 1 =&gt; "origin"
+          case 0 =&gt; "y-axis"
+        end
+      case 0 =&gt;
+        match y == 0
+          case 1 =&gt; "x-axis"
+          case 0 =&gt; "general"
+        end
+    end
+end
 </code></pre>
 <p>However, matching on a record with multiple fields (as in the fizzbuzz
 example) is usually cleaner than nesting.</p>
-<h2 id="divine-vs-multi-clause-rites"><a class="header" href="#divine-vs-multi-clause-rites">divine vs. Multi-Clause Rites</a></h2>
-<p>Both <code>divine</code> and multi-clause rites use <code>given</code> for pattern matching. The
+<h2 id="match-vs-multi-clause-functions"><a class="header" href="#match-vs-multi-clause-functions">match vs. Multi-Clause Functions</a></h2>
+<p>Both <code>match</code> and multi-clause functions use <code>case</code> for pattern matching. The
 difference is scope:</p>
 <ul>
-<li><strong>Multi-clause rites</strong> match on the function’s argument at the top level</li>
-<li><strong><code>divine</code></strong> matches on any expression, anywhere within an expression</li>
+<li><strong>Multi-clause functions</strong> match on the function’s argument at the top level</li>
+<li><strong><code>match</code></strong> matches on any expression, anywhere within an expression</li>
 </ul>
-<p>Use multi-clause rites when the dispatch is the primary structure of the
-function. Use <code>divine</code> when you need to branch partway through a computation.</p>
+<p>Use multi-clause functions when the dispatch is the primary structure of the
+function. Use <code>match</code> when you need to branch partway through a computation.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="sum-types"><a class="header" href="#sum-types">Sum Types</a></h1>
+<p>badlang supports sum types via the <code>oneof</code> declaration. A sum type defines a
+closed set of variants, each of which may carry named fields (like a struct) or
+be nullary (carrying no data).</p>
+<h2 id="declaring-a-sum-type"><a class="header" href="#declaring-a-sum-type">Declaring a Sum Type</a></h2>
+<p>Use <code>oneof ... end</code> to declare a sum type:</p>
+<pre><code>oneof Color
+  Red
+  Green
+  Blue
+end
+
+oneof Shape
+  Circle {| radius: Int |}
+  Rectangle {| width: Int, height: Int |}
+  Point
+end
+</code></pre>
+<p>Each variant is either:</p>
+<ul>
+<li><strong>Nullary</strong> – just a name, like <code>Red</code> or <code>Point</code>.</li>
+<li><strong>With fields</strong> – a name followed by a record type, like <code>Circle {| radius: Int |}</code>.</li>
+</ul>
+<h2 id="constructing-values"><a class="header" href="#constructing-values">Constructing Values</a></h2>
+<p>Nullary variants are used directly as expressions:</p>
+<pre><code>let c = Red
+</code></pre>
+<p>Variants with fields are constructed by providing a record literal with the
+variant name:</p>
+<pre><code>let s = Circle {| radius: 5 |}
+let r = Rectangle {| width: 10, height: 20 |}
+</code></pre>
+<h2 id="pattern-matching-on-sum-types"><a class="header" href="#pattern-matching-on-sum-types">Pattern Matching on Sum Types</a></h2>
+<p>Use pattern matching to branch on the variant of a sum type value. Variant
+patterns mirror construction syntax:</p>
+<pre><code>match shape
+  case Circle {| radius |} =&gt; radius * radius * 3
+  case Rectangle {| width, height |} =&gt; width * height
+  case Point =&gt; 0
+end
+</code></pre>
+<p>Nullary variants match with just the variant name:</p>
+<pre><code>match color
+  case Red =&gt; "red"
+  case Green =&gt; "green"
+  case Blue =&gt; "blue"
+end
+</code></pre>
+<p>You can also use inline match expressions on sum type values wherever an
+expression is expected:</p>
+<pre><code>let area = match shape
+  case Circle {| radius |} =&gt; radius * radius * 3
+  case Rectangle {| width, height |} =&gt; width * height
+  case Point =&gt; 0
+end
+</code></pre>
+<h2 id="runtime-representation"><a class="header" href="#runtime-representation">Runtime Representation</a></h2>
+<p>At runtime, a sum type value is represented as a record with a <code>__tag</code> field
+that identifies the variant. For a nullary variant like <code>Red</code>, the value is
+simply <code>{| __tag: "Red" |}</code>. For a variant with fields like
+<code>Circle {| radius: 5 |}</code>, the value is <code>{| __tag: "Circle", radius: 5 |}</code>.</p>
+<p>This means sum type values are ordinary records under the hood, and the pattern
+matching machinery inspects the <code>__tag</code> field to determine which branch to take.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="structural-subtyping-1"><a class="header" href="#structural-subtyping-1">Structural Subtyping</a></h1>
 <p>Structural subtyping is one of badlang’s defining features. It means that a
 function accepting <code>{| x, y |}</code> will work with <em>any</em> record that has at least
 those fields — regardless of what other fields are present.</p>
 <h2 id="the-core-idea"><a class="header" href="#the-core-idea">The Core Idea</a></h2>
-<p>Consider this rite:</p>
-<pre><code>rite magnitude_sq
-  given {| x, y |} =&gt; x * x + y * y
-seal
+<p>Consider this fn:</p>
+<pre><code>fn magnitude_sq
+  case {| x, y |} =&gt; x * x + y * y
+end
 </code></pre>
 <p>The pattern <code>{| x, y |}</code> declares the <strong>minimum contract</strong>: the argument must
 have fields <code>x</code> and <code>y</code>. But it says nothing about other fields. All of these
 calls work:</p>
-<pre><code>invoke magnitude_sq {| x: 3, y: 4 |}
-invoke magnitude_sq {| x: 1, y: 2, z: 3 |}
-invoke magnitude_sq {| x: 10, y: 10, name: "point", extra: 999 |}
+<pre><code>magnitude_sq {| x: 3, y: 4 |}
+magnitude_sq {| x: 1, y: 2, z: 3 |}
+magnitude_sq {| x: 10, y: 10, name: "point", extra: 999 |}
 </code></pre>
 <p>The extra fields (<code>z</code>, <code>name</code>, <code>extra</code>) are silently ignored. This is
 <strong>width subtyping</strong> — a wider record (more fields) is a subtype of a narrower
 one (fewer fields).</p>
 <h2 id="practical-benefits"><a class="header" href="#practical-benefits">Practical Benefits</a></h2>
 <h3 id="code-reuse"><a class="header" href="#code-reuse">Code Reuse</a></h3>
-<p>A rite that needs only <code>x</code> and <code>y</code> can operate on 2D points, 3D points,
+<p>A fn that needs only <code>x</code> and <code>y</code> can operate on 2D points, 3D points,
 game entities, UI elements — anything with those fields:</p>
-<pre><code>altar Vec2
+<pre><code>struct Vec2
   x : Int
   y : Int
-seal
+end
 
-altar Vec3
+struct Vec3
   x : Int
   y : Int
   z : Int
-seal
+end
 
-rite magnitude_sq
-  given {| x, y |} =&gt; x * x + y * y
-seal
+fn magnitude_sq
+  case {| x, y |} =&gt; x * x + y * y
+end
 
-ritual main
-  let flat = summon Vec2 {| x: 3, y: 4 |}
-  let deep = summon Vec3 {| x: 1, y: 2, z: 3 |}
+do main
+  let flat = Vec2 {| x: 3, y: 4 |}
+  let deep = Vec3 {| x: 1, y: 2, z: 3 |}
 
-  -- Both work with the same rite
-  utter invoke magnitude_sq flat
-  utter invoke magnitude_sq deep
-seal
+  -- Both work with the same fn
+  print magnitude_sq flat
+  print magnitude_sq deep
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>25
 5
 </code></pre>
 <h3 id="incremental-refinement"><a class="header" href="#incremental-refinement">Incremental Refinement</a></h3>
-<p>You can write rites at different levels of specificity:</p>
+<p>You can write functions at different levels of specificity:</p>
 <pre><code>-- Works with any record having x and y
-rite magnitude_sq_2d
-  given {| x, y |} =&gt; x * x + y * y
-seal
+fn magnitude_sq_2d
+  case {| x, y |} =&gt; x * x + y * y
+end
 
 -- Requires x, y, and z
-rite magnitude_sq_3d
-  given {| x, y, z |} =&gt; x * x + y * y + z * z
-seal
+fn magnitude_sq_3d
+  case {| x, y, z |} =&gt; x * x + y * y + z * z
+end
 </code></pre>
 <p>A <code>Vec3</code> record works with both. A <code>Vec2</code> record works only with the 2D
 version. The type system enforces this automatically.</p>
 <h2 id="how-it-works-row-polymorphism"><a class="header" href="#how-it-works-row-polymorphism">How It Works: Row Polymorphism</a></h2>
 <p>Under the hood, structural subtyping is implemented via <strong>row polymorphism</strong>
 (specifically, Remy-style row types).</p>
-<p>When the type checker sees <code>given {| x, y |} =&gt; ...</code>, it infers a type like:</p>
+<p>When the type checker sees <code>case {| x, y |} =&gt; ...</code>, it infers a type like:</p>
 <pre><code>{| x: Int, y: Int | r |} -&gt; Int
 </code></pre>
 <p>The <code>r</code> is a <strong>row variable</strong> — it stands for “any additional fields.” When
-you call this rite with <code>{| x: 3, y: 4, z: 5 |}</code>, the row variable <code>r</code>
+you call this fn with <code>{| x: 3, y: 4, z: 5 |}</code>, the row variable <code>r</code>
 unifies with <code>{| z: Int |}</code>. The required fields are checked; the rest flow
 through <code>r</code>.</p>
 <p>This is fully automatic. You never write row variables yourself — the type
 checker infers them.</p>
 <h2 id="pattern-dispatch-and-subtyping"><a class="header" href="#pattern-dispatch-and-subtyping">Pattern Dispatch and Subtyping</a></h2>
 <p>Width subtyping interacts naturally with multi-clause pattern matching:</p>
-<pre><code>rite classify
-  given {| x: 0, y: 0 |} =&gt; 0   -- origin
-  given {| x: 0 |}       =&gt; 1   -- on y-axis
-  given {| y: 0 |}       =&gt; 2   -- on x-axis
-  given {| x, y |}       =&gt; 3   -- general point
-seal
+<pre><code>fn classify
+  case {| x: 0, y: 0 |} =&gt; 0   -- origin
+  case {| x: 0 |}       =&gt; 1   -- on y-axis
+  case {| y: 0 |}       =&gt; 2   -- on x-axis
+  case {| x, y |}       =&gt; 3   -- general point
+end
 </code></pre>
 <p>Each clause requires different fields. The most specific patterns (requiring
 specific values) are tried first. The last clause is a catch-all that accepts
 any record with <code>x</code> and <code>y</code>.</p>
-<pre><code>ritual main
-  utter invoke classify {| x: 0, y: 0 |}      -- 0
-  utter invoke classify {| x: 0, y: 5 |}      -- 1
-  utter invoke classify {| x: 7, y: 0 |}      -- 2
-  utter invoke classify {| x: 3, y: 4 |}      -- 3
-seal
+<pre><code>do main
+  print classify {| x: 0, y: 0 |}      -- 0
+  print classify {| x: 0, y: 5 |}      -- 1
+  print classify {| x: 7, y: 0 |}      -- 2
+  print classify {| x: 3, y: 4 |}      -- 3
+end
 </code></pre>
 <h2 id="anonymous-records"><a class="header" href="#anonymous-records">Anonymous Records</a></h2>
-<p>You don’t need altars to benefit from structural subtyping. Anonymous records
+<p>You don’t need structs to benefit from structural subtyping. Anonymous records
 work just as well:</p>
-<pre><code>ritual main
-  utter invoke magnitude_sq {| x: 10, y: 10, extra: 999 |}
-seal
+<pre><code>do main
+  print magnitude_sq {| x: 10, y: 10, extra: 999 |}
+end
 </code></pre>
-<p>The <code>extra</code> field is accepted and ignored. No altar declaration needed.</p>
+<p>The <code>extra</code> field is accepted and ignored. No struct declaration needed.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="the-type-system"><a class="header" href="#the-type-system">The Type System</a></h1>
 <p>badlang uses type inference — you almost never write type annotations. The
@@ -1328,7 +1394,7 @@ errors when things don’t line up.</p>
 </code></pre>
 <h2 id="open-record-types-row-polymorphism"><a class="header" href="#open-record-types-row-polymorphism">Open Record Types (Row Polymorphism)</a></h2>
 <p>The key insight of badlang’s type system is that record types can be <strong>open</strong>.
-When a rite pattern-matches on <code>{| x, y |}</code>, the inferred type is:</p>
+When a fn pattern-matches on <code>{| x, y |}</code>, the inferred type is:</p>
 <pre><code>{| x: Int, y: Int | r |}
 </code></pre>
 <p>The <code>| r</code> is a row variable representing “and possibly more fields.” This is
@@ -1352,9 +1418,9 @@ automatically.</p>
 <tr><td><code>a &amp;&amp; b</code>, <code>a || b</code></td><td>Both operands <code>Int</code>, result <code>Int</code></td></tr>
 <tr><td>`{</td><td>x: e1, y: e2</td></tr>
 <tr><td><code>rec.field</code></td><td>Type of <code>field</code> in <code>rec</code>’s type</td></tr>
-<tr><td><code>invoke f arg</code></td><td>Return type of <code>f</code></td></tr>
-<tr><td><code>hearken</code></td><td><code>String</code></td></tr>
-<tr><td><code>scry</code></td><td><code>Int</code></td></tr>
+<tr><td><code>f arg</code></td><td>Return type of <code>f</code></td></tr>
+<tr><td><code>readln</code></td><td><code>String</code></td></tr>
+<tr><td><code>readint</code></td><td><code>Int</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -1364,11 +1430,11 @@ algorithm — extended with <strong>Remy-style row types</strong> for records.</
 <p>The process:</p>
 <ol>
 <li>
-<p><strong>Collect declarations.</strong> All altars, rites, and rituals are registered in
-the type environment before any bodies are checked.</p>
+<p><strong>Collect declarations.</strong> All structs, functions, and do blocks are
+registered in the type environment before any bodies are checked.</p>
 </li>
 <li>
-<p><strong>Infer each body.</strong> For each rite, the type checker walks the pattern and
+<p><strong>Infer each body.</strong> For each fn, the type checker walks the pattern and
 body, generating type constraints. For each record pattern, a fresh row
 variable is created to allow extra fields.</p>
 </li>
@@ -1384,18 +1450,18 @@ integer), the type checker reports the mismatch.</p>
 </li>
 </ol>
 <h2 id="pragmatic-let-polymorphism"><a class="header" href="#pragmatic-let-polymorphism">Pragmatic Let-Polymorphism</a></h2>
-<p>Each call to <code>invoke</code> creates <strong>fresh type variables</strong> for the callee. This
-means a rite can be called with structurally different arguments at different
+<p>Each function call creates <strong>fresh type variables</strong> for the callee. This
+means a fn can be called with structurally different arguments at different
 call sites:</p>
-<pre><code>rite get_x
-  given {| x |} =&gt; x
-seal
+<pre><code>fn get_x
+  case {| x |} =&gt; x
+end
 
-ritual main
+do main
   -- Called with different record types at each site:
-  utter invoke get_x {| x: 42 |}
-  utter invoke get_x {| x: "hello" |}
-seal
+  print get_x {| x: 42 |}
+  print get_x {| x: "hello" |}
+end
 </code></pre>
 <p>This is a pragmatic form of let-polymorphism that avoids the complexity of
 a full polymorphic type system while providing useful flexibility.</p>
@@ -1406,23 +1472,23 @@ a full polymorphic type system while providing useful flexibility.</p>
 <li>Accessing a field that doesn’t exist on a record</li>
 <li>Passing a record that’s missing required fields</li>
 </ul>
-<pre><code>rite needs_xyz
-  given {| x, y, z |} =&gt; x + y + z
-seal
+<pre><code>fn needs_xyz
+  case {| x, y, z |} =&gt; x + y + z
+end
 
-ritual main
+do main
   -- Type error: record is missing field z
-  utter invoke needs_xyz {| x: 1, y: 2 |}
-seal
+  print needs_xyz {| x: 1, y: 2 |}
+end
 </code></pre>
 <h2 id="no-explicit-type-annotations"><a class="header" href="#no-explicit-type-annotations">No Explicit Type Annotations</a></h2>
-<p>Type annotations appear in only one place: altar field declarations.</p>
-<pre><code>altar Point
+<p>Type annotations appear in only one place: struct field declarations.</p>
+<pre><code>struct Point
   x : Int
   y : Int
-seal
+end
 </code></pre>
-<p>Everywhere else — rite bodies, ritual statements, let bindings — types are
+<p>Everywhere else — fn bodies, do statements, let bindings — types are
 inferred. There is no syntax for writing type annotations on expressions or
 function signatures.</p>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -1430,112 +1496,112 @@ function signatures.</p>
 <p>badlang provides built-in facilities for console I/O, file I/O, and
 command-line argument access.</p>
 <h2 id="console-output"><a class="header" href="#console-output">Console Output</a></h2>
-<h3 id="utter--print-with-newline-1"><a class="header" href="#utter--print-with-newline-1">utter — Print with Newline</a></h3>
-<p><code>utter</code> evaluates an expression and prints the result to stdout, followed by
+<h3 id="print--print-with-newline-1"><a class="header" href="#print--print-with-newline-1">print — Print with Newline</a></h3>
+<p><code>print</code> evaluates an expression and prints the result to stdout, followed by
 a newline:</p>
-<pre><code>utter "Hello, world!"
-utter 42
-utter invoke factorial {| n: 5 |}
+<pre><code>print "Hello, world!"
+print 42
+print factorial {| n: 5 |}
 </code></pre>
 <p>Integers print as decimal numbers. Strings print as their contents (no
 quotes).</p>
-<h3 id="whisper--print-without-newline-1"><a class="header" href="#whisper--print-without-newline-1">whisper — Print without Newline</a></h3>
-<p><code>whisper</code> prints without appending a newline:</p>
-<pre><code>whisper "Enter your name: "
-whisper "&gt; "
+<h3 id="write--print-without-newline-1"><a class="header" href="#write--print-without-newline-1">write — Print without Newline</a></h3>
+<p><code>write</code> prints without appending a newline:</p>
+<pre><code>write "Enter your name: "
+write "&gt; "
 </code></pre>
-<p>Use <code>whisper</code> to build up output incrementally or to print prompts:</p>
-<pre><code>ritual main
-  whisper "Hello, "
-  whisper "world"
-  utter "!"
-seal
+<p>Use <code>write</code> to build up output incrementally or to print prompts:</p>
+<pre><code>do main
+  write "Hello, "
+  write "world"
+  print "!"
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>Hello, world!
 </code></pre>
 <h2 id="console-input"><a class="header" href="#console-input">Console Input</a></h2>
-<h3 id="hearken--read-a-string"><a class="header" href="#hearken--read-a-string">hearken — Read a String</a></h3>
-<p><code>hearken</code> reads a line from stdin and returns it as a <code>String</code>. The trailing
+<h3 id="readln--read-a-string"><a class="header" href="#readln--read-a-string">readln — Read a String</a></h3>
+<p><code>readln</code> reads a line from stdin and returns it as a <code>String</code>. The trailing
 newline is stripped:</p>
-<pre><code>ritual main
-  utter "What is your name?"
-  whisper "&gt; "
-  let name = hearken
-  whisper "Hello, "
-  whisper name
-  utter "!"
-seal
+<pre><code>do main
+  print "What is your name?"
+  write "&gt; "
+  let name = readln
+  write "Hello, "
+  write name
+  print "!"
+end
 </code></pre>
-<h3 id="scry--read-an-integer"><a class="header" href="#scry--read-an-integer">scry — Read an Integer</a></h3>
-<p><code>scry</code> reads an integer from stdin:</p>
-<pre><code>ritual main
-  utter "Pick a number:"
-  whisper "&gt; "
-  let n = scry
-  utter "You chose:"
-  utter n
-seal
+<h3 id="readint--read-an-integer"><a class="header" href="#readint--read-an-integer">readint — Read an Integer</a></h3>
+<p><code>readint</code> reads an integer from stdin:</p>
+<pre><code>do main
+  print "Pick a number:"
+  write "&gt; "
+  let n = readint
+  print "You chose:"
+  print n
+end
 </code></pre>
 <h2 id="file-io"><a class="header" href="#file-io">File I/O</a></h2>
 <h3 id="inscribe--write-to-a-file"><a class="header" href="#inscribe--write-to-a-file">inscribe — Write to a File</a></h3>
 <p><code>inscribe</code> writes a string to a file, creating or overwriting it:</p>
-<pre><code>invoke inscribe {| path: "output.txt", content: "Written by badlang!" |}
+<pre><code>inscribe {| path: "output.txt", content: "Written by badlang!" |}
 </code></pre>
 <p>The argument is a record with fields <code>path</code> (the file path) and <code>content</code>
 (the string to write).</p>
 <h3 id="unearth--read-from-a-file"><a class="header" href="#unearth--read-from-a-file">unearth — Read from a File</a></h3>
 <p><code>unearth</code> reads the entire contents of a file and returns it as a <code>String</code>:</p>
-<pre><code>let contents = invoke unearth {| path: "input.txt" |}
-utter contents
+<pre><code>let contents = unearth {| path: "input.txt" |}
+print contents
 </code></pre>
 <p>The argument is a record with a single field <code>path</code>.</p>
 <h2 id="command-line-arguments"><a class="header" href="#command-line-arguments">Command-Line Arguments</a></h2>
 <h3 id="argc--argument-count"><a class="header" href="#argc--argument-count">argc — Argument Count</a></h3>
 <p><code>argc</code> returns the number of command-line arguments (including the program
 name):</p>
-<pre><code>utter invoke argc {| |}
+<pre><code>print argc {| |}
 </code></pre>
 <p>The argument is the empty record <code>{| |}</code>.</p>
 <h3 id="argv--get-argument-by-index"><a class="header" href="#argv--get-argument-by-index">argv — Get Argument by Index</a></h3>
 <p><code>argv</code> returns the nth command-line argument as a string:</p>
-<pre><code>utter invoke argv {| n: 0 |}   -- program name
-utter invoke argv {| n: 1 |}   -- first argument
+<pre><code>print argv {| n: 0 |}   -- program name
+print argv {| n: 1 |}   -- first argument
 </code></pre>
 <p>The argument is a record with field <code>n</code> (the zero-based index).</p>
 <h2 id="complete-io-example"><a class="header" href="#complete-io-example">Complete I/O Example</a></h2>
-<pre><code>ritual main
-  utter "=== badlang IO demo ==="
+<pre><code>do main
+  print "=== badlang IO demo ==="
 
   -- Console I/O
-  utter "What is your name?"
-  whisper "&gt; "
-  let name = hearken
-  whisper "Hello, "
-  whisper name
-  utter "!"
+  print "What is your name?"
+  write "&gt; "
+  let name = readln
+  write "Hello, "
+  write name
+  print "!"
 
-  utter "Pick a number:"
-  whisper "&gt; "
-  let n = scry
-  utter "You chose:"
-  utter n
+  print "Pick a number:"
+  write "&gt; "
+  let n = readint
+  print "You chose:"
+  print n
 
   -- Command-line arguments
-  utter "Number of CLI args:"
-  utter invoke argc {| |}
+  print "Number of CLI args:"
+  print argc {| |}
 
-  utter "Program name:"
-  utter invoke argv {| n: 0 |}
+  print "Program name:"
+  print argv {| n: 0 |}
 
   -- File I/O
-  invoke inscribe {| path: "io_test.txt", content: "Written by badlang!" |}
-  utter "Wrote io_test.txt"
+  inscribe {| path: "io_test.txt", content: "Written by badlang!" |}
+  print "Wrote io_test.txt"
 
-  let contents = invoke unearth {| path: "io_test.txt" |}
-  utter "Read back:"
-  utter contents
-seal
+  let contents = unearth {| path: "io_test.txt" |}
+  print "Read back:"
+  print contents
+end
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="recursion-2"><a class="header" href="#recursion-2">Recursion</a></h1>
@@ -1543,125 +1609,125 @@ seal
 This chapter covers common recursion patterns.</p>
 <h2 id="simple-recursion"><a class="header" href="#simple-recursion">Simple Recursion</a></h2>
 <p>The classic factorial:</p>
-<pre><code>rite factorial
-  given {| n: 0 |} =&gt; 1
-  given {| n |} =&gt; n * (invoke factorial {| n: n - 1 |})
-seal
+<pre><code>fn factorial
+  case {| n: 0 |} =&gt; 1
+  case {| n |} =&gt; n * (factorial {| n: n - 1 |})
+end
 </code></pre>
 <p>The first clause is the base case. The second recurses with <code>n - 1</code>. Pattern
 matching on literals provides the termination condition.</p>
 <h2 id="accumulator-pattern"><a class="header" href="#accumulator-pattern">Accumulator Pattern</a></h2>
 <p>Accumulator-passing style avoids deep call stacks by threading state through
 a parameter:</p>
-<pre><code>rite fib_acc
-  given {| n: 0, a, b |} =&gt; a
-  given {| n, a, b |} =&gt;
-    invoke fib_acc {| n: n - 1, a: b, b: a + b |}
-seal
+<pre><code>fn fib_acc
+  case {| n: 0, a, b |} =&gt; a
+  case {| n, a, b |} =&gt;
+    fib_acc {| n: n - 1, a: b, b: a + b |}
+end
 
-rite fib
-  given {| n |} =&gt; invoke fib_acc {| n: n, a: 0, b: 1 |}
-seal
+fn fib
+  case {| n |} =&gt; fib_acc {| n: n, a: 0, b: 1 |}
+end
 </code></pre>
-<p>The public-facing <code>fib</code> rite wraps the accumulator version with initial
+<p>The public-facing <code>fib</code> fn wraps the accumulator version with initial
 values. Each recursive call is in tail position, making this efficient
 in practice.</p>
 <p>Here’s another example — summing from 1 to n:</p>
-<pre><code>rite sum_acc
-  given {| n: 0, acc |} =&gt; acc
-  given {| n, acc |} =&gt;
-    invoke sum_acc {| n: n - 1, acc: acc + n |}
-seal
+<pre><code>fn sum_acc
+  case {| n: 0, acc |} =&gt; acc
+  case {| n, acc |} =&gt;
+    sum_acc {| n: n - 1, acc: acc + n |}
+end
 </code></pre>
 <h2 id="mutual-recursion-1"><a class="header" href="#mutual-recursion-1">Mutual Recursion</a></h2>
-<p>Rites can call each other, enabling mutual recursion. The classic example is
+<p>Functions can call each other, enabling mutual recursion. The classic example is
 Hofstadter’s Female and Male sequences:</p>
 <pre><code>-- F(0) = 1, M(0) = 0
 -- F(n) = n - M(F(n-1))
 -- M(n) = n - F(M(n-1))
 
-rite female
-  given {| n: 0 |} =&gt; 1
-  given {| n |} =&gt;
-    n - (invoke male {|
-      n: invoke female {| n: n - 1 |}
+fn female
+  case {| n: 0 |} =&gt; 1
+  case {| n |} =&gt;
+    n - (male {|
+      n: female {| n: n - 1 |}
     |})
-seal
+end
 
-rite male
-  given {| n: 0 |} =&gt; 0
-  given {| n |} =&gt;
-    n - (invoke female {|
-      n: invoke male {| n: n - 1 |}
+fn male
+  case {| n: 0 |} =&gt; 0
+  case {| n |} =&gt;
+    n - (female {|
+      n: male {| n: n - 1 |}
     |})
-seal
+end
 </code></pre>
 <p>Declaration order doesn’t matter — <code>female</code> can reference <code>male</code> even though
-<code>male</code> is defined later. All rites are visible to each other.</p>
-<h2 id="recursion-with-divine"><a class="header" href="#recursion-with-divine">Recursion with divine</a></h2>
-<p>Combining recursion with <code>divine</code> for conditional logic:</p>
-<pre><code>rite collatz_count
-  given {| n: 1, steps |} =&gt; steps
-  given {| n, steps |} =&gt;
-    divine invoke is_even {| n: n |}
-      given 1 =&gt;
-        invoke collatz_count {| n: n / 2, steps: steps + 1 |}
-      given 0 =&gt;
-        invoke collatz_count {| n: n * 3 + 1, steps: steps + 1 |}
-    seal
-seal
+<code>male</code> is defined later. All functions are visible to each other.</p>
+<h2 id="recursion-with-match"><a class="header" href="#recursion-with-match">Recursion with match</a></h2>
+<p>Combining recursion with <code>match</code> for conditional logic:</p>
+<pre><code>fn collatz_count
+  case {| n: 1, steps |} =&gt; steps
+  case {| n, steps |} =&gt;
+    match is_even {| n: n |}
+      case 1 =&gt;
+        collatz_count {| n: n / 2, steps: steps + 1 |}
+      case 0 =&gt;
+        collatz_count {| n: n * 3 + 1, steps: steps + 1 |}
+    end
+end
 </code></pre>
 <p>This counts the number of steps for a Collatz sequence to reach 1. The
-<code>divine</code> branches on whether <code>n</code> is even, then recurses with the appropriate
+<code>match</code> branches on whether <code>n</code> is even, then recurses with the appropriate
 transformation.</p>
 <h2 id="the-euclidean-algorithm"><a class="header" href="#the-euclidean-algorithm">The Euclidean Algorithm</a></h2>
 <p>GCD demonstrates recursion with structural dispatch:</p>
-<pre><code>rite gcd
-  given {| a, b: 0 |} =&gt; a
-  given {| a: 0, b |} =&gt; b
-  given {| a, b |} =&gt;
-    divine a &gt; b
-      given 1 =&gt; invoke gcd {| a: a - b, b: b |}
-      given 0 =&gt; invoke gcd {| a: a, b: b - a |}
-    seal
-seal
+<pre><code>fn gcd
+  case {| a, b: 0 |} =&gt; a
+  case {| a: 0, b |} =&gt; b
+  case {| a, b |} =&gt;
+    match a &gt; b
+      case 1 =&gt; gcd {| a: a - b, b: b |}
+      case 0 =&gt; gcd {| a: a, b: b - a |}
+    end
+end
 </code></pre>
 <p>The first two clauses handle base cases via literal patterns. The third
-clause uses <code>divine</code> to choose which value to reduce.</p>
+clause uses <code>match</code> to choose which value to reduce.</p>
 <h2 id="the-ackermann-function"><a class="header" href="#the-ackermann-function">The Ackermann Function</a></h2>
 <p>The Ackermann function is a classic stress test for recursion — it grows
 extremely fast:</p>
-<pre><code>rite ackermann
-  given {| m: 0, n |} =&gt; n + 1
-  given {| m, n: 0 |} =&gt;
-    invoke ackermann {| m: m - 1, n: 1 |}
-  given {| m, n |} =&gt;
-    invoke ackermann {|
+<pre><code>fn ackermann
+  case {| m: 0, n |} =&gt; n + 1
+  case {| m, n: 0 |} =&gt;
+    ackermann {| m: m - 1, n: 1 |}
+  case {| m, n |} =&gt;
+    ackermann {|
       m: m - 1,
-      n: invoke ackermann {| m: m, n: n - 1 |}
+      n: ackermann {| m: m, n: n - 1 |}
     |}
-seal
+end
 </code></pre>
 <p>Three clauses, each matching a different combination of base cases and
-recursive cases. The nested <code>invoke</code> in the third clause demonstrates how
+recursive cases. The nested call in the third clause demonstrates how
 badlang handles deeply recursive computations.</p>
 <h2 id="evenodd-via-mutual-recursion"><a class="header" href="#evenodd-via-mutual-recursion">Even/Odd via Mutual Recursion</a></h2>
 <p>A simple but illustrative example:</p>
-<pre><code>rite is_even
-  given {| n: 0 |} =&gt; 1
-  given {| n |} =&gt; invoke is_odd {| n: n - 1 |}
-seal
+<pre><code>fn is_even
+  case {| n: 0 |} =&gt; 1
+  case {| n |} =&gt; is_odd {| n: n - 1 |}
+end
 
-rite is_odd
-  given {| n: 0 |} =&gt; 0
-  given {| n |} =&gt; invoke is_even {| n: n - 1 |}
-seal
+fn is_odd
+  case {| n: 0 |} =&gt; 0
+  case {| n |} =&gt; is_even {| n: n - 1 |}
+end
 </code></pre>
 <p><code>is_even</code> delegates to <code>is_odd</code> and vice versa, peeling off one from <code>n</code>
 at each step until the base case is reached.</p>
 <h2 id="tips"><a class="header" href="#tips">Tips</a></h2>
 <ul>
-<li><strong>Always have a base case.</strong> A literal pattern like <code>given {| n: 0 |}</code> is
+<li><strong>Always have a base case.</strong> A literal pattern like <code>case {| n: 0 |}</code> is
 the most common termination condition.</li>
 <li><strong>Use the accumulator pattern</strong> when you’re building up a result
 incrementally. Thread an <code>acc</code> field through the recursive calls.</li>
@@ -1678,24 +1744,24 @@ badlang’s features combine in practice.</p>
 <p>The classic interview problem: for a number n, return “fizzbuzz” if divisible
 by both 3 and 5, “fizz” if only by 3, “buzz” if only by 5, or empty
 otherwise.</p>
-<pre><code>rite fizzbuzz
-  given {| n |} =&gt;
+<pre><code>fn fizzbuzz
+  case {| n |} =&gt;
     let by3 = n - (n / 3) * 3
     let by5 = n - (n / 5) * 5
-    divine {| a: by3, b: by5 |}
-      given {| a: 0, b: 0 |} =&gt; "fizzbuzz"
-      given {| a: 0 |}       =&gt; "fizz"
-      given {| b: 0 |}       =&gt; "buzz"
-      given {| a, b |}       =&gt; ""
-    seal
-seal
+    match {| a: by3, b: by5 |}
+      case {| a: 0, b: 0 |} =&gt; "fizzbuzz"
+      case {| a: 0 |}       =&gt; "fizz"
+      case {| b: 0 |}       =&gt; "buzz"
+      case {| a, b |}       =&gt; ""
+    end
+end
 
-ritual main
-  utter invoke fizzbuzz {| n: 3 |}
-  utter invoke fizzbuzz {| n: 5 |}
-  utter invoke fizzbuzz {| n: 15 |}
-  utter invoke fizzbuzz {| n: 7 |}
-seal
+do main
+  print fizzbuzz {| n: 3 |}
+  print fizzbuzz {| n: 5 |}
+  print fizzbuzz {| n: 15 |}
+  print fizzbuzz {| n: 7 |}
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>fizz
@@ -1707,56 +1773,56 @@ fizzbuzz
 <ul>
 <li>Since there’s no modulo operator, we compute the remainder manually:
 <code>n - (n / 3) * 3</code>.</li>
-<li>We pack both remainders into a record and use <code>divine</code> to match on the
+<li>We pack both remainders into a record and use <code>match</code> to match on the
 <em>combination</em> of values — much cleaner than nested if/else.</li>
-<li>Width subtyping means <code>given {| a: 0 |}</code> matches a record with both <code>a</code>
+<li>Width subtyping means <code>case {| a: 0 |}</code> matches a record with both <code>a</code>
 and <code>b</code> fields, as long as <code>a</code> is 0. The <code>b</code> field is simply ignored.</li>
 </ul>
 <h2 id="geometry-with-structural-subtyping"><a class="header" href="#geometry-with-structural-subtyping">Geometry with Structural Subtyping</a></h2>
-<pre><code>altar Vec2
+<pre><code>struct Vec2
   x : Int
   y : Int
-seal
+end
 
-altar Vec3
+struct Vec3
   x : Int
   y : Int
   z : Int
-seal
+end
 
-rite magnitude_sq
-  given {| x, y |} =&gt; x * x + y * y
-seal
+fn magnitude_sq
+  case {| x, y |} =&gt; x * x + y * y
+end
 
-rite magnitude_sq_3d
-  given {| x, y, z |} =&gt; x * x + y * y + z * z
-seal
+fn magnitude_sq_3d
+  case {| x, y, z |} =&gt; x * x + y * y + z * z
+end
 
-rite classify
-  given {| x: 0, y: 0 |} =&gt; 0
-  given {| x: 0 |}       =&gt; 1
-  given {| y: 0 |}       =&gt; 2
-  given {| x, y |}       =&gt; 3
-seal
+fn classify
+  case {| x: 0, y: 0 |} =&gt; 0
+  case {| x: 0 |}       =&gt; 1
+  case {| y: 0 |}       =&gt; 2
+  case {| x, y |}       =&gt; 3
+end
 
-ritual main
-  let flat = summon Vec2 {| x: 3, y: 4 |}
-  let deep = summon Vec3 {| x: 1, y: 2, z: 3 |}
+do main
+  let flat = Vec2 {| x: 3, y: 4 |}
+  let deep = Vec3 {| x: 1, y: 2, z: 3 |}
 
   -- Width subtyping: Vec3 works with magnitude_sq
-  utter invoke magnitude_sq flat
-  utter invoke magnitude_sq deep
-  utter invoke magnitude_sq_3d deep
+  print magnitude_sq flat
+  print magnitude_sq deep
+  print magnitude_sq_3d deep
 
   -- Pattern dispatch
-  utter invoke classify {| x: 0, y: 0 |}
-  utter invoke classify {| x: 0, y: 5 |}
-  utter invoke classify {| x: 7, y: 0 |}
-  utter invoke classify {| x: 3, y: 4 |}
+  print classify {| x: 0, y: 0 |}
+  print classify {| x: 0, y: 5 |}
+  print classify {| x: 7, y: 0 |}
+  print classify {| x: 3, y: 4 |}
 
   -- Anonymous records work too
-  utter invoke magnitude_sq {| x: 10, y: 10, extra: 999 |}
-seal
+  print magnitude_sq {| x: 10, y: 10, extra: 999 |}
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>25
@@ -1777,52 +1843,52 @@ are zero.</li>
 <li>Anonymous records with extra fields work seamlessly.</li>
 </ul>
 <h2 id="a-number-theory-toolkit"><a class="header" href="#a-number-theory-toolkit">A Number Theory Toolkit</a></h2>
-<pre><code>rite is_even
-  given {| n |} =&gt;
+<pre><code>fn is_even
+  case {| n |} =&gt;
     let half = n / 2
-    divine half * 2 == n
-      given 1 =&gt; 1
-      given 0 =&gt; 0
-    seal
-seal
+    match half * 2 == n
+      case 1 =&gt; 1
+      case 0 =&gt; 0
+    end
+end
 
-rite gcd
-  given {| a, b: 0 |} =&gt; a
-  given {| a: 0, b |} =&gt; b
-  given {| a, b |} =&gt;
-    divine a &gt; b
-      given 1 =&gt; invoke gcd {| a: a - b, b: b |}
-      given 0 =&gt; invoke gcd {| a: a, b: b - a |}
-    seal
-seal
+fn gcd
+  case {| a, b: 0 |} =&gt; a
+  case {| a: 0, b |} =&gt; b
+  case {| a, b |} =&gt;
+    match a &gt; b
+      case 1 =&gt; gcd {| a: a - b, b: b |}
+      case 0 =&gt; gcd {| a: a, b: b - a |}
+    end
+end
 
-rite fib
-  given {| n |} =&gt; invoke fib_acc {| n: n, a: 0, b: 1 |}
-seal
+fn fib
+  case {| n |} =&gt; fib_acc {| n: n, a: 0, b: 1 |}
+end
 
-rite fib_acc
-  given {| n: 0, a, b |} =&gt; a
-  given {| n, a, b |} =&gt;
-    invoke fib_acc {| n: n - 1, a: b, b: a + b |}
-seal
+fn fib_acc
+  case {| n: 0, a, b |} =&gt; a
+  case {| n, a, b |} =&gt;
+    fib_acc {| n: n - 1, a: b, b: a + b |}
+end
 
-rite collatz_count
-  given {| n: 1, steps |} =&gt; steps
-  given {| n, steps |} =&gt;
-    divine invoke is_even {| n: n |}
-      given 1 =&gt;
-        invoke collatz_count {| n: n / 2, steps: steps + 1 |}
-      given 0 =&gt;
-        invoke collatz_count {| n: n * 3 + 1, steps: steps + 1 |}
-    seal
-seal
+fn collatz_count
+  case {| n: 1, steps |} =&gt; steps
+  case {| n, steps |} =&gt;
+    match is_even {| n: n |}
+      case 1 =&gt;
+        collatz_count {| n: n / 2, steps: steps + 1 |}
+      case 0 =&gt;
+        collatz_count {| n: n * 3 + 1, steps: steps + 1 |}
+    end
+end
 
-ritual main
-  utter invoke gcd {| a: 252, b: 105 |}
-  utter invoke gcd {| a: 1071, b: 462 |}
-  utter invoke fib {| n: 20 |}
-  utter invoke collatz_count {| n: 27, steps: 0 |}
-seal
+do main
+  print gcd {| a: 252, b: 105 |}
+  print gcd {| a: 1071, b: 462 |}
+  print fib {| n: 20 |}
+  print collatz_count {| n: 27, steps: 0 |}
+end
 </code></pre>
 <p>Output:</p>
 <pre><code>21
@@ -1833,31 +1899,31 @@ seal
 <p><strong>Key techniques:</strong></p>
 <ul>
 <li><code>is_even</code> uses the multiply-and-compare trick since there’s no modulo.</li>
-<li><code>gcd</code> uses subtraction-based Euclidean algorithm with <code>divine</code> for branching.</li>
+<li><code>gcd</code> uses subtraction-based Euclidean algorithm with <code>match</code> for branching.</li>
 <li><code>fib</code> wraps an accumulator-passing helper for efficiency.</li>
-<li><code>collatz_count</code> combines <code>divine</code> with recursion for conditional stepping.</li>
+<li><code>collatz_count</code> combines <code>match</code> with recursion for conditional stepping.</li>
 </ul>
 <h2 id="interactive-program"><a class="header" href="#interactive-program">Interactive Program</a></h2>
-<pre><code>rite factorial
-  given {| n: 0 |} =&gt; 1
-  given {| n |} =&gt; n * (invoke factorial {| n: n - 1 |})
-seal
+<pre><code>fn factorial
+  case {| n: 0 |} =&gt; 1
+  case {| n |} =&gt; n * (factorial {| n: n - 1 |})
+end
 
-ritual main
-  utter "Enter a number to compute its factorial:"
-  whisper "&gt; "
-  let n = scry
-  whisper "The factorial of "
-  whisper n
-  whisper " is "
-  utter invoke factorial {| n: n |}
-seal
+do main
+  print "Enter a number to compute its factorial:"
+  write "&gt; "
+  let n = readint
+  write "The factorial of "
+  write n
+  write " is "
+  print factorial {| n: n |}
+end
 </code></pre>
 <p><strong>Key techniques:</strong></p>
 <ul>
-<li><code>scry</code> reads an integer from stdin.</li>
-<li><code>whisper</code> builds up a line of output without newlines.</li>
-<li><code>utter</code> finishes the line with a newline.</li>
+<li><code>readint</code> reads an integer from stdin.</li>
+<li><code>write</code> builds up a line of output without newlines.</li>
+<li><code>print</code> finishes the line with a newline.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="the-compilation-pipeline"><a class="header" href="#the-compilation-pipeline">The Compilation Pipeline</a></h1>
@@ -1897,10 +1963,10 @@ and provides functions to convert parse trees into typed AST nodes.</p>
 <p>The AST types (defined in <code>Badlang.AST</code>) include:</p>
 <ul>
 <li><code>Program</code> — a list of declarations</li>
-<li><code>Decl</code> — altar, rite, or ritual</li>
-<li><code>Expr</code> — all expression forms (literals, records, invoke, divine, etc.)</li>
+<li><code>Decl</code> — struct, fn, or do</li>
+<li><code>Expr</code> — all expression forms (literals, records, function calls, match, etc.)</li>
 <li><code>Pattern</code> — all pattern forms (variable, literal, record, wildcard)</li>
-<li><code>Stmt</code> — ritual statements (utter, whisper, let, expression)</li>
+<li><code>Stmt</code> — do statements (print, write, let, expression)</li>
 </ul>
 <h2 id="stage-3-type-checking"><a class="header" href="#stage-3-type-checking">Stage 3: Type Checking</a></h2>
 <p><strong>Module:</strong> <code>Badlang.Types</code></p>
@@ -1909,7 +1975,7 @@ types</strong>. It works in two passes:</p>
 <ol>
 <li>
 <p><strong>Registration pass:</strong> Collect all declarations into the type environment.
-Each rite gets a fresh type variable; each altar’s fields are recorded.</p>
+Each fn gets a fresh type variable; each struct’s fields are recorded.</p>
 </li>
 <li>
 <p><strong>Checking pass:</strong> For each declaration body, walk the AST generating
@@ -1929,7 +1995,7 @@ pairwise</li>
 <p><strong>Module:</strong> <code>Badlang.IR</code> + <code>Badlang.Lower</code></p>
 <p>The lowering pass transforms the typed AST into an explicit intermediate
 representation with basic blocks, named temporaries, and flat instructions.
-Pattern matching, divine expressions, and let-in chains are all resolved at
+Pattern matching, match expressions, and let-in chains are all resolved at
 this stage so that backends are purely mechanical translations.</p>
 <p>Key properties of the IR:</p>
 <ul>
@@ -1939,7 +2005,7 @@ named as a <code>Var</code>.</li>
 instructions.</li>
 <li><strong>Pattern matching decomposed into primitives</strong> — <code>ITagCheck</code>, <code>INullCheck</code>,
 <code>IIntEq</code>, <code>IStrEq</code> plus <code>TBranch</code> terminators create explicit control flow.</li>
-<li><strong>No SSA phi nodes</strong> — join points (divine results) use a pre-declared
+<li><strong>No SSA phi nodes</strong> — join points (match results) use a pre-declared
 result variable written by whichever branch succeeds.</li>
 </ul>
 <h2 id="stage-5-code-generation"><a class="header" href="#stage-5-code-generation">Stage 5: Code Generation</a></h2>
@@ -1988,7 +2054,7 @@ output into a binary:</p>
 <p>badlang compiles to readable, self-contained C. Understanding the generated
 code can help with debugging and with understanding the language’s runtime
 behavior.</p>
-<h2 id="runtime-representation"><a class="header" href="#runtime-representation">Runtime Representation</a></h2>
+<h2 id="runtime-representation-1"><a class="header" href="#runtime-representation-1">Runtime Representation</a></h2>
 <p>All values are represented as tagged unions:</p>
 <pre><code class="language-c">typedef enum { TAG_INT, TAG_STR, TAG_RECORD, TAG_VOID } Tag;
 
@@ -2039,20 +2105,20 @@ it is done with the value.</p>
 <tr><td><code>make_record</code></td><td>Returns owned; <strong>adopts</strong> field values (does not retain them)</td></tr>
 <tr><td><code>record_field</code></td><td>Returns <strong>borrowed</strong> (no refcount change)</td></tr>
 <tr><td>Variable access</td><td>Borrows from local, caller retains to own</td></tr>
-<tr><td>Rite call</td><td>Caller owns the argument; callee borrows it. Return value is owned.</td></tr>
-<tr><td><code>utter</code> / <code>whisper</code></td><td>Borrow their argument (caller releases after)</td></tr>
+<tr><td>Function call</td><td>Caller owns the argument; callee borrows it. Return value is owned.</td></tr>
+<tr><td><code>print</code> / <code>write</code></td><td>Borrow their argument (caller releases after)</td></tr>
 </tbody>
 </table>
 </div>
 <h2 id="how-constructs-compile"><a class="header" href="#how-constructs-compile">How Constructs Compile</a></h2>
-<h3 id="rites--c-functions"><a class="header" href="#rites--c-functions">Rites → C Functions</a></h3>
-<p>Each rite becomes a C function taking and returning <code>Value*</code>:</p>
-<pre><code>rite square
-  given {| n |} =&gt; n * n
-seal
+<h3 id="functions--c-functions"><a class="header" href="#functions--c-functions">Functions → C Functions</a></h3>
+<p>Each fn becomes a C function taking and returning <code>Value*</code>:</p>
+<pre><code>fn square
+  case {| n |} =&gt; n * n
+end
 </code></pre>
 <p>Compiles to something like:</p>
-<pre><code class="language-c">static Value* rite_square(Value* arg) {
+<pre><code class="language-c">static Value* fn_square(Value* arg) {
     Value* _f_n = record_field(arg, "n");
     Value* bl_n = _f_n;
     if (_f_n != NULL) {
@@ -2070,10 +2136,10 @@ seal
 <h3 id="pattern-matching--if-chains"><a class="header" href="#pattern-matching--if-chains">Pattern Matching → if-chains</a></h3>
 <p>Multi-clause pattern matching compiles to cascading if-statements that check
 field values:</p>
-<pre><code>rite factorial
-  given {| n: 0 |} =&gt; 1
-  given {| n |} =&gt; n * (invoke factorial {| n: n - 1 |})
-seal
+<pre><code>fn factorial
+  case {| n: 0 |} =&gt; 1
+  case {| n |} =&gt; n * (factorial {| n: n - 1 |})
+end
 </code></pre>
 <p>Becomes cascading blocks, each extracting fields and checking conditions. On
 match, pattern-bound variables are retained, the body is evaluated, bindings
@@ -2109,17 +2175,17 @@ rc_release(bl_x);
 </code></pre>
 <p>This avoids O(N) nesting depth for N sequential bindings, keeping the generated
 C flat regardless of how many <code>let</code> bindings appear in a row.</p>
-<h3 id="divine--local-variable--goto"><a class="header" href="#divine--local-variable--goto">divine → Local Variable + goto</a></h3>
-<p><code>divine</code> expressions compile to a local result variable and a label for early
+<h3 id="match--local-variable--goto"><a class="header" href="#match--local-variable--goto">match → Local Variable + goto</a></h3>
+<p><code>match</code> expressions compile to a local result variable and a label for early
 exit, with each clause checking its pattern and jumping to the end on match.
 The scrutinee is released at the label after the matching clause stores its
 result.</p>
-<h3 id="utterwhisper--print-functions"><a class="header" href="#utterwhisper--print-functions">utter/whisper → Print Functions</a></h3>
-<p><code>utter</code> and <code>whisper</code> borrow their argument — the caller is responsible for
+<h3 id="printwrite--print-functions"><a class="header" href="#printwrite--print-functions">print/write → Print Functions</a></h3>
+<p><code>print</code> and <code>write</code> borrow their argument — the caller is responsible for
 releasing it afterward.</p>
-<pre><code class="language-c">// Generated for: utter expr
+<pre><code class="language-c">// Generated for: print expr
 Value* _t0 = /* evaluate expr */;
-utter(_t0);
+print(_t0);
 rc_release(_t0);
 </code></pre>
 <h2 id="identifier-mangling"><a class="header" href="#identifier-mangling">Identifier Mangling</a></h2>
@@ -2199,8 +2265,8 @@ compiler, minus the type checker:</p>
 <p>The compiler reads a source file, tokenizes it, parses the token stream into
 an AST, and generates either C code or AArch64 assembly depending on the mode.
 It relies on a shared <code>runtime.c</code> (or <code>runtime_aarch64.c</code> for native mode)
-that provides the value representation, reference counting, and built-in rites
-for file I/O and string manipulation.</p>
+that provides the value representation, reference counting, and built-in
+functions for file I/O and string manipulation.</p>
 <p>The compiler selects its output mode via command-line arguments:</p>
 <ul>
 <li><code>compiler source.bad output.c</code> — emit C (default)</li>
@@ -2218,7 +2284,7 @@ for file I/O and string manipulation.</p>
 <tr><td>Parser</td><td>Recursive descent into AST nodes</td></tr>
 <tr><td>C code emitter</td><td>AST to C translation</td></tr>
 <tr><td>AArch64 code emitter</td><td>AST to native assembly translation</td></tr>
-<tr><td>Driver</td><td>Main ritual selecting mode and tying it all together</td></tr>
+<tr><td>Driver</td><td>Main do selecting mode and tying it all together</td></tr>
 </tbody>
 </table>
 </div>
@@ -2230,13 +2296,13 @@ structures. badlang has no built-in lists, so the compiler builds them from
 records.</p>
 <h2 id="linked-lists-from-records"><a class="header" href="#linked-lists-from-records">Linked Lists from Records</a></h2>
 <p>The compiler implements linked lists using tagged records:</p>
-<pre><code>rite nil
-  given {| |} =&gt; {| tag: "nil" |}
-seal
+<pre><code>fn nil
+  case {| |} =&gt; {| tag: "nil" |}
+end
 
-rite cons
-  given {| head, tail |} =&gt; {| tag: "cons", head: head, tail: tail |}
-seal
+fn cons
+  case {| head, tail |} =&gt; {| tag: "cons", head: head, tail: tail |}
+end
 </code></pre>
 <p>A list is either <code>{| tag: "nil" |}</code> or <code>{| tag: "cons", head: x, tail: xs |}</code>.
 Pattern matching on the <code>tag</code> field distinguishes the two cases. This is a
@@ -2246,7 +2312,7 @@ classic encoding of algebraic data types using structural records.</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Rite</th><th>Purpose</th></tr>
+<tr><th>Function</th><th>Purpose</th></tr>
 </thead>
 <tbody>
 <tr><td><code>is_nil</code></td><td>Returns <code>1</code> if the list is nil, <code>0</code> otherwise</td></tr>
@@ -2260,16 +2326,16 @@ classic encoding of algebraic data types using structural records.</p>
 </div>
 <p>All recursive list operations use <strong>accumulator-passing style</strong> for
 tail recursion:</p>
-<pre><code>rite list_reverse_acc
-  given {| list, acc |} =&gt;
-    divine invoke is_nil {| list: list |}
-      given 1 =&gt; acc
-      given 0 =&gt;
-        let h = invoke list_head {| list: list |}
-        let t = invoke list_tail {| list: list |}
-        invoke list_reverse_acc {| list: t, acc: invoke cons {| head: h, tail: acc |} |}
-    seal
-seal
+<pre><code>fn list_reverse_acc
+  case {| list, acc |} =&gt;
+    match is_nil {| list: list |}
+      case 1 =&gt; acc
+      case 0 =&gt;
+        let h = list_head {| list: list |}
+        let t = list_tail {| list: list |}
+        list_reverse_acc {| list: t, acc: cons {| head: h, tail: acc |} |}
+    end
+end
 </code></pre>
 <h3 id="the-accumulate-then-reverse-pattern"><a class="header" href="#the-accumulate-then-reverse-pattern">The Accumulate-Then-Reverse Pattern</a></h3>
 <p>Throughout the compiler, recursive parsers accumulate results by <code>cons</code>-ing
@@ -2277,11 +2343,11 @@ onto the front of a list (which is O(1)), building the list in reverse order.
 When the recursion finishes, a final <code>list_reverse</code> call restores the correct
 order. This pattern appears in the tokenizer, the parser, and the code emitter.</p>
 <h2 id="character-classification"><a class="header" href="#character-classification">Character Classification</a></h2>
-<p>The compiler provides character classification rites for the tokenizer:</p>
+<p>The compiler provides character classification functions for the tokenizer:</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Rite</th><th>Purpose</th></tr>
+<tr><th>Function</th><th>Purpose</th></tr>
 </thead>
 <tbody>
 <tr><td><code>is_digit</code></td><td>ASCII digits 0–9</td></tr>
@@ -2292,10 +2358,10 @@ order. This pattern appears in the tokenizer, the parser, and the code emitter.<
 </table>
 </div>
 <p>These operate on integer character codes obtained via <code>char_at</code> — one of the
-built-in string rites provided by the runtime.</p>
+built-in string functions provided by the runtime.</p>
 <h2 id="string-helpers"><a class="header" href="#string-helpers">String Helpers</a></h2>
 <p>Since badlang strings are immutable and there is no character type, string
-manipulation uses the built-in rites <code>strlen</code>, <code>char_at</code>, <code>substr</code>, and
+manipulation uses the built-in functions <code>strlen</code>, <code>char_at</code>, <code>substr</code>, and
 <code>concat</code>. The compiler adds convenience wrappers like:</p>
 <ul>
 <li><code>str_eq</code> — string equality via <code>strcmp</code></li>
@@ -2318,7 +2384,7 @@ token is a record with a <code>type</code> and a <code>value</code>:</p>
 <tr><th>Category</th><th>Types</th></tr>
 </thead>
 <tbody>
-<tr><td>Keywords</td><td><code>rite</code>, <code>ritual</code>, <code>altar</code>, <code>given</code>, <code>seal</code>, <code>let</code>, <code>invoke</code>, <code>summon</code>, <code>divine</code>, <code>hearken</code>, <code>scry</code>, <code>utter</code>, <code>whisper</code></td></tr>
+<tr><td>Keywords</td><td><code>fn</code>, <code>do</code>, <code>struct</code>, <code>case</code>, <code>end</code>, <code>let</code>, <code>match</code>, <code>readln</code>, <code>readint</code>, <code>print</code>, <code>write</code>, <code>oneof</code></td></tr>
 <tr><td>Identifiers</td><td><code>ident</code></td></tr>
 <tr><td>Literals</td><td><code>int</code>, <code>str</code></td></tr>
 <tr><td>Operators</td><td><code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>%</code>, <code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code>, <code>&amp;&amp;</code>, <code>||</code></td></tr>
@@ -2345,7 +2411,7 @@ characters.</p>
 <li>
 <p><strong>Letters or <code>_</code></strong> → <code>lex_word</code>: Scan to the end of the alphanumeric
 sequence. Check against the keyword list with <code>is_keyword</code>. If it matches,
-the token type is the keyword itself (e.g., <code>"rite"</code>). A lone <code>_</code> becomes
+the token type is the keyword itself (e.g., <code>"fn"</code>). A lone <code>_</code> becomes
 the wildcard token. Otherwise, it’s an <code>ident</code>.</p>
 </li>
 <li>
@@ -2356,17 +2422,17 @@ single-character tokens.</p>
 </ol>
 <h2 id="the-tokenization-loop"><a class="header" href="#the-tokenization-loop">The Tokenization Loop</a></h2>
 <p>The main loop (<code>tokenize_loop</code>) is tail-recursive with an accumulator:</p>
-<pre><code>rite tokenize_loop
-  given {| src, pos, acc |} =&gt;
+<pre><code>fn tokenize_loop
+  case {| src, pos, acc |} =&gt;
     -- skip whitespace and comments
     -- if at end of string, reverse acc and append EOF
     -- otherwise, lex next token, cons onto acc, recurse
-seal
+end
 </code></pre>
 <p>Tokens accumulate in reverse order via <code>cons</code> and are reversed at the end.
 The final token list always ends with an <code>{| type: "eof", value: "" |}</code> sentinel.</p>
 <h2 id="whitespace-and-comments"><a class="header" href="#whitespace-and-comments">Whitespace and Comments</a></h2>
-<p>The <code>skip_ws_cmt</code> rite handles both whitespace and line comments recursively:</p>
+<p>The <code>skip_ws_cmt</code> fn handles both whitespace and line comments recursively:</p>
 <ul>
 <li>Skip any whitespace characters</li>
 <li>If the next two characters are <code>--</code>, skip to end of line</li>
@@ -2378,13 +2444,13 @@ The final token list always ends with an <code>{| type: "eof", value: "" |}</cod
 <p>The parser transforms a list of tokens into an abstract syntax tree (AST). It
 is a <strong>recursive descent parser</strong> with <strong>precedence climbing</strong> for operators.</p>
 <h2 id="token-stream-interface"><a class="header" href="#token-stream-interface">Token Stream Interface</a></h2>
-<p>The parser consumes tokens through three helper rites:</p>
+<p>The parser consumes tokens through three helper functions:</p>
 <ul>
 <li><code>peek</code> — look at the next token without consuming it</li>
 <li><code>advance</code> — consume the current token and return the rest</li>
 <li><code>expect</code> — consume a token of a specific type, or abort with an error</li>
 </ul>
-<p>Every parse rite takes a <code>tokens</code> parameter and returns a record containing the
+<p>Every parse fn takes a <code>tokens</code> parameter and returns a record containing the
 parsed AST <code>node</code> and the remaining <code>rest</code> tokens.</p>
 <h2 id="ast-node-types"><a class="header" href="#ast-node-types">AST Node Types</a></h2>
 <p>The parser produces tagged records as AST nodes. Each node has a <code>tag</code> field
@@ -2403,12 +2469,12 @@ that identifies its type.</p>
 <tr><td><code>unop</code></td><td><code>op</code>, <code>operand</code></td><td><code>-x</code></td></tr>
 <tr><td><code>field_access</code></td><td><code>obj</code>, <code>field</code></td><td><code>point.x</code></td></tr>
 <tr><td><code>record</code></td><td><code>fields</code></td><td><code>{| x: 1, y: 2 |}</code></td></tr>
-<tr><td><code>summon</code></td><td><code>name</code>, <code>fields</code></td><td><code>summon Point {| x: 1 |}</code></td></tr>
-<tr><td><code>invoke</code></td><td><code>name</code>, <code>arg</code></td><td><code>invoke factorial {| n: 5 |}</code></td></tr>
+<tr><td><code>named_record</code></td><td><code>name</code>, <code>fields</code></td><td><code>Point {| x: 1 |}</code></td></tr>
+<tr><td><code>call</code></td><td><code>name</code>, <code>arg</code></td><td><code>factorial {| n: 5 |}</code></td></tr>
 <tr><td><code>let_in</code></td><td><code>name</code>, <code>value</code>, <code>body</code></td><td><code>let x = 1</code> (desugared)</td></tr>
-<tr><td><code>divine</code></td><td><code>scrutinee</code>, <code>clauses</code></td><td><code>divine expr given ... seal</code></td></tr>
-<tr><td><code>hearken</code></td><td><em>(none)</em></td><td><code>hearken</code></td></tr>
-<tr><td><code>scry</code></td><td><em>(none)</em></td><td><code>scry</code></td></tr>
+<tr><td><code>match</code></td><td><code>scrutinee</code>, <code>clauses</code></td><td><code>match expr case ... end</code></td></tr>
+<tr><td><code>readln</code></td><td><em>(none)</em></td><td><code>readln</code></td></tr>
+<tr><td><code>readint</code></td><td><em>(none)</em></td><td><code>readint</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -2434,19 +2500,19 @@ that identifies its type.</p>
 <tr><th>Tag</th><th>Fields</th><th>Example</th></tr>
 </thead>
 <tbody>
-<tr><td><code>decl_rite</code></td><td><code>name</code>, <code>clauses</code></td><td><code>rite factorial given ... seal</code></td></tr>
-<tr><td><code>decl_ritual</code></td><td><code>name</code>, <code>stmts</code></td><td><code>ritual main ... seal</code></td></tr>
-<tr><td><code>decl_altar</code></td><td><code>name</code>, <code>fields</code></td><td><code>altar Point x: Int y: Int seal</code></td></tr>
+<tr><td><code>decl_fn</code></td><td><code>name</code>, <code>clauses</code></td><td><code>fn factorial case ... end</code></td></tr>
+<tr><td><code>decl_do</code></td><td><code>name</code>, <code>stmts</code></td><td><code>do main ... end</code></td></tr>
+<tr><td><code>decl_struct</code></td><td><code>name</code>, <code>fields</code></td><td><code>struct Point x: Int y: Int end</code></td></tr>
 </tbody>
 </table>
 </div>
 <h2 id="operator-precedence"><a class="header" href="#operator-precedence">Operator Precedence</a></h2>
 <p>The parser implements operator precedence via a chain of mutually recursive
-rites, from lowest to highest precedence:</p>
+functions, from lowest to highest precedence:</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Level</th><th>Operators</th><th>Rite</th></tr>
+<tr><th>Level</th><th>Operators</th><th>Function</th></tr>
 </thead>
 <tbody>
 <tr><td>1 (lowest)</td><td><code>||</code></td><td><code>parse_or_expr</code></td></tr>
@@ -2471,15 +2537,15 @@ right-nested <code>let_in</code> AST nodes:</p>
 let y = x + 1             body: {| tag: "let_in", name: "y", value: ...,
 x * y                              body: {| tag: "binop", ... |} |} |}
 </code></pre>
-<p>The <code>parse_let_bindings</code> rite collects bindings into a list, then
+<p>The <code>parse_let_bindings</code> fn collects bindings into a list, then
 <code>fold_let_bindings</code> converts them into nested <code>let_in</code> nodes where the
 innermost body is the final expression.</p>
-<h2 id="parsing-invoke"><a class="header" href="#parsing-invoke">Parsing Invoke</a></h2>
-<p><code>invoke</code> supports three argument forms:</p>
+<h2 id="parsing-function-calls"><a class="header" href="#parsing-function-calls">Parsing Function Calls</a></h2>
+<p>Function calls support three argument forms:</p>
 <ol>
-<li><strong>Record literal:</strong> <code>invoke f {| x: 1 |}</code></li>
-<li><strong>Parenthesized expression:</strong> <code>invoke f (expr)</code></li>
-<li><strong>Variable:</strong> <code>invoke f x</code></li>
+<li><strong>Record literal:</strong> <code>f {| x: 1 |}</code></li>
+<li><strong>Parenthesized expression:</strong> <code>f (expr)</code></li>
+<li><strong>Variable:</strong> <code>f x</code></li>
 </ol>
 <p>This flexibility lets the programmer choose the most readable form for each
 call site.</p>
@@ -2488,7 +2554,7 @@ call site.</p>
 <p>The code emitter translates AST nodes into C code. It generates
 reference-counted <code>Value*</code> operations that work with the shared <code>runtime.c</code>.</p>
 <h2 id="the-emitter-pattern"><a class="header" href="#the-emitter-pattern">The Emitter Pattern</a></h2>
-<p>Every emitter rite follows the same convention. It takes an AST node and a
+<p>Every emitter fn follows the same convention. It takes an AST node and a
 <code>counter</code> (for generating unique variable names), and returns:</p>
 <pre><code>{| code: String, var: String, counter: Int |}
 </code></pre>
@@ -2498,20 +2564,20 @@ function calls, etc.)</li>
 <li><strong><code>var</code></strong> — the name of the C variable holding the result</li>
 <li><strong><code>counter</code></strong> — the updated counter for the next fresh variable</li>
 </ul>
-<p>The counter is <strong>threaded</strong> through every emitter call: each rite receives
+<p>The counter is <strong>threaded</strong> through every emitter call: each fn receives
 the counter, may allocate fresh variables (incrementing it), and passes the
 updated counter to the next call. This ensures all generated variable names
 are globally unique.</p>
 <h2 id="fresh-variables"><a class="header" href="#fresh-variables">Fresh Variables</a></h2>
-<p>The <code>fresh_var</code> rite generates unique C identifiers:</p>
-<pre><code>invoke fresh_var {| prefix: "_t", counter: 0 |}
+<p>The <code>fresh_var</code> fn generates unique C identifiers:</p>
+<pre><code>fresh_var {| prefix: "_t", counter: 0 |}
 → {| name: "_t0", counter: 1 |}
 </code></pre>
 <p>Generated names include <code>_t0</code>, <code>_t1</code>, … for temporaries, <code>_scr0</code> for
-scrutinees, <code>_dvn0</code> for divine results, and <code>_done0</code> for goto labels.</p>
+scrutinees, <code>_dvn0</code> for match results, and <code>_done0</code> for goto labels.</p>
 <h2 id="identifier-mangling-1"><a class="header" href="#identifier-mangling-1">Identifier Mangling</a></h2>
-<p>The <code>c_name</code> rite prefixes badlang identifiers with <code>bl_</code> to avoid collisions
-with C keywords. The special name <code>arg</code> (the rite parameter) is left unmangled
+<p>The <code>c_name</code> fn prefixes badlang identifiers with <code>bl_</code> to avoid collisions
+with C keywords. The special name <code>arg</code> (the fn parameter) is left unmangled
 since it matches the generated C function signature.</p>
 <h2 id="expression-emission"><a class="header" href="#expression-emission">Expression Emission</a></h2>
 <p>The central dispatcher <code>emit_expr</code> pattern-matches on the AST node’s <code>tag</code>
@@ -2529,15 +2595,15 @@ field and delegates to specialized emitters:</p>
 <tr><td><code>unop</code></td><td><code>emit_unop</code></td><td>Emit operand, negate</td></tr>
 <tr><td><code>field_access</code></td><td><code>emit_field_access</code></td><td><code>record_field(obj, "name")</code> + retain</td></tr>
 <tr><td><code>record</code></td><td><code>emit_record</code></td><td><code>make_record(n, "f1", v1, ...)</code></td></tr>
-<tr><td><code>invoke</code></td><td><code>emit_invoke_expr</code></td><td><code>rite_name(arg)</code></td></tr>
+<tr><td><code>call</code></td><td><code>emit_call_expr</code></td><td><code>fn_name(arg)</code></td></tr>
 <tr><td><code>let_in</code></td><td><code>emit_let_in</code></td><td>Flat sequential bindings (see below)</td></tr>
-<tr><td><code>divine</code></td><td><code>emit_divine</code></td><td>Cascading if-chains with goto</td></tr>
+<tr><td><code>match</code></td><td><code>emit_match</code></td><td>Cascading if-chains with goto</td></tr>
 </tbody>
 </table>
 </div>
 <h3 id="let-binding-chains"><a class="header" href="#let-binding-chains">Let Binding Chains</a></h3>
 <p>The emitter flattens chains of nested <code>let_in</code> nodes into sequential C
-variable declarations. The <code>collect_let_chain</code> rite walks the nested structure
+variable declarations. The <code>collect_let_chain</code> fn walks the nested structure
 and extracts all bindings and the final body. Then <code>emit_let_bindings_loop</code>
 emits each binding as a flat <code>Value*</code> declaration, and all bound variables are
 released in reverse order after the body:</p>
@@ -2575,8 +2641,8 @@ Value* bl_x = _f_x;
 sub-patterns, it additionally checks the value:</p>
 <pre><code class="language-c">_f_n != NULL &amp;&amp; _f_n-&gt;tag == TAG_INT &amp;&amp; _f_n-&gt;int_val == 0
 </code></pre>
-<h3 id="divine-expressions"><a class="header" href="#divine-expressions">Divine Expressions</a></h3>
-<p><code>divine</code> compiles to a local result variable, a scrutinee, and a series of
+<h3 id="match-expressions"><a class="header" href="#match-expressions">Match Expressions</a></h3>
+<p><code>match</code> compiles to a local result variable, a scrutinee, and a series of
 if-blocks with a shared <code>goto</code> label:</p>
 <pre><code class="language-c">Value* _dvn0;
 Value* _scr0 = /* scrutinee */;
@@ -2588,30 +2654,30 @@ rc_release(_scr0);
 </code></pre>
 <p>Each clause retains pattern-bound variables on entry and releases them before
 the <code>goto</code>.</p>
-<h2 id="rite-definitions"><a class="header" href="#rite-definitions">Rite Definitions</a></h2>
-<p>Each rite compiles to a static C function:</p>
-<pre><code class="language-c">static Value* rite_factorial(Value* arg) {
+<h2 id="function-definitions"><a class="header" href="#function-definitions">Function Definitions</a></h2>
+<p>Each fn compiles to a static C function:</p>
+<pre><code class="language-c">static Value* fn_factorial(Value* arg) {
     /* clause 1 */
     /* clause 2 */
-    fprintf(stderr, "Pattern match failure in rite 'factorial'\n");
+    fprintf(stderr, "Pattern match failure in fn 'factorial'\n");
     exit(1);
 }
 </code></pre>
 <p>Clauses are emitted as cascading if-blocks. On a successful match, the body is
 evaluated, pattern-bound variables are released, and the result is returned.</p>
-<h2 id="built-in-rites"><a class="header" href="#built-in-rites">Built-in Rites</a></h2>
-<p>Certain rites (<code>unearth</code>, <code>inscribe</code>, <code>concat</code>, <code>strlen</code>, <code>char_at</code>, <code>substr</code>,
-<code>strcmp</code>, <code>int_to_str</code>, <code>char_of_int</code>, <code>argc</code>, <code>argv</code>) are implemented in
-<code>runtime.c</code> rather than generated. The emitter checks <code>is_builtin_rite</code> and
-skips code generation for these — they are available as C functions at link
-time.</p>
+<h2 id="built-in-functions"><a class="header" href="#built-in-functions">Built-in Functions</a></h2>
+<p>Certain functions (<code>unearth</code>, <code>inscribe</code>, <code>concat</code>, <code>strlen</code>, <code>char_at</code>,
+<code>substr</code>, <code>strcmp</code>, <code>int_to_str</code>, <code>char_of_int</code>, <code>argc</code>, <code>argv</code>) are
+implemented in <code>runtime.c</code> rather than generated. The emitter checks
+<code>is_builtin_fn</code> and skips code generation for these — they are available as C
+functions at link time.</p>
 <h2 id="assembling-the-output"><a class="header" href="#assembling-the-output">Assembling the Output</a></h2>
-<p>The top-level <code>emit_c</code> rite assembles the complete C file by concatenating:</p>
+<p>The top-level <code>emit_c</code> fn assembles the complete C file by concatenating:</p>
 <ol>
 <li>The contents of <code>runtime.c</code> (read via <code>unearth</code>)</li>
-<li>Forward declarations for all non-builtin rites</li>
-<li>Rite definitions</li>
-<li>The <code>main()</code> function (from the <code>ritual main</code> declaration)</li>
+<li>Forward declarations for all non-builtin functions</li>
+<li>Function definitions</li>
+<li>The <code>main()</code> function (from the <code>do main</code> declaration)</li>
 </ol>
 <h2 id="the-aarch64-code-generator"><a class="header" href="#the-aarch64-code-generator">The AArch64 Code Generator</a></h2>
 <p>The self-hosting compiler also includes an AArch64 native code generator,
@@ -2630,8 +2696,8 @@ emitter threads a richer state record:</p>
 <li><strong><code>strs</code></strong> — a linked list of string literals with deduplicated labels</li>
 </ul>
 <h3 id="stack-based-variables"><a class="header" href="#stack-based-variables">Stack-based Variables</a></h3>
-<p>All variables live on the stack. The <code>alloc_slot</code> rite allocates a slot and
-the <code>lookup_slot</code> rite finds one by name. Stack offsets are computed as
+<p>All variables live on the stack. The <code>alloc_slot</code> fn allocates a slot and
+the <code>lookup_slot</code> fn finds one by name. Stack offsets are computed as
 <code>-(16 + (slot+1)*8)</code> relative to the frame pointer (x29), with
 <code>emit_load_slot</code> and <code>emit_store_slot</code> generating the appropriate <code>ldur</code>/<code>stur</code>
 instructions (falling back to register-indirect addressing for large offsets).</p>
@@ -2642,12 +2708,12 @@ assembly text, <code>var</code> names the stack slot holding the result, and <co
 carries the updated counters, slots, and string table.</p>
 <h3 id="string-table"><a class="header" href="#string-table">String Table</a></h3>
 <p>String literals and field names are collected into a deduplicated string
-table during emission. The <code>emit_string_table</code> rite emits them as <code>.asciz</code>
+table during emission. The <code>emit_string_table</code> fn emits them as <code>.asciz</code>
 directives in a <code>.section __TEXT,__cstring</code> data section at the end of the
 file.</p>
 <h3 id="mode-selection"><a class="header" href="#mode-selection">Mode Selection</a></h3>
-<p>The <code>get_mode</code> rite checks <code>argv[3]</code> for the string <code>"asm"</code>. The main ritual
-uses a <code>divine</code> on the mode to select between <code>emit_c</code> and <code>emit_asm</code>.</p>
+<p>The <code>get_mode</code> fn checks <code>argv[3]</code> for the string <code>"asm"</code>. The main do
+uses a <code>match</code> on the mode to select between <code>emit_c</code> and <code>emit_asm</code>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="bootstrapping"><a class="header" href="#bootstrapping">Bootstrapping</a></h1>
 <p>A self-hosting compiler faces a chicken-and-egg problem: to compile itself, it
@@ -2732,7 +2798,7 @@ All 3 generations produce identical c output.
 compiler.</li>
 <li><strong>Correctness</strong> — the self-hosting compiler agrees with the reference
 compiler on the language’s semantics (both produce working compilers).</li>
-<li><strong>Determinism</strong> — the compiler produces identical output when given
+<li><strong>Determinism</strong> — the compiler produces identical output when case
 identical input, regardless of which generation compiled it.</li>
 <li><strong>Stability</strong> — changes to the compiler can be validated by re-running the
 bootstrap and checking that the fixed point is preserved.</li>
@@ -2747,10 +2813,10 @@ bootstrap and checking that the fixed point is preserved.</li>
 <tr><th>Keyword</th><th>Syntax</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>altar</code></td><td><code>altar Name ... seal</code></td><td>Declare a named record type with typed fields</td></tr>
-<tr><td><code>rite</code></td><td><code>rite name given ... seal</code></td><td>Define a pure function by pattern matching</td></tr>
-<tr><td><code>ritual</code></td><td><code>ritual name ... seal</code></td><td>Define an effectful entry point</td></tr>
-<tr><td><code>seal</code></td><td>(closing delimiter)</td><td>Close an altar, rite, ritual, or divine block</td></tr>
+<tr><td><code>struct</code></td><td><code>struct Name ... end</code></td><td>Declare a named record type with typed fields</td></tr>
+<tr><td><code>fn</code></td><td><code>fn name case ... end</code></td><td>Define a pure function by pattern matching</td></tr>
+<tr><td><code>do</code></td><td><code>do name ... end</code></td><td>Define an effectful entry point</td></tr>
+<tr><td><code>end</code></td><td>(closing delimiter)</td><td>Close a struct, fn, do, or match block</td></tr>
 </tbody>
 </table>
 </div>
@@ -2761,8 +2827,8 @@ bootstrap and checking that the fixed point is preserved.</li>
 <tr><th>Keyword</th><th>Syntax</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>given</code></td><td><code>given pattern =&gt; body</code></td><td>A pattern clause in a rite or divine</td></tr>
-<tr><td><code>divine</code></td><td><code>divine expr given ... seal</code></td><td>Inline pattern match expression</td></tr>
+<tr><td><code>case</code></td><td><code>case pattern =&gt; body</code></td><td>A pattern clause in a fn or match expression</td></tr>
+<tr><td><code>match</code></td><td><code>match expr case ... end</code></td><td>Inline pattern match expression</td></tr>
 </tbody>
 </table>
 </div>
@@ -2773,13 +2839,14 @@ bootstrap and checking that the fixed point is preserved.</li>
 <tr><th>Keyword</th><th>Syntax</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>invoke</code></td><td><code>invoke name arg</code></td><td>Call a rite with an argument</td></tr>
-<tr><td><code>summon</code></td><td>`summon AltarName {</td><td>…</td></tr>
 <tr><td><code>let</code></td><td><code>let name = expr</code></td><td>Bind a local variable</td></tr>
 <tr><td><code>in</code></td><td>(reserved)</td><td>Reserved for future use</td></tr>
 </tbody>
 </table>
 </div>
+<p>Function calls use postfix syntax: <code>name arg</code> (e.g., <code>factorial {| n: 5 |}</code>).
+Named record construction uses the type name followed by a record literal:
+<code>TypeName {| ... |}</code> (e.g., <code>Point {| x: 3, y: 4 |}</code>).</p>
 <h2 id="io-keywords"><a class="header" href="#io-keywords">I/O Keywords</a></h2>
 <div class="table-wrapper">
 <table>
@@ -2787,10 +2854,10 @@ bootstrap and checking that the fixed point is preserved.</li>
 <tr><th>Keyword</th><th>Syntax</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>utter</code></td><td><code>utter expr</code></td><td>Print a value to stdout with a newline</td></tr>
-<tr><td><code>whisper</code></td><td><code>whisper expr</code></td><td>Print a value to stdout without a newline</td></tr>
-<tr><td><code>hearken</code></td><td><code>hearken</code></td><td>Read a line from stdin as a String</td></tr>
-<tr><td><code>scry</code></td><td><code>scry</code></td><td>Read an integer from stdin</td></tr>
+<tr><td><code>print</code></td><td><code>print expr</code></td><td>Print a value to stdout with a newline</td></tr>
+<tr><td><code>write</code></td><td><code>write expr</code></td><td>Print a value to stdout without a newline</td></tr>
+<tr><td><code>readln</code></td><td><code>readln</code></td><td>Read a line from stdin as a String</td></tr>
+<tr><td><code>readint</code></td><td><code>readint</code></td><td>Read an integer from stdin</td></tr>
 </tbody>
 </table>
 </div>
@@ -2799,7 +2866,7 @@ bootstrap and checking that the fixed point is preserved.</li>
 <li><strong>Identifiers</strong> start with a letter and continue with letters or digits</li>
 <li><strong>Keywords</strong> take priority — you cannot use a keyword as a variable name</li>
 <li><strong>Comments</strong> start with <code>--</code> and extend to the end of the line</li>
-<li><strong>Strings</strong> are delimited by <code>"</code> with no escape sequences</li>
+<li><strong>Strings</strong> are delimited by <code>"</code> with standard escape sequences (<code>\n</code>, <code>\t</code>, <code>\r</code>, <code>\\</code>, <code>\"</code>)</li>
 <li><strong>Integers</strong> are sequences of digits (<code>[0-9]+</code>)</li>
 <li><strong>Records</strong> are delimited by <code>{|</code> and <code>|}</code></li>
 </ul>
@@ -2896,83 +2963,83 @@ be <code>Int</code>.</p>
 </div>
 <p>Use parentheses to override precedence: <code>(a + b) * c</code>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="built-in-rites-1"><a class="header" href="#built-in-rites-1">Built-in Rites</a></h1>
-<p>badlang provides several built-in rites for I/O and system interaction. These
-are implemented in the C runtime and available in every program.</p>
+<h1 id="built-in-functions-1"><a class="header" href="#built-in-functions-1">Built-in Functions</a></h1>
+<p>badlang provides several built-in functions for I/O and system interaction.
+These are implemented in the C runtime and available in every program.</p>
 <h2 id="console-io"><a class="header" href="#console-io">Console I/O</a></h2>
-<h3 id="hearken"><a class="header" href="#hearken">hearken</a></h3>
+<h3 id="readln"><a class="header" href="#readln">readln</a></h3>
 <p>Read a line from standard input.</p>
 <ul>
-<li><strong>Syntax:</strong> <code>hearken</code> (expression, not invoked)</li>
+<li><strong>Syntax:</strong> <code>readln</code> (standalone expression)</li>
 <li><strong>Type:</strong> <code>String</code></li>
 <li><strong>Behavior:</strong> Reads characters until a newline, strips the newline, returns
 the result as a string.</li>
 </ul>
-<pre><code>let name = hearken
+<pre><code>let name = readln
 </code></pre>
-<h3 id="scry"><a class="header" href="#scry">scry</a></h3>
+<h3 id="readint"><a class="header" href="#readint">readint</a></h3>
 <p>Read an integer from standard input.</p>
 <ul>
-<li><strong>Syntax:</strong> <code>scry</code> (expression, not invoked)</li>
+<li><strong>Syntax:</strong> <code>readint</code> (standalone expression)</li>
 <li><strong>Type:</strong> <code>Int</code></li>
 <li><strong>Behavior:</strong> Reads an integer from stdin using <code>scanf</code>.</li>
 </ul>
-<pre><code>let n = scry
+<pre><code>let n = readint
 </code></pre>
 <h2 id="file-io-1"><a class="header" href="#file-io-1">File I/O</a></h2>
 <h3 id="unearth"><a class="header" href="#unearth">unearth</a></h3>
 <p>Read the contents of a file.</p>
 <ul>
-<li><strong>Invocation:</strong> <code>invoke unearth {| path: "filename.txt" |}</code></li>
+<li><strong>Call:</strong> <code>unearth {| path: "filename.txt" |}</code></li>
 <li><strong>Argument:</strong> <code>{| path: String |}</code></li>
 <li><strong>Returns:</strong> <code>String</code></li>
 <li><strong>Behavior:</strong> Reads the entire file contents into a string.</li>
 </ul>
-<pre><code>let contents = invoke unearth {| path: "data.txt" |}
-utter contents
+<pre><code>let contents = unearth {| path: "data.txt" |}
+print contents
 </code></pre>
 <h3 id="inscribe"><a class="header" href="#inscribe">inscribe</a></h3>
 <p>Write a string to a file.</p>
 <ul>
-<li><strong>Invocation:</strong> <code>invoke inscribe {| path: "filename.txt", content: "data" |}</code></li>
+<li><strong>Call:</strong> <code>inscribe {| path: "filename.txt", content: "data" |}</code></li>
 <li><strong>Argument:</strong> <code>{| path: String, content: String |}</code></li>
 <li><strong>Returns:</strong> <code>Void</code></li>
-<li><strong>Behavior:</strong> Creates or overwrites the file with the given content.</li>
+<li><strong>Behavior:</strong> Creates or overwrites the file with the case content.</li>
 </ul>
-<pre><code>invoke inscribe {| path: "output.txt", content: "Hello from badlang!" |}
+<pre><code>inscribe {| path: "output.txt", content: "Hello from badlang!" |}
 </code></pre>
 <h2 id="command-line-arguments-1"><a class="header" href="#command-line-arguments-1">Command-Line Arguments</a></h2>
 <h3 id="argc"><a class="header" href="#argc">argc</a></h3>
 <p>Get the number of command-line arguments.</p>
 <ul>
-<li><strong>Invocation:</strong> <code>invoke argc {| |}</code></li>
+<li><strong>Call:</strong> <code>argc {| |}</code></li>
 <li><strong>Argument:</strong> <code>{| |}</code> (empty record)</li>
 <li><strong>Returns:</strong> <code>Int</code></li>
 <li><strong>Behavior:</strong> Returns the argument count, including the program name.</li>
 </ul>
-<pre><code>let count = invoke argc {| |}
-utter count
+<pre><code>let count = argc {| |}
+print count
 </code></pre>
 <h3 id="argv"><a class="header" href="#argv">argv</a></h3>
 <p>Get a command-line argument by index.</p>
 <ul>
-<li><strong>Invocation:</strong> <code>invoke argv {| n: index |}</code></li>
+<li><strong>Call:</strong> <code>argv {| n: index |}</code></li>
 <li><strong>Argument:</strong> <code>{| n: Int |}</code></li>
 <li><strong>Returns:</strong> <code>String</code></li>
 <li><strong>Behavior:</strong> Returns the nth argument. Index 0 is the program name.</li>
 </ul>
-<pre><code>let program = invoke argv {| n: 0 |}
-let first_arg = invoke argv {| n: 1 |}
+<pre><code>let program = argv {| n: 0 |}
+let first_arg = argv {| n: 1 |}
 </code></pre>
 <h2 id="summary-table"><a class="header" href="#summary-table">Summary Table</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Rite</th><th>Argument</th><th>Returns</th><th>Description</th></tr>
+<tr><th>Function</th><th>Argument</th><th>Returns</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>hearken</code></td><td>(none)</td><td><code>String</code></td><td>Read line from stdin</td></tr>
-<tr><td><code>scry</code></td><td>(none)</td><td><code>Int</code></td><td>Read integer from stdin</td></tr>
+<tr><td><code>readln</code></td><td>(none)</td><td><code>String</code></td><td>Read line from stdin</td></tr>
+<tr><td><code>readint</code></td><td>(none)</td><td><code>Int</code></td><td>Read integer from stdin</td></tr>
 <tr><td><code>unearth</code></td><td>`{</td><td>path: String</td><td>}`</td></tr>
 <tr><td><code>inscribe</code></td><td>`{</td><td>path: String, content: String</td><td>}`</td></tr>
 <tr><td><code>argc</code></td><td>`{</td><td></td><td>}`</td></tr>

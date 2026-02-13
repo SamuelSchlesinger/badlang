@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Invoke and Summon - The Badlang Book</title>
+        <title>Functions - The Badlang Book</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7ed70138.js";
+            window.path_to_searchindex_js = "../searchindex-114a12be.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-daf9c5e4.js"></script>
+        <script src="../toc-e4e73581.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -174,72 +174,109 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="invoke-and-summon"><a class="header" href="#invoke-and-summon">Invoke and Summon</a></h1>
-<h2 id="invoke--calling-a-rite"><a class="header" href="#invoke--calling-a-rite">invoke — Calling a Rite</a></h2>
-<p><code>invoke</code> calls a rite with an argument:</p>
-<pre><code>invoke riteName argument
+                        <h1 id="functions"><a class="header" href="#functions">Functions</a></h1>
+<p>A <code>fn</code> is a pure function defined by one or more pattern-matching clauses.</p>
+<h2 id="syntax"><a class="header" href="#syntax">Syntax</a></h2>
+<pre><code>fn name
+  case pattern1 =&gt; body1
+  case pattern2 =&gt; body2
+  ...
+end
 </code></pre>
-<p>The argument is typically a record literal:</p>
-<pre><code>invoke square {| n: 5 |}
-invoke distance {| a: p1, b: p2 |}
-invoke factorial {| n: 10 |}
-</code></pre>
-<p>The argument can also be a variable or parenthesized expression:</p>
-<pre><code>let args = {| n: 5 |}
-invoke square args
+<h2 id="how-functions-work"><a class="header" href="#how-functions-work">How Functions Work</a></h2>
+<p>Every fn:</p>
+<ol>
+<li>Takes a <strong>single argument</strong> (always a record)</li>
+<li>Tries each <code>case</code> clause <strong>in order</strong> from top to bottom</li>
+<li>Returns the body of the <strong>first matching clause</strong></li>
+</ol>
+<p>If no clause matches, the program crashes at runtime (there is no exhaustiveness
+checking yet).</p>
+<h2 id="single-clause-functions"><a class="header" href="#single-clause-functions">Single-Clause Functions</a></h2>
+<p>The simplest functions have one clause that binds the fields of the argument:</p>
+<pre><code>fn square
+  case {| n |} =&gt; n * n
+end
 
-invoke square (args)
+fn greet
+  case {| name |} =&gt; "Hello"
+end
 </code></pre>
-<h3 id="nested-invocations"><a class="header" href="#nested-invocations">Nested Invocations</a></h3>
-<p>Invoke expressions can be nested. The inner invocation must be wrapped in the
-record literal or parenthesized:</p>
-<pre><code>invoke ackermann {|
-  m: m - 1,
-  n: invoke ackermann {| m: m, n: n - 1 |}
-|}
+<h2 id="multi-clause-functions"><a class="header" href="#multi-clause-functions">Multi-Clause Functions</a></h2>
+<p>Multiple clauses enable dispatch based on the shape or content of the argument:</p>
+<pre><code>fn factorial
+  case {| n: 0 |} =&gt; 1
+  case {| n |} =&gt; n * (factorial {| n: n - 1 |})
+end
 </code></pre>
-<h3 id="invoke-in-statements"><a class="header" href="#invoke-in-statements">invoke in Statements</a></h3>
-<p>In a ritual, <code>invoke</code> can appear as a statement (result discarded) or as part
-of an <code>utter</code>/<code>whisper</code>:</p>
-<pre><code>ritual main
-  utter invoke factorial {| n: 10 |}
-  invoke inscribe {| path: "out.txt", content: "hello" |}
-seal
+<p>The first clause matches when <code>n</code> is literally <code>0</code>. The second matches any
+other value of <code>n</code>. Clause order matters — the first match wins.</p>
+<h2 id="let-bindings-in-bodies"><a class="header" href="#let-bindings-in-bodies">Let Bindings in Bodies</a></h2>
+<p>A clause body can contain <code>let</code> bindings before the final expression:</p>
+<pre><code>fn distance_sq
+  case {| a : Point, b : Point |} =&gt;
+    let dx = a.x - b.x
+    let dy = a.y - b.y
+    dx * dx + dy * dy
+end
 </code></pre>
-<h2 id="summon--constructing-named-records"><a class="header" href="#summon--constructing-named-records">summon — Constructing Named Records</a></h2>
-<p><code>summon</code> creates a record of a specific altar type:</p>
-<pre><code>summon AltarName {| field1: value1, field2: value2, ... |}
+<p>Each <code>let</code> introduces a local variable visible to subsequent bindings and the
+final expression.</p>
+<h2 id="calling-other-functions"><a class="header" href="#calling-other-functions">Calling Other Functions</a></h2>
+<p>Functions call other functions by placing an argument after the function name:</p>
+<pre><code>fn hypotenuse_sq
+  case {| a : Point, b : Point |} =&gt;
+    let dx = a.x - b.x
+    let dy = a.y - b.y
+    (square {| n: dx |}) + (square {| n: dy |})
+end
 </code></pre>
-<h3 id="example"><a class="header" href="#example">Example</a></h3>
-<pre><code>altar Point
-  x : Int
-  y : Int
-seal
+<h2 id="recursion"><a class="header" href="#recursion">Recursion</a></h2>
+<p>Functions can call themselves recursively:</p>
+<pre><code>fn fib_acc
+  case {| n: 0, a, b |} =&gt; a
+  case {| n, a, b |} =&gt;
+    fib_acc {| n: n - 1, a: b, b: a + b |}
+end
+</code></pre>
+<h2 id="mutual-recursion"><a class="header" href="#mutual-recursion">Mutual Recursion</a></h2>
+<p>Functions can call each other freely, regardless of declaration order:</p>
+<pre><code>fn is_even
+  case {| n: 0 |} =&gt; 1
+  case {| n |} =&gt; is_odd {| n: n - 1 |}
+end
 
-ritual main
-  let p = summon Point {| x: 3, y: 4 |}
-  utter p.x
-  utter p.y
-seal
+fn is_odd
+  case {| n: 0 |} =&gt; 0
+  case {| n |} =&gt; is_even {| n: n - 1 |}
+end
 </code></pre>
-<h3 id="when-to-use-summon"><a class="header" href="#when-to-use-summon">When to Use summon</a></h3>
-<p><code>summon</code> is optional. You can use anonymous record literals anywhere a named
-type is expected. These two are equivalent:</p>
-<pre><code>let p = summon Point {| x: 3, y: 4 |}
-let p = {| x: 3, y: 4 |}
+<h2 id="structural-subtyping"><a class="header" href="#structural-subtyping">Structural Subtyping</a></h2>
+<p>A fn’s pattern determines the <strong>minimum</strong> set of required fields. Any record
+with at least those fields will be accepted:</p>
+<pre><code>fn magnitude_sq
+  case {| x, y |} =&gt; x * x + y * y
+end
+
+do main
+  -- All of these work:
+  print magnitude_sq {| x: 3, y: 4 |}
+  print magnitude_sq {| x: 1, y: 2, z: 3 |}
+  print magnitude_sq {| x: 10, y: 10, extra: 999 |}
+end
 </code></pre>
-<p><code>summon</code> is useful for documentation and clarity — it makes the intent
-explicit and ensures the fields match the altar declaration.</p>
+<p>The extra fields <code>z</code> and <code>extra</code> are silently ignored. This is width subtyping
+at work.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../expressions/operators.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../declarations/structs.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../expressions/let.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../declarations/do-blocks.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -249,11 +286,11 @@ explicit and ensures the fields match the altar declaration.</p>
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../expressions/operators.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../declarations/structs.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../expressions/let.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../declarations/do-blocks.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>
