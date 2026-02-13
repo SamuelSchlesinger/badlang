@@ -2,10 +2,10 @@
 # Bootstrap test: compile the self-hosting compiler N times and verify
 # each generation produces identical output (fixed point).
 #
-# Usage: ./bootstrap.sh [N] [c|asm|x86|x86-linux]
+# Usage: ./bootstrap.sh [N] [c|asm|asm-linux|x86|x86-linux]
 #   N    = number of bootstrap generations (default: 3)
-#   mode = "c" (default), "asm" (AArch64), "x86" (macOS x86_64), or
-#          "x86-linux" (System V x86_64)
+#   mode = "c" (default), "asm" (AArch64 macOS), "asm-linux" (AArch64 Linux),
+#          "x86" (macOS x86_64), or "x86-linux" (System V x86_64)
 #
 # C mode:
 #   gen0: Haskell compiler -> compiler.c -> gen0 binary
@@ -35,8 +35,8 @@ WORK_DIR=$(mktemp -d)
 
 trap 'rm -rf "$WORK_DIR"' EXIT
 
-if [[ "$MODE" != "c" && "$MODE" != "asm" && "$MODE" != "x86" && "$MODE" != "x86-linux" ]]; then
-    echo "Error: mode must be one of: c, asm, x86, x86-linux; got '$MODE'"
+if [[ "$MODE" != "c" && "$MODE" != "asm" && "$MODE" != "asm-linux" && "$MODE" != "x86" && "$MODE" != "x86-linux" ]]; then
+    echo "Error: mode must be one of: c, asm, asm-linux, x86, x86-linux; got '$MODE'"
     exit 1
 fi
 
@@ -60,6 +60,11 @@ case "$MODE" in
         EMIT_MODE="asm"
         RUNTIME_SRC="$RUNTIME_AARCH64"
         ;;
+    asm-linux)
+        EXT="s"
+        EMIT_MODE="asm-linux"
+        RUNTIME_SRC="$RUNTIME_AARCH64"
+        ;;
     x86)
         EXT="s"
         EMIT_MODE="x86"
@@ -75,8 +80,8 @@ case "$MODE" in
         ;;
 esac
 
-if [[ "$MODE" == "x86-linux" && "$(uname)" == "Darwin" ]]; then
-    echo "Error: mode 'x86-linux' needs a Linux toolchain in 'cc' (not detected on macOS default cc)."
+if [[ ("$MODE" == "x86-linux" || "$MODE" == "asm-linux") && "$(uname)" == "Darwin" ]]; then
+    echo "Error: mode '$MODE' needs a Linux toolchain in 'cc' (not detected on macOS default cc)."
     exit 1
 fi
 

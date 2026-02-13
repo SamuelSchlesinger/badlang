@@ -1,4 +1,4 @@
--- | AArch64 (Apple Silicon) assembly code generator for Stele.
+-- | AArch64 assembly code generator for Stele.
 --
 -- Consumes the IR and emits a @.s@ file suitable for assembling and
 -- linking with the C runtime via @cc@.
@@ -7,19 +7,43 @@
 -- registers (x19-x28) as a small cache but primarily operate through
 -- memory. This is simple, correct, and sufficient for the language's scope.
 --
--- macOS AArch64 conventions:
--- * C symbols prefixed with @_@
--- * 16-byte stack alignment at all times
--- * Frame pointer (x29) and link register (x30) saved on entry
--- * Global data accessed via @adrp@/@add@ or GOT
+-- Supports macOS (Mach-O) and Linux (ELF) targets:
+-- * macOS: @_@ symbol prefix, @__TEXT@ sections, @L@ local labels
+-- * Linux: no prefix, @.text@/@.rodata@ sections, @.L@ local labels
+-- * Both: 16-byte stack alignment, x29/x30 frame linkage
 module Stele.EmitAArch64
   ( emitAArch64
+  , emitAArch64With
+  , AArch64Target(..)
   ) where
 
 import Stele.IR
 import qualified Data.Map.Strict as Map
 import Data.Map.Strict (Map)
 import Control.Monad.Trans.State.Strict (State, execState, get, modify')
+
+-- ---------------------------------------------------------------------------
+-- Target configuration
+-- ---------------------------------------------------------------------------
+
+data AArch64Target = MacOS_AArch64 | Linux_AArch64
+  deriving (Eq, Show)
+
+symPrefix :: AArch64Target -> String
+symPrefix MacOS_AArch64 = "_"
+symPrefix Linux_AArch64 = ""
+
+textSection :: AArch64Target -> String
+textSection MacOS_AArch64 = ".section __TEXT,__text"
+textSection Linux_AArch64 = ".text"
+
+cstringSection :: AArch64Target -> String
+cstringSection MacOS_AArch64 = ".section __TEXT,__cstring"
+cstringSection Linux_AArch64 = ".section .rodata"
+
+localPrefix :: AArch64Target -> String
+localPrefix MacOS_AArch64 = "L"
+localPrefix Linux_AArch64 = ".L"
 
 -- ---------------------------------------------------------------------------
 -- Code generation state
@@ -34,12 +58,13 @@ data AsmState = AsmState
   , asmFrameSize  :: !Int               -- total frame size for current func
   , asmMatchStrs  :: [(String, String)] -- (label, match fail message)
   , asmLabelPfx   :: String             -- prefix for block labels (func name)
+  , asmTarget     :: AArch64Target      -- target platform
   }
 
 type Asm = State AsmState
 
-initState :: AsmState
-initState = AsmState [] [] 0 Map.empty 0 0 [] ""
+initState :: AArch64Target -> AsmState
+initState tgt = AsmState [] [] 0 Map.empty 0 0 [] "" tgt
 
 -- | Prefix a block ID with the current function prefix to make it unique.
 pfxLabel :: String -> Asm String
@@ -49,6 +74,9 @@ pfxLabel bid = do
 
 line :: String -> Asm ()
 line s = modify' (\st -> st { asmOutput = s : asmOutput st })
+
+getTarget :: Asm AArch64Target
+getTarget = asmTarget <$> get
 
 -- | Get or allocate a stack slot for a variable. Returns offset from x29.
 varSlot :: Var -> Asm Int
@@ -72,7 +100,8 @@ addString s = do
     Just lbl -> return lbl
     Nothing -> do
       let idx = asmStrCounter st
-          lbl = "Lstr" ++ show idx
+      tgt <- getTarget
+      let lbl = localPrefix tgt ++ "str" ++ show idx
       modify' (\st' -> st' { asmStrTable = (lbl, s) : asmStrTable st'
                            , asmStrCounter = idx + 1 })
       return lbl
@@ -85,7 +114,8 @@ addMatchStr msg = do
     Just lbl -> return lbl
     Nothing -> do
       let idx = length (asmMatchStrs st)
-          lbl = "Lmatch" ++ show idx
+      tgt <- getTarget
+      let lbl = localPrefix tgt ++ "match" ++ show idx
       modify' (\s -> s { asmMatchStrs = (lbl, msg) : asmMatchStrs s })
       return lbl
 
@@ -174,28 +204,68 @@ countVars (IRFuncBody _ blocks) =
 align16 :: Int -> Int
 align16 n = ((n + 15) `div` 16) * 16
 
+-- | Load address of a string/local label into a register.
+emitLoadLabelAddr :: String -> String -> Asm ()
+emitLoadLabelAddr reg lbl = do
+  tgt <- getTarget
+  case tgt of
+    MacOS_AArch64 -> do
+      line $ "  adrp " ++ reg ++ ", " ++ lbl ++ "@PAGE"
+      line $ "  add "  ++ reg ++ ", " ++ reg ++ ", " ++ lbl ++ "@PAGEOFF"
+    Linux_AArch64 -> do
+      line $ "  adrp " ++ reg ++ ", " ++ lbl
+      line $ "  add "  ++ reg ++ ", " ++ reg ++ ", :lo12:" ++ lbl
+
+-- | Load address of a global symbol pointer into a register.
+emitLoadGlobalPtr :: String -> String -> Asm ()
+emitLoadGlobalPtr reg sym = do
+  tgt <- getTarget
+  let fullSym = symPrefix tgt ++ sym
+  case tgt of
+    MacOS_AArch64 -> do
+      line $ "  adrp " ++ reg ++ ", " ++ fullSym ++ "@GOTPAGE"
+      line $ "  ldr "  ++ reg ++ ", [" ++ reg ++ ", " ++ fullSym ++ "@GOTPAGEOFF]"
+    Linux_AArch64 -> do
+      line $ "  adrp " ++ reg ++ ", :got:" ++ fullSym
+      line $ "  ldr "  ++ reg ++ ", [" ++ reg ++ ", :got_lo12:" ++ fullSym ++ "]"
+
+callSym :: String -> Asm ()
+callSym sym = do
+  tgt <- getTarget
+  line $ "  bl " ++ symPrefix tgt ++ sym
+
 -- ---------------------------------------------------------------------------
 -- Top-level emission
 -- ---------------------------------------------------------------------------
 
 -- | Generate AArch64 assembly from an IR program.
 emitAArch64 :: IRProgram -> String
-emitAArch64 (IRProgram decls) =
-  let st = execState (emitProgram decls) initState
+emitAArch64 = emitAArch64With MacOS_AArch64
+
+-- | Generate AArch64 assembly for a specific target.
+emitAArch64With :: AArch64Target -> IRProgram -> String
+emitAArch64With tgt (IRProgram decls) =
+  let st = execState (emitProgram decls) (initState tgt)
       asmLines = reverse (asmOutput st)
-      strData  = emitStringData (asmStrTable st) (asmMatchStrs st)
-  in unlines asmLines ++ strData
+      strData  = emitStringData tgt (asmStrTable st) (asmMatchStrs st)
+      gnuStack = case tgt of
+                   Linux_AArch64 -> "\n.section .note.GNU-stack,\"\",@progbits\n"
+                   _             -> ""
+  in unlines asmLines ++ strData ++ gnuStack
 
 emitProgram :: [IRDecl] -> Asm ()
 emitProgram decls = do
-  line ".section __TEXT,__text"
+  tgt <- getTarget
+  line (textSection tgt)
   line ".align 2"
   line ""
   -- Emit all rites
   mapM_ emitDecl decls
 
 emitDecl :: IRDecl -> Asm ()
-emitDecl (IRFunc name body) = emitFunc ("_fn_" ++ name) body
+emitDecl (IRFunc name body) = do
+  tgt <- getTarget
+  emitFunc (symPrefix tgt ++ "fn_" ++ name) body
 emitDecl (IRMain body) = emitMainFunc body
 
 -- ---------------------------------------------------------------------------
@@ -204,11 +274,11 @@ emitDecl (IRMain body) = emitMainFunc body
 
 emitFunc :: String -> IRFuncBody -> Asm ()
 emitFunc label body = do
+  tgt <- getTarget
   let nVars = countVars body + 10  -- extra slots for safety
       frameVarSpace = nVars * 8
       frameSize = align16 (16 + frameVarSpace)  -- 16 for x29/x30
-      -- Use the label (without leading _) as prefix for block labels
-      pfx = drop 1 label ++ "_"
+      pfx = drop (length (symPrefix tgt)) label ++ "_"
   -- Reset variable map
   modify' (\s -> s { asmVarMap = Map.empty, asmNextSlot = 0, asmFrameSize = frameSize, asmLabelPfx = pfx })
 
@@ -229,24 +299,24 @@ emitFunc label body = do
 
 emitMainFunc :: IRFuncBody -> Asm ()
 emitMainFunc body = do
+  tgt <- getTarget
   let nVars = countVars body + 10
       frameVarSpace = nVars * 8
       frameSize = align16 (16 + frameVarSpace)
   modify' (\s -> s { asmVarMap = Map.empty, asmNextSlot = 0, asmFrameSize = frameSize, asmLabelPfx = "main_" })
 
-  line ".globl _main"
-  line "_main:"
+  let mainSym = symPrefix tgt ++ "main"
+  line $ ".globl " ++ mainSym
+  line $ mainSym ++ ":"
   -- Prologue: save x29/x30 first with pre-index, then allocate frame
   line "  stp x29, x30, [sp, #-16]!"
   line "  mov x29, sp"
   line $ "  sub sp, sp, #" ++ show (frameSize - 16)
 
   -- Save argc/argv to globals
-  line "  adrp x8, _g_argc@GOTPAGE"
-  line "  ldr x8, [x8, _g_argc@GOTPAGEOFF]"
+  emitLoadGlobalPtr "x8" "g_argc"
   line "  str w0, [x8]"
-  line "  adrp x8, _g_argv@GOTPAGE"
-  line "  ldr x8, [x8, _g_argv@GOTPAGEOFF]"
+  emitLoadGlobalPtr "x8" "g_argv"
   line "  str x1, [x8]"
 
   -- Store arg (not used in main, but consistent)
@@ -269,7 +339,7 @@ emitTermAsmMain :: Terminator -> Asm ()
 emitTermAsmMain (TReturn v) = do
   -- Release the void value, then return 0
   loadVar v "x0"
-  line "  bl _rc_release"
+  callSym "rc_release"
   line "  mov x0, #0"
   st <- get
   let fs = asmFrameSize st
@@ -297,32 +367,31 @@ emitInstrAsm :: Instr -> Asm ()
 
 emitInstrAsm (IConst v (OInt n)) = do
   loadImm64 "x0" n
-  line "  bl _make_int"
+  callSym "make_int"
   storeVar v "x0"
 
 emitInstrAsm (IConst v (OStr s)) = do
   lbl <- addString s
-  line $ "  adrp x0, " ++ lbl ++ "@PAGE"
-  line $ "  add x0, x0, " ++ lbl ++ "@PAGEOFF"
-  line "  bl _make_str"
+  emitLoadLabelAddr "x0" lbl
+  callSym "make_str"
   storeVar v "x0"
 
 emitInstrAsm (IConst v OVoid) = do
-  line "  bl _make_void"
+  callSym "make_void"
   storeVar v "x0"
 
 emitInstrAsm (IBinOp v Eq l r) = do
   loadVar l "x0"
   loadVar r "x1"
-  line "  bl _stele_value_eq"
-  line "  bl _make_int"
+  callSym "stele_value_eq"
+  callSym "make_int"
   storeVar v "x0"
 
 emitInstrAsm (IBinOp v Neq l r) = do
   loadVar l "x0"
   loadVar r "x1"
-  line "  bl _stele_value_neq"
-  line "  bl _make_int"
+  callSym "stele_value_neq"
+  callSym "make_int"
   storeVar v "x0"
 
 emitInstrAsm (IBinOp v op l r) = do
@@ -331,14 +400,14 @@ emitInstrAsm (IBinOp v op l r) = do
   loadVar r "x9"
   line "  ldr x9, [x9, #8]"     -- x9 = r->int_val
   emitBinOpAsm op "x8" "x9" "x0"
-  line "  bl _make_int"
+  callSym "make_int"
   storeVar v "x0"
 
 emitInstrAsm (IUnOp v Neg src) = do
   loadVar src "x8"
   line "  ldr x8, [x8, #8]"
   line "  neg x0, x8"
-  line "  bl _make_int"
+  callSym "make_int"
   storeVar v "x0"
 
 emitInstrAsm (IUnOp v Not src) = do
@@ -346,7 +415,7 @@ emitInstrAsm (IUnOp v Not src) = do
   line "  ldr x8, [x8, #8]"
   line "  cmp x8, #0"
   line "  cset x0, eq"
-  line "  bl _make_int"
+  callSym "make_int"
   storeVar v "x0"
 
 emitInstrAsm (IRecord v fields) = do
@@ -359,8 +428,7 @@ emitInstrAsm (IRecord v fields) = do
   -- Store names and values
   mapM_ (\(i, (fname, fvar)) -> do
     lbl <- addString fname
-    line $ "  adrp x8, " ++ lbl ++ "@PAGE"
-    line $ "  add x8, x8, " ++ lbl ++ "@PAGEOFF"
+    emitLoadLabelAddr "x8" lbl
     line $ "  str x8, [sp, #" ++ show (i * 8) ++ "]"  -- names[i]
     loadVar fvar "x9"
     line $ "  str x9, [sp, #" ++ show (namesSize + i * 8) ++ "]"  -- values[i]
@@ -369,30 +437,29 @@ emitInstrAsm (IRecord v fields) = do
   loadImm64 "x0" (fromIntegral n)
   line "  mov x1, sp"                                    -- names array
   line $ "  add x2, sp, #" ++ show namesSize              -- values array
-  line "  bl _make_record_with_fields"
+  callSym "make_record_with_fields"
   emitAddSp totalSize
   storeVar v "x0"
 
 emitInstrAsm (IFieldGet v rec fld) = do
   loadVar rec "x0"
   lbl <- addString fld
-  line $ "  adrp x1, " ++ lbl ++ "@PAGE"
-  line $ "  add x1, x1, " ++ lbl ++ "@PAGEOFF"
-  line "  bl _record_field"
+  emitLoadLabelAddr "x1" lbl
+  callSym "record_field"
   storeVar v "x0"
 
 emitInstrAsm (ICall v riteName arg) = do
   loadVar arg "x0"
-  line $ "  bl _fn_" ++ riteName
+  callSym ("fn_" ++ riteName)
   storeVar v "x0"
 
 emitInstrAsm (IRetain v) = do
   loadVar v "x0"
-  line "  bl _rc_retain"
+  callSym "rc_retain"
 
 emitInstrAsm (IRelease v) = do
   loadVar v "x0"
-  line "  bl _rc_release"
+  callSym "rc_release"
 
 emitInstrAsm (ITagCheck v op tag) = do
   loadVar op "x8"
@@ -420,27 +487,26 @@ emitInstrAsm (IStrEq v op s) = do
   loadVar op "x8"
   line "  ldr x0, [x8, #8]"          -- x0 = op->str_val
   lbl <- addString s
-  line $ "  adrp x1, " ++ lbl ++ "@PAGE"
-  line $ "  add x1, x1, " ++ lbl ++ "@PAGEOFF"
-  line "  bl _strcmp"
+  emitLoadLabelAddr "x1" lbl
+  callSym "strcmp"
   line "  cmp w0, #0"
   line "  cset w0, eq"
   storeVar v "w0"
 
 emitInstrAsm (IPrint v) = do
   loadVar v "x0"
-  line "  bl _stele_print"
+  callSym "stele_print"
 
 emitInstrAsm (IWrite v) = do
   loadVar v "x0"
-  line "  bl _stele_write"
+  callSym "stele_write"
 
 emitInstrAsm (IReadLn v) = do
-  line "  bl _runtime_readln"
+  callSym "runtime_readln"
   storeVar v "x0"
 
 emitInstrAsm (IReadInt v) = do
-  line "  bl _runtime_readint"
+  callSym "runtime_readint"
   storeVar v "x0"
 
 emitInstrAsm (ICopy v src) = do
@@ -475,9 +541,8 @@ emitTermAsm (TJump lbl) = do
 
 emitTermAsm (TMatchFail msg) = do
   lbl <- addMatchStr msg
-  line $ "  adrp x0, " ++ lbl ++ "@PAGE"
-  line $ "  add x0, x0, " ++ lbl ++ "@PAGEOFF"
-  line "  bl _stele_match_fail"
+  emitLoadLabelAddr "x0" lbl
+  callSym "stele_match_fail"
 
 -- ---------------------------------------------------------------------------
 -- Helper: binary operations
@@ -569,10 +634,10 @@ tagNum TagVoid   = 3
 -- String data emission
 -- ---------------------------------------------------------------------------
 
-emitStringData :: [(String, String)] -> [(String, String)] -> String
-emitStringData strs matchStrs = unlines $
+emitStringData :: AArch64Target -> [(String, String)] -> [(String, String)] -> String
+emitStringData tgt strs matchStrs = unlines $
   [ ""
-  , ".section __TEXT,__cstring"
+  , cstringSection tgt
   ] ++
   concatMap (\(lbl, s) ->
     [ lbl ++ ":"

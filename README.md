@@ -32,13 +32,23 @@ cabal run stele -- --run examples/hello.stele
 # => 25
 # => 3628800
 
-# Compile to native AArch64 assembly (Apple Silicon)
+# Compile to native assembly (auto-detected target)
 cabal run stele -- --native examples/hello.stele
 # => Compiled to examples/hello
 
 # Compile native and run
 cabal run stele -- --native --run examples/hello.stele
+
+# Compile for a specific native target
+cabal run stele -- --native --target aarch64-macos examples/hello.stele
+cabal run stele -- --native --target aarch64-linux examples/hello.stele
+cabal run stele -- --native --target x86_64-macos examples/hello.stele
+cabal run stele -- --native --target x86_64-linux examples/hello.stele
 ```
+
+Cross-target builds require a compatible assembler/linker toolchain for the
+requested target (for example, `aarch64-linux` requires a Linux AArch64
+toolchain).
 
 ## Stela (Self-Hosted Build Tool)
 
@@ -119,14 +129,14 @@ Example packaging flow:
 (cd examples/compiler && ./stela run app.stele --lib cli --lib math --lib concurrency --compiler ./compiler --mode c)
 ```
 
-Run stdlib test targets across the supported mode matrix (`c`, `asm`, `x86`,
-and `x86-linux` where host toolchain support exists):
+Run stdlib test targets across the supported mode matrix (`c`, `asm`,
+`asm-linux`, `x86`, and `x86-linux` where host toolchain support exists):
 
 ```bash
 ./stdlib/tests/run.sh
 ```
 
-Options: `--mode c|asm|x86|x86-linux`, `--sandbox`, `--no-sandbox`, `--lib <name>`, `--name <name>`.
+Options: `--mode c|asm|asm-linux|x86|x86-linux`, `--sandbox`, `--no-sandbox`, `--lib <name>`, `--name <name>`.
 
 ## The Language
 
@@ -333,10 +343,11 @@ runtime. All values are reference-counted tagged unions allocated with
 cycles are impossible and reference counting is sufficient. The generated code
 is readable and can be compiled with any C compiler.
 
-**AArch64 backend.** The native emitter produces Apple Silicon assembly. All
-variables live on the stack in a fixed-size frame per function. The generated
-assembly links against a separate C runtime (`runtime_aarch64.c`) that
-provides the same value representation and reference counting.
+**AArch64 backend.** The native emitter supports both Apple and Linux AArch64
+assembly syntax. All variables live on the stack in a fixed-size frame per
+function. The generated assembly links against a separate C runtime
+(`runtime_aarch64.c`) that provides the same value representation and reference
+counting.
 
 ## Examples
 
@@ -354,13 +365,14 @@ provides the same value representation and reference counting.
 
 Stele is self-hosting: `examples/compiler/compiler.stele` is a complete
 Stele compiler written in Stele itself. It implements the full pipeline
-— tokenizer, parser, C code emitter, and AArch64 native code generator — and
-can compile itself. A bootstrap test verifies that the compiler reaches a
-fixed point in both modes:
+— tokenizer, parser, C code emitter, and native code generators (AArch64 and
+x86-64) — and can compile itself. A bootstrap test verifies that the compiler
+reaches a fixed point:
 
 ```bash
 examples/compiler/bootstrap.sh 3        # C mode
 examples/compiler/bootstrap.sh 3 asm    # AArch64 native mode
+examples/compiler/bootstrap.sh 3 asm-linux  # AArch64 Linux mode (Linux host/toolchain)
 ```
 
 This compiles `compiler.stele` through three generations and confirms each

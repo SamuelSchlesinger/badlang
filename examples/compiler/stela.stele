@@ -1,11 +1,11 @@
 -- stela: self-hosted build tool for Stele projects
 --
 -- Cargo-inspired command subset (no package manager):
---   stela build <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|x86|x86-linux>] [--sandbox|--no-sandbox]
---   stela run   <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|x86|x86-linux>] [--sandbox|--no-sandbox]
---   stela check <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|x86|x86-linux>] [--sandbox|--no-sandbox]
---   stela test  <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|x86|x86-linux>] [--sandbox|--no-sandbox]
---   stela bench <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|x86|x86-linux>] [--sandbox|--no-sandbox]
+--   stela build <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|asm-linux|x86|x86-linux>] [--sandbox|--no-sandbox]
+--   stela run   <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|asm-linux|x86|x86-linux>] [--sandbox|--no-sandbox]
+--   stela check <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|asm-linux|x86|x86-linux>] [--sandbox|--no-sandbox]
+--   stela test  <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|asm-linux|x86|x86-linux>] [--sandbox|--no-sandbox]
+--   stela bench <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|asm-linux|x86|x86-linux>] [--sandbox|--no-sandbox]
 --   stela package-lib <source.stele> [--lib <name> ...] [--name <name>]
 --   stela clean
 
@@ -110,6 +110,7 @@ fn mode_is_valid
   case {| mode |} =>
     (str_eq {| a: mode, b: "c" |}) ||
     (str_eq {| a: mode, b: "asm" |}) ||
+    (str_eq {| a: mode, b: "asm-linux" |}) ||
     (str_eq {| a: mode, b: "x86" |}) ||
     (str_eq {| a: mode, b: "x86-linux" |})
 end
@@ -139,7 +140,12 @@ fn runtime_for_mode
       case 1 =>
         resolve_runtime_path {| primary: "runtime/runtime_aarch64.c", fallback: "../../runtime/runtime_aarch64.c" |}
       case 0 =>
-        resolve_runtime_path {| primary: "runtime/runtime_x86_64.c", fallback: "../../runtime/runtime_x86_64.c" |}
+        match str_eq {| a: mode, b: "asm-linux" |}
+          case 1 =>
+            resolve_runtime_path {| primary: "runtime/runtime_aarch64.c", fallback: "../../runtime/runtime_aarch64.c" |}
+          case 0 =>
+            resolve_runtime_path {| primary: "runtime/runtime_x86_64.c", fallback: "../../runtime/runtime_x86_64.c" |}
+        end
     end
 end
 
@@ -530,7 +536,7 @@ fn validate_mode
       case 0 =>
         let m1 = concat {| a: "stela: unknown mode ", b: mode |}
         let ignored1 = echo_line {| msg: m1 |}
-        let ignored2 = echo_line {| msg: "stela: expected one of c, asm, x86, x86-linux" |}
+        let ignored2 = echo_line {| msg: "stela: expected one of c, asm, asm-linux, x86, x86-linux" |}
         let ignored3 = terminate {| code: 1 |}
         0
     end
@@ -628,11 +634,11 @@ fn usage
   case {| |} =>
     let ignored1 = echo_line {| msg: "stela - self-hosted Stele build tool" |}
     let ignored2 = echo_line {| msg: "Usage:" |}
-    let ignored3 = echo_line {| msg: "  stela build <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|x86|x86-linux>] [--sandbox|--no-sandbox]" |}
-    let ignored4 = echo_line {| msg: "  stela run   <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|x86|x86-linux>] [--sandbox|--no-sandbox]" |}
-    let ignored5 = echo_line {| msg: "  stela check <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|x86|x86-linux>] [--sandbox|--no-sandbox]" |}
-    let ignored6 = echo_line {| msg: "  stela test  <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|x86|x86-linux>] [--sandbox|--no-sandbox]" |}
-    let ignored7 = echo_line {| msg: "  stela bench <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|x86|x86-linux>] [--sandbox|--no-sandbox]" |}
+    let ignored3 = echo_line {| msg: "  stela build <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|asm-linux|x86|x86-linux>] [--sandbox|--no-sandbox]" |}
+    let ignored4 = echo_line {| msg: "  stela run   <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|asm-linux|x86|x86-linux>] [--sandbox|--no-sandbox]" |}
+    let ignored5 = echo_line {| msg: "  stela check <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|asm-linux|x86|x86-linux>] [--sandbox|--no-sandbox]" |}
+    let ignored6 = echo_line {| msg: "  stela test  <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|asm-linux|x86|x86-linux>] [--sandbox|--no-sandbox]" |}
+    let ignored7 = echo_line {| msg: "  stela bench <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|asm-linux|x86|x86-linux>] [--sandbox|--no-sandbox]" |}
     let ignored8 = echo_line {| msg: "  stela package-lib <source.stele> [--lib <name> ...] [--name <name>]" |}
     let ignored9 = echo_line {| msg: "  stela clean" |}
     0

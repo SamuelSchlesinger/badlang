@@ -3,24 +3,45 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 COMPILER_DIR="$ROOT_DIR/examples/compiler"
-COMPILER_BIN="${COMPILER_BIN:-$COMPILER_DIR/compiler}"
-STELA_BIN="${STELA_BIN:-$COMPILER_DIR/stela}"
+DEFAULT_COMPILER_BIN="$COMPILER_DIR/compiler"
+DEFAULT_STELA_BIN="$COMPILER_DIR/stela"
+COMPILER_BIN="${COMPILER_BIN:-$DEFAULT_COMPILER_BIN}"
+STELA_BIN="${STELA_BIN:-$DEFAULT_STELA_BIN}"
 HOST_OS="$(uname -s)"
 HOST_ARCH="$(uname -m)"
 
-if [[ ! -x "$COMPILER_BIN" ]]; then
+rebuild_compiler() {
+  if ! command -v cabal >/dev/null 2>&1; then
+    echo "Missing compiler binary: $COMPILER_BIN"
+    echo "cabal is required to rebuild the default self-hosted compiler."
+    exit 1
+  fi
+  echo "Rebuilding compiler binary: $COMPILER_BIN"
+  (cd "$ROOT_DIR" && cabal run stele -- "$COMPILER_DIR/compiler.stele") >/dev/null
+  cc -O1 -o "$COMPILER_BIN" "$COMPILER_DIR/compiler.c"
+}
+
+rebuild_stela() {
+  echo "Rebuilding stela binary: $STELA_BIN"
+  (cd "$COMPILER_DIR" && "$COMPILER_BIN" stela.stele stela.c)
+  cc -O1 -o "$STELA_BIN" "$COMPILER_DIR/stela.c"
+}
+
+if [[ "$COMPILER_BIN" == "$DEFAULT_COMPILER_BIN" ]]; then
+  if [[ ! -x "$COMPILER_BIN" || "$COMPILER_DIR/compiler.stele" -nt "$COMPILER_BIN" || "$ROOT_DIR/app/Main.hs" -nt "$COMPILER_BIN" || "$ROOT_DIR/src/Stele/EmitAArch64.hs" -nt "$COMPILER_BIN" || "$ROOT_DIR/src/Stele/EmitX86_64.hs" -nt "$COMPILER_BIN" ]]; then
+    rebuild_compiler
+  fi
+elif [[ ! -x "$COMPILER_BIN" ]]; then
   echo "Missing compiler binary: $COMPILER_BIN"
-  echo "Build it first:"
-  echo "  cabal run stele -- $COMPILER_DIR/compiler.stele"
-  echo "  cc -O1 -o $COMPILER_DIR/compiler $COMPILER_DIR/compiler.c"
   exit 1
 fi
 
-if [[ ! -x "$STELA_BIN" ]]; then
+if [[ "$STELA_BIN" == "$DEFAULT_STELA_BIN" ]]; then
+  if [[ ! -x "$STELA_BIN" || "$COMPILER_DIR/stela.stele" -nt "$STELA_BIN" || "$COMPILER_BIN" -nt "$STELA_BIN" ]]; then
+    rebuild_stela
+  fi
+elif [[ ! -x "$STELA_BIN" ]]; then
   echo "Missing stela binary: $STELA_BIN"
-  echo "Build it first:"
-  echo "  (cd $COMPILER_DIR && ./compiler stela.stele stela.c)"
-  echo "  cc -O1 -o $COMPILER_DIR/stela $COMPILER_DIR/stela.c"
   exit 1
 fi
 
@@ -53,6 +74,13 @@ run_suite() {
   run_suite build asm
   if [[ "$HOST_ARCH" == "arm64" ]]; then
     run_suite test asm
+  fi
+
+  # AArch64 Linux mode: run on Linux arm64/aarch64, syntax-check elsewhere.
+  if [[ "$HOST_OS" == "Linux" && ( "$HOST_ARCH" == "aarch64" || "$HOST_ARCH" == "arm64" ) ]]; then
+    run_suite test asm-linux
+  else
+    run_suite check asm-linux
   fi
 
   # macOS x86 mode: test on Darwin (native x86_64 or via Rosetta on arm64).

@@ -10,22 +10,24 @@ import Stele.Grammar (parseProgram)
 import Stele.Types (typeCheck)
 import Stele.Lower (lowerProgram)
 import Stele.EmitC (emitCFromIR)
-import Stele.EmitAArch64 (emitAArch64)
+import Stele.EmitAArch64 (emitAArch64With, AArch64Target(..))
 import Stele.EmitX86_64 (emitX86_64, X86Target(..))
 import Stele.Runtime (runtimeSource)
 
-data NativeTarget = AArch64_macOS | X86_64_macOS | X86_64_Linux
+data NativeTarget = AArch64_macOS | AArch64_Linux | X86_64_macOS | X86_64_Linux
   deriving (Eq, Show)
 
 detectTarget :: Maybe NativeTarget
 detectTarget = case (arch, os) of
   ("aarch64", "darwin") -> Just AArch64_macOS
+  ("aarch64", "linux")  -> Just AArch64_Linux
   ("x86_64",  "darwin") -> Just X86_64_macOS
   ("x86_64",  "linux")  -> Just X86_64_Linux
   _                      -> Nothing
 
 parseTarget :: String -> Maybe NativeTarget
 parseTarget "aarch64-macos" = Just AArch64_macOS
+parseTarget "aarch64-linux" = Just AArch64_Linux
 parseTarget "x86_64-macos"  = Just X86_64_macOS
 parseTarget "x86_64-linux"  = Just X86_64_Linux
 parseTarget _               = Nothing
@@ -51,7 +53,7 @@ main = do
       hPutStrLn stderr "  stele --native --run <source.stele>               Compile native and run"
       hPutStrLn stderr "  stele --native --target <target> <source.stele>   Compile to specific target"
       hPutStrLn stderr ""
-      hPutStrLn stderr "Targets: aarch64-macos, x86_64-macos, x86_64-linux"
+      hPutStrLn stderr "Targets: aarch64-macos, aarch64-linux, x86_64-macos, x86_64-linux"
       exitFailure
 
 withTarget :: String -> (NativeTarget -> IO ()) -> IO ()
@@ -60,7 +62,7 @@ withTarget tgtStr action =
     Just tgt -> action tgt
     Nothing -> do
       hPutStrLn stderr $ "Unknown target: " ++ tgtStr
-      hPutStrLn stderr "Supported targets: aarch64-macos, x86_64-macos, x86_64-linux"
+      hPutStrLn stderr "Supported targets: aarch64-macos, aarch64-linux, x86_64-macos, x86_64-linux"
       exitFailure
 
 withDetectedTarget :: (NativeTarget -> IO ()) -> IO ()
@@ -69,7 +71,7 @@ withDetectedTarget action =
     Just tgt -> action tgt
     Nothing -> do
       hPutStrLn stderr $ "Cannot auto-detect native target for " ++ arch ++ "-" ++ os
-      hPutStrLn stderr "Use --target to specify: aarch64-macos, x86_64-macos, x86_64-linux"
+      hPutStrLn stderr "Use --target to specify: aarch64-macos, aarch64-linux, x86_64-macos, x86_64-linux"
       exitFailure
 
 compile :: FilePath -> IO ()
@@ -107,6 +109,7 @@ compileAndRun path = do
 -- | Extra cc flags for cross-compilation.
 ccFlags :: NativeTarget -> [String]
 ccFlags AArch64_macOS = []
+ccFlags AArch64_Linux = []
 ccFlags X86_64_macOS  = ["-arch", "x86_64"]
 ccFlags X86_64_Linux  = []  -- requires native or cross-compiler
 
@@ -166,7 +169,8 @@ pipelineNative tgt src = do
   checked <- typeCheck ast
   let ir  = lowerProgram checked
       asm = case tgt of
-              AArch64_macOS -> emitAArch64 ir
+              AArch64_macOS -> emitAArch64With MacOS_AArch64 ir
+              AArch64_Linux -> emitAArch64With Linux_AArch64 ir
               X86_64_macOS  -> emitX86_64 MacOS_x86_64 ir
               X86_64_Linux  -> emitX86_64 Linux_x86_64 ir
   return (asm, runtimeSource)
