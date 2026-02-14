@@ -1,0 +1,174 @@
+-- Phase 1: Utility library for self-hosting compiler
+-- Character classification, string helpers, linked lists, string builder
+
+-- ============================================================
+-- Character Classification
+-- ============================================================
+
+fn is_digit
+  case {| c |} => (c >= 48) && (c <= 57)
+end
+
+fn is_alpha
+  case {| c |} => ((c >= 65) && (c <= 90)) || ((c >= 97) && (c <= 122))
+end
+
+fn is_alnum
+  case {| c |} => (is_digit {| c: c |}) || (is_alpha {| c: c |})
+end
+
+fn is_whitespace
+  case {| c |} => (c == 32) || (c == 10) || (c == 13) || (c == 9)
+end
+
+fn is_underscore
+  case {| c |} => c == 95
+end
+
+fn is_ident_char
+  case {| c |} => (is_alnum {| c: c |}) || (is_underscore {| c: c |})
+end
+
+-- ============================================================
+-- String Helpers
+-- ============================================================
+
+fn str_eq
+  case {| a, b |} =>
+    match strcmp {| a: a, b: b |}
+      case 0 => 1
+      case _ => 0
+    end
+end
+
+fn starts_with
+  case {| s, prefix |} =>
+    let plen = strlen {| s: prefix |}
+    let slen = strlen {| s: s |}
+    match slen >= plen
+      case 0 => 0
+      case 1 =>
+        let sub = substr {| s: s, start: 0, len: plen |}
+        str_eq {| a: sub, b: prefix |}
+    end
+end
+
+fn str_to_int_acc
+  case {| s, pos, acc |} =>
+    let slen = strlen {| s: s |}
+    match pos >= slen
+      case 1 => acc
+      case 0 =>
+        let ch = char_at {| s: s, n: pos |}
+        let digit = ch - 48
+        str_to_int_acc {| s: s, pos: pos + 1, acc: acc * 10 + digit |}
+    end
+end
+
+fn str_to_int
+  case {| s |} =>
+    let slen = strlen {| s: s |}
+    match slen == 0
+      case 1 => 0
+      case 0 =>
+        let first = char_at {| s: s, n: 0 |}
+        match first == 45
+          case 1 =>
+            let rest = substr {| s: s, start: 1, len: slen - 1 |}
+            0 - (str_to_int_acc {| s: rest, pos: 0, acc: 0 |})
+          case 0 =>
+            str_to_int_acc {| s: s, pos: 0, acc: 0 |}
+        end
+    end
+end
+
+fn char_to_str
+  case {| c |} => char_of_int {| n: c |}
+end
+
+-- ============================================================
+-- List Operations
+-- ============================================================
+
+fn nil
+  case {| |} => {| tag: "nil" |}
+end
+
+fn cons
+  case {| head, tail |} => {| tag: "cons", head: head, tail: tail |}
+end
+
+fn is_nil
+  case {| list |} =>
+    match list
+      case {| tag: "nil" |} => 1
+      case {| tag: "cons" |} => 0
+    end
+end
+
+fn list_head
+  case {| list |} =>
+    match list
+      case {| tag: "cons", head |} => head
+    end
+end
+
+fn list_tail
+  case {| list |} =>
+    match list
+      case {| tag: "cons", tail |} => tail
+    end
+end
+
+fn list_len_acc
+  case {| list, acc |} =>
+    match list
+      case {| tag: "nil" |} => acc
+      case {| tag: "cons", tail |} =>
+        list_len_acc {| list: tail, acc: acc + 1 |}
+    end
+end
+
+fn list_len
+  case {| list |} => list_len_acc {| list: list, acc: 0 |}
+end
+
+fn list_reverse_acc
+  case {| list, acc |} =>
+    match list
+      case {| tag: "nil" |} => acc
+      case {| tag: "cons", head, tail |} =>
+        let new_acc = cons {| head: head, tail: acc |}
+        list_reverse_acc {| list: tail, acc: new_acc |}
+    end
+end
+
+fn list_reverse
+  case {| list |} =>
+    let empty = nil {| |}
+    list_reverse_acc {| list: list, acc: empty |}
+end
+
+fn list_nth
+  case {| list, n |} =>
+    match list
+      case {| tag: "cons", head, tail |} =>
+        match n == 0
+          case 1 => head
+          case 0 => list_nth {| list: tail, n: n - 1 |}
+        end
+    end
+end
+
+-- ============================================================
+-- String Builder
+-- ============================================================
+
+fn sb_empty
+  case {| |} => ""
+end
+
+fn sb_append
+  case {| buf, s |} => concat {| a: buf, b: s |}
+end
+

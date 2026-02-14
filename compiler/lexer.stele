@@ -1,0 +1,307 @@
+-- ============================================================
+-- Lexer Helpers
+-- ============================================================
+
+fn make_tok
+  case {| type, value |} => {| type: type, value: value |}
+end
+
+fn skip_ws
+  case {| src, pos |} =>
+    let slen = strlen {| s: src |}
+    match pos >= slen
+      case 1 => pos
+      case 0 =>
+        let ch = char_at {| s: src, n: pos |}
+        match is_whitespace {| c: ch |}
+          case 1 => skip_ws {| src: src, pos: pos + 1 |}
+          case 0 => pos
+        end
+    end
+end
+
+fn skip_line
+  case {| src, pos |} =>
+    let slen = strlen {| s: src |}
+    match pos >= slen
+      case 1 => pos
+      case 0 =>
+        let ch = char_at {| s: src, n: pos |}
+        match ch == 10
+          case 1 => pos + 1
+          case 0 => skip_line {| src: src, pos: pos + 1 |}
+        end
+    end
+end
+
+fn skip_ws_cmt
+  case {| src, pos |} =>
+    let p1 = skip_ws {| src: src, pos: pos |}
+    let slen = strlen {| s: src |}
+    match (p1 + 1) < slen
+      case 1 =>
+        let c1 = char_at {| s: src, n: p1 |}
+        let c2 = char_at {| s: src, n: p1 + 1 |}
+        match (c1 == 45) && (c2 == 45)
+          case 1 =>
+            let p2 = skip_line {| src: src, pos: p1 + 2 |}
+            skip_ws_cmt {| src: src, pos: p2 |}
+          case 0 => p1
+        end
+      case 0 => p1
+    end
+end
+
+fn find_digit_end
+  case {| src, pos |} =>
+    let slen = strlen {| s: src |}
+    match pos >= slen
+      case 1 => pos
+      case 0 =>
+        let ch = char_at {| s: src, n: pos |}
+        match is_digit {| c: ch |}
+          case 1 => find_digit_end {| src: src, pos: pos + 1 |}
+          case 0 => pos
+        end
+    end
+end
+
+fn find_word_end
+  case {| src, pos |} =>
+    let slen = strlen {| s: src |}
+    match pos >= slen
+      case 1 => pos
+      case 0 =>
+        let ch = char_at {| s: src, n: pos |}
+        match is_ident_char {| c: ch |}
+          case 1 => find_word_end {| src: src, pos: pos + 1 |}
+          case 0 => pos
+        end
+    end
+end
+
+fn find_str_end
+  case {| src, pos |} =>
+    let slen = strlen {| s: src |}
+    match pos >= slen
+      case 1 => pos
+      case 0 =>
+        let ch = char_at {| s: src, n: pos |}
+        match ch == 34
+          case 1 => pos
+          case 0 =>
+            match ch == 92
+              case 1 => find_str_end {| src: src, pos: pos + 2 |}
+              case 0 => find_str_end {| src: src, pos: pos + 1 |}
+            end
+        end
+    end
+end
+
+fn process_escapes
+  case {| s, pos, acc |} =>
+    let slen = strlen {| s: s |}
+    match pos >= slen
+      case 1 => acc
+      case 0 =>
+        let ch = char_at {| s: s, n: pos |}
+        match ch == 92
+          case 1 =>
+            let next = char_at {| s: s, n: pos + 1 |}
+            let esc = match next
+              case 110 => char_of_int {| n: 10 |}
+              case 116 => char_of_int {| n: 9 |}
+              case 114 => char_of_int {| n: 13 |}
+              case 92 => char_of_int {| n: 92 |}
+              case 34 => char_of_int {| n: 34 |}
+              case _ => char_of_int {| n: next |}
+            end
+            process_escapes {| s: s, pos: pos + 2, acc: concat {| a: acc, b: esc |} |}
+          case 0 =>
+            process_escapes {| s: s, pos: pos + 1, acc: concat {| a: acc, b: char_of_int {| n: ch |} |} |}
+        end
+    end
+end
+
+fn is_keyword
+  case {| word |} =>
+    (str_eq {| a: word, b: "struct" |}) ||
+    (str_eq {| a: word, b: "fn" |}) ||
+    (str_eq {| a: word, b: "do" |}) ||
+    (str_eq {| a: word, b: "case" |}) ||
+    (str_eq {| a: word, b: "end" |}) ||
+    (str_eq {| a: word, b: "let" |}) ||
+    (str_eq {| a: word, b: "in" |}) ||
+    (str_eq {| a: word, b: "print" |}) ||
+    (str_eq {| a: word, b: "write" |}) ||
+    (str_eq {| a: word, b: "match" |}) ||
+    (str_eq {| a: word, b: "readln" |}) ||
+    (str_eq {| a: word, b: "readint" |})
+end
+
+fn peek_char
+  case {| src, pos |} =>
+    let slen = strlen {| s: src |}
+    match (pos + 1) < slen
+      case 1 => char_at {| s: src, n: pos + 1 |}
+      case 0 => 0 - 1
+    end
+end
+
+-- ============================================================
+-- Lexer Core
+-- ============================================================
+
+fn lex_number
+  case {| src, pos |} =>
+    let end_pos = find_digit_end {| src: src, pos: pos |}
+    let value = substr {| s: src, start: pos, len: end_pos - pos |}
+    {| type: "int", value: value, pos: end_pos |}
+end
+
+fn lex_string
+  case {| src, pos |} =>
+    let end_pos = find_str_end {| src: src, pos: pos + 1 |}
+    let raw = substr {| s: src, start: pos + 1, len: end_pos - pos - 1 |}
+    let value = process_escapes {| s: raw, pos: 0, acc: "" |}
+    {| type: "str", value: value, pos: end_pos + 1 |}
+end
+
+fn lex_word
+  case {| src, pos |} =>
+    let end_pos = find_word_end {| src: src, pos: pos |}
+    let word = substr {| s: src, start: pos, len: end_pos - pos |}
+    match str_eq {| a: word, b: "_" |}
+      case 1 => {| type: "_", value: "_", pos: end_pos |}
+      case 0 =>
+        match is_keyword {| word: word |}
+          case 1 => {| type: word, value: word, pos: end_pos |}
+          case 0 => {| type: "ident", value: word, pos: end_pos |}
+        end
+    end
+end
+
+fn lex_punct
+  case {| src, pos, ch |} =>
+    let next_ch = peek_char {| src: src, pos: pos |}
+    match ch
+      case 123 => {| type: "{|", value: "{|", pos: pos + 2 |}
+      case 124 =>
+        match next_ch
+          case 125 => {| type: "|}", value: "|}", pos: pos + 2 |}
+          case 124 => {| type: "||", value: "||", pos: pos + 2 |}
+        end
+      case 61 =>
+        match next_ch
+          case 61 => {| type: "==", value: "==", pos: pos + 2 |}
+          case 62 => {| type: "=>", value: "=>", pos: pos + 2 |}
+          case _ => {| type: "=", value: "=", pos: pos + 1 |}
+        end
+      case 33 => {| type: "!=", value: "!=", pos: pos + 2 |}
+      case 60 =>
+        match next_ch
+          case 61 => {| type: "<=", value: "<=", pos: pos + 2 |}
+          case _ => {| type: "<", value: "<", pos: pos + 1 |}
+        end
+      case 62 =>
+        match next_ch
+          case 61 => {| type: ">=", value: ">=", pos: pos + 2 |}
+          case _ => {| type: ">", value: ">", pos: pos + 1 |}
+        end
+      case 38 => {| type: "&&", value: "&&", pos: pos + 2 |}
+      case 45 => {| type: "-", value: "-", pos: pos + 1 |}
+      case 43 => {| type: "+", value: "+", pos: pos + 1 |}
+      case 42 => {| type: "*", value: "*", pos: pos + 1 |}
+      case 47 => {| type: "/", value: "/", pos: pos + 1 |}
+      case 37 => {| type: "%", value: "%", pos: pos + 1 |}
+      case 40 => {| type: "(", value: "(", pos: pos + 1 |}
+      case 41 => {| type: ")", value: ")", pos: pos + 1 |}
+      case 46 => {| type: ".", value: ".", pos: pos + 1 |}
+      case 44 => {| type: ",", value: ",", pos: pos + 1 |}
+      case 58 => {| type: ":", value: ":", pos: pos + 1 |}
+    end
+end
+
+fn lex_next
+  case {| src, pos |} =>
+    let slen = strlen {| s: src |}
+    match pos >= slen
+      case 1 => {| type: "eof", value: "", pos: pos |}
+      case 0 =>
+        let ch = char_at {| s: src, n: pos |}
+        match is_digit {| c: ch |}
+          case 1 => lex_number {| src: src, pos: pos |}
+          case 0 =>
+            match (is_alpha {| c: ch |}) || (is_underscore {| c: ch |})
+              case 1 => lex_word {| src: src, pos: pos |}
+              case 0 =>
+                match ch == 34
+                  case 1 => lex_string {| src: src, pos: pos |}
+                  case 0 => lex_punct {| src: src, pos: pos, ch: ch |}
+                end
+            end
+        end
+    end
+end
+
+-- ============================================================
+-- Lexer Driver
+-- ============================================================
+
+fn tokenize_loop
+  case {| src, pos, acc |} =>
+    let p = skip_ws_cmt {| src: src, pos: pos |}
+    let tok_result = lex_next {| src: src, pos: p |}
+    match str_eq {| a: tok_result.type, b: "eof" |}
+      case 1 =>
+        let eof_tok = make_tok {| type: "eof", value: "" |}
+        let final_list = cons {| head: eof_tok, tail: acc |}
+        list_reverse {| list: final_list |}
+      case 0 =>
+        let tok = make_tok {| type: tok_result.type, value: tok_result.value |}
+        let new_acc = cons {| head: tok, tail: acc |}
+        tokenize_loop {| src: src, pos: tok_result.pos, acc: new_acc |}
+    end
+end
+
+fn tokenize
+  case {| src |} =>
+    let empty = nil {| |}
+    tokenize_loop {| src: src, pos: 0, acc: empty |}
+end
+
+-- ============================================================
+-- Token Printing
+-- ============================================================
+
+fn tok_to_str
+  case {| tok |} =>
+    let nl = char_of_int {| n: 10 |}
+    let vlen = strlen {| s: tok.value |}
+    match vlen == 0
+      case 1 => concat {| a: tok.type, b: nl |}
+      case 0 =>
+        let s1 = concat {| a: tok.type, b: " " |}
+        let s2 = concat {| a: s1, b: tok.value |}
+        concat {| a: s2, b: nl |}
+    end
+end
+
+fn print_tokens_acc
+  case {| list, acc |} =>
+    match is_nil {| list: list |}
+      case 1 => acc
+      case 0 =>
+        let head = list_head {| list: list |}
+        let tail = list_tail {| list: list |}
+        let s = tok_to_str {| tok: head |}
+        let new_acc = concat {| a: acc, b: s |}
+        print_tokens_acc {| list: tail, acc: new_acc |}
+    end
+end
+
+fn print_tokens
+  case {| list |} =>
+    print_tokens_acc {| list: list, acc: "" |}
+end
+

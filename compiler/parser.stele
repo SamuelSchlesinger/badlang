@@ -1,0 +1,598 @@
+-- ============================================================
+-- Parser Infrastructure
+-- ============================================================
+
+fn peek
+  case {| tokens |} =>
+    match is_nil {| list: tokens |}
+      case 1 => {| type: "eof", value: "" |}
+      case 0 => list_head {| list: tokens |}
+    end
+end
+
+fn advance
+  case {| tokens |} =>
+    match is_nil {| list: tokens |}
+      case 1 => tokens
+      case 0 => list_tail {| list: tokens |}
+    end
+end
+
+fn expect
+  case {| tokens, type |} =>
+    let tok = peek {| tokens: tokens |}
+    match str_eq {| a: tok.type, b: type |}
+      case 1 => advance {| tokens: tokens |}
+    end
+end
+
+fn expect_ident
+  case {| tokens |} =>
+    let tok = peek {| tokens: tokens |}
+    match str_eq {| a: tok.type, b: "ident" |}
+      case 1 =>
+        let rest = advance {| tokens: tokens |}
+        {| name: tok.value, rest: rest |}
+    end
+end
+
+-- ============================================================
+-- Operator Helpers
+-- ============================================================
+
+fn is_cmp_op
+  case {| type |} =>
+    (str_eq {| a: type, b: "==" |}) ||
+    (str_eq {| a: type, b: "!=" |}) ||
+    (str_eq {| a: type, b: "<" |}) ||
+    (str_eq {| a: type, b: ">" |}) ||
+    (str_eq {| a: type, b: "<=" |}) ||
+    (str_eq {| a: type, b: ">=" |})
+end
+
+fn is_add_op
+  case {| type |} =>
+    (str_eq {| a: type, b: "+" |}) ||
+    (str_eq {| a: type, b: "-" |})
+end
+
+fn is_mul_op
+  case {| type |} =>
+    (str_eq {| a: type, b: "*" |}) ||
+    (str_eq {| a: type, b: "/" |}) ||
+    (str_eq {| a: type, b: "%" |})
+end
+
+-- ============================================================
+-- Record / Field Parsing
+-- ============================================================
+
+fn parse_field_inits
+  case {| tokens, acc |} =>
+    let id = expect_ident {| tokens: tokens |}
+    let rest1 = expect {| tokens: id.rest, type: ":" |}
+    let r = parse_expr {| tokens: rest1 |}
+    let field = {| name: id.name, value: r.node |}
+    let new_acc = cons {| head: field, tail: acc |}
+    let tok = peek {| tokens: r.rest |}
+    match str_eq {| a: tok.type, b: "," |}
+      case 1 =>
+        let rest2 = advance {| tokens: r.rest |}
+        parse_field_inits {| tokens: rest2, acc: new_acc |}
+      case 0 =>
+        let result = list_reverse {| list: new_acc |}
+        {| node: result, rest: r.rest |}
+    end
+end
+
+fn parse_record_lit
+  case {| tokens |} =>
+    let rest1 = expect {| tokens: tokens, type: "{|" |}
+    let tok = peek {| tokens: rest1 |}
+    match str_eq {| a: tok.type, b: "|}" |}
+      case 1 =>
+        let rest2 = advance {| tokens: rest1 |}
+        let empty = nil {| |}
+        {| node: {| tag: "record", fields: empty |}, rest: rest2 |}
+      case 0 =>
+        let empty = nil {| |}
+        let r = parse_field_inits {| tokens: rest1, acc: empty |}
+        let rest2 = expect {| tokens: r.rest, type: "|}" |}
+        {| node: {| tag: "record", fields: r.node |}, rest: rest2 |}
+    end
+end
+
+-- ============================================================
+-- Pattern Parsing
+-- ============================================================
+
+fn parse_pat_fields
+  case {| tokens, acc |} =>
+    let id = expect_ident {| tokens: tokens |}
+    let tok = peek {| tokens: id.rest |}
+    match str_eq {| a: tok.type, b: ":" |}
+      case 1 =>
+        let rest1 = advance {| tokens: id.rest |}
+        let r = parse_pattern {| tokens: rest1 |}
+        let field = {| name: id.name, pat: r.node |}
+        let new_acc = cons {| head: field, tail: acc |}
+        let tok2 = peek {| tokens: r.rest |}
+        match str_eq {| a: tok2.type, b: "," |}
+          case 1 =>
+            let rest2 = advance {| tokens: r.rest |}
+            parse_pat_fields {| tokens: rest2, acc: new_acc |}
+          case 0 =>
+            let result = list_reverse {| list: new_acc |}
+            {| node: result, rest: r.rest |}
+        end
+      case 0 =>
+        let field = {| name: id.name, pat: {| tag: "pat_none" |} |}
+        let new_acc = cons {| head: field, tail: acc |}
+        let tok2 = peek {| tokens: id.rest |}
+        match str_eq {| a: tok2.type, b: "," |}
+          case 1 =>
+            let rest1 = advance {| tokens: id.rest |}
+            parse_pat_fields {| tokens: rest1, acc: new_acc |}
+          case 0 =>
+            let result = list_reverse {| list: new_acc |}
+            {| node: result, rest: id.rest |}
+        end
+    end
+end
+
+fn parse_record_pat
+  case {| tokens |} =>
+    let rest1 = expect {| tokens: tokens, type: "{|" |}
+    let tok = peek {| tokens: rest1 |}
+    match str_eq {| a: tok.type, b: "|}" |}
+      case 1 =>
+        let rest2 = advance {| tokens: rest1 |}
+        let empty = nil {| |}
+        {| node: {| tag: "pat_rec", fields: empty |}, rest: rest2 |}
+      case 0 =>
+        let empty = nil {| |}
+        let r = parse_pat_fields {| tokens: rest1, acc: empty |}
+        let rest2 = expect {| tokens: r.rest, type: "|}" |}
+        {| node: {| tag: "pat_rec", fields: r.node |}, rest: rest2 |}
+    end
+end
+
+fn parse_pattern
+  case {| tokens |} =>
+    let tok = peek {| tokens: tokens |}
+    match tok.type
+      case "{|" => parse_record_pat {| tokens: tokens |}
+      case "int" =>
+        let rest1 = advance {| tokens: tokens |}
+        {| node: {| tag: "pat_int", value: tok.value |}, rest: rest1 |}
+      case "str" =>
+        let rest1 = advance {| tokens: tokens |}
+        {| node: {| tag: "pat_str", value: tok.value |}, rest: rest1 |}
+      case "_" =>
+        let rest1 = advance {| tokens: tokens |}
+        {| node: {| tag: "pat_wild" |}, rest: rest1 |}
+      case _ =>
+        let rest1 = advance {| tokens: tokens |}
+        {| node: {| tag: "pat_var", name: tok.value |}, rest: rest1 |}
+    end
+end
+
+-- ============================================================
+-- Block Expression / Let Bindings
+-- ============================================================
+
+fn fold_let_bindings
+  case {| bindings, body |} =>
+    match is_nil {| list: bindings |}
+      case 1 => body
+      case 0 =>
+        let head = list_head {| list: bindings |}
+        let tail = list_tail {| list: bindings |}
+        let inner = fold_let_bindings {| bindings: tail, body: body |}
+        {| tag: "let_in", name: head.name, value: head.value, body: inner |}
+    end
+end
+
+fn collect_let_chain_acc
+  case {| node, acc |} =>
+    match node.tag
+      case "let_in" =>
+        let binding = {| name: node.name, value: node.value |}
+        let new_acc = cons {| head: binding, tail: acc |}
+        collect_let_chain_acc {| node: node.body, acc: new_acc |}
+      case _ =>
+        let reversed = list_reverse {| list: acc |}
+        {| bindings: reversed, body: node |}
+    end
+end
+
+fn collect_let_chain
+  case {| node |} =>
+    let empty = nil {| |}
+    collect_let_chain_acc {| node: node, acc: empty |}
+end
+
+fn parse_let_bindings
+  case {| tokens, acc |} =>
+    let tok = peek {| tokens: tokens |}
+    match str_eq {| a: tok.type, b: "let" |}
+      case 1 =>
+        let rest1 = advance {| tokens: tokens |}
+        let id = expect_ident {| tokens: rest1 |}
+        let rest2 = expect {| tokens: id.rest, type: "=" |}
+        let r = parse_expr {| tokens: rest2 |}
+        let binding = {| name: id.name, value: r.node |}
+        let new_acc = cons {| head: binding, tail: acc |}
+        parse_let_bindings {| tokens: r.rest, acc: new_acc |}
+      case 0 =>
+        let result = list_reverse {| list: acc |}
+        {| node: result, rest: tokens |}
+    end
+end
+
+fn parse_block_expr
+  case {| tokens |} =>
+    let empty = nil {| |}
+    let r_bindings = parse_let_bindings {| tokens: tokens, acc: empty |}
+    let r_expr = parse_expr {| tokens: r_bindings.rest |}
+    let body = fold_let_bindings {| bindings: r_bindings.node, body: r_expr.node |}
+    {| node: body, rest: r_expr.rest |}
+end
+
+-- ============================================================
+-- Given Clauses
+-- ============================================================
+
+fn parse_case_clause
+  case {| tokens |} =>
+    let rest1 = expect {| tokens: tokens, type: "case" |}
+    let r_pat = parse_pattern {| tokens: rest1 |}
+    let rest2 = expect {| tokens: r_pat.rest, type: "=>" |}
+    let r_body = parse_block_expr {| tokens: rest2 |}
+    {| node: {| pat: r_pat.node, body: r_body.node |}, rest: r_body.rest |}
+end
+
+fn parse_case_clauses
+  case {| tokens, acc |} =>
+    let tok = peek {| tokens: tokens |}
+    match str_eq {| a: tok.type, b: "case" |}
+      case 1 =>
+        let r = parse_case_clause {| tokens: tokens |}
+        let new_acc = cons {| head: r.node, tail: acc |}
+        parse_case_clauses {| tokens: r.rest, acc: new_acc |}
+      case 0 =>
+        let result = list_reverse {| list: acc |}
+        {| node: result, rest: tokens |}
+    end
+end
+
+-- ============================================================
+-- Complex Expressions (function calls, named records, match)
+-- ============================================================
+
+fn parse_named_record_expr
+  case {| tokens |} =>
+    let id = expect_ident {| tokens: tokens |}
+    let r = parse_record_lit {| tokens: id.rest |}
+    {| node: {| tag: "named_record", name: id.name, fields: r.node.fields |}, rest: r.rest |}
+end
+
+fn parse_match_expr
+  case {| tokens |} =>
+    let rest1 = expect {| tokens: tokens, type: "match" |}
+    let r = parse_expr {| tokens: rest1 |}
+    let empty = nil {| |}
+    let r2 = parse_case_clauses {| tokens: r.rest, acc: empty |}
+    let rest2 = expect {| tokens: r2.rest, type: "end" |}
+    {| node: {| tag: "match", scrutinee: r.node, clauses: r2.node |}, rest: rest2 |}
+end
+
+-- ============================================================
+-- Primary Expression
+-- ============================================================
+
+fn parse_primary
+  case {| tokens |} =>
+    let tok = peek {| tokens: tokens |}
+    match tok.type
+      case "int" =>
+        let rest1 = advance {| tokens: tokens |}
+        {| node: {| tag: "int_lit", value: tok.value |}, rest: rest1 |}
+      case "str" =>
+        let rest1 = advance {| tokens: tokens |}
+        {| node: {| tag: "str_lit", value: tok.value |}, rest: rest1 |}
+      case "ident" =>
+        let first_ch = char_at {| s: tok.value, n: 0 |}
+        let is_upper = (first_ch >= 65) && (first_ch <= 90)
+        let next_tok = peek {| tokens: advance {| tokens: tokens |} |}
+        let next_is_rec = str_eq {| a: next_tok.type, b: "{|" |}
+        let next_is_paren = str_eq {| a: next_tok.type, b: "(" |}
+        match is_upper && next_is_rec
+          case 1 => parse_named_record_expr {| tokens: tokens |}
+          case 0 =>
+            match (is_upper == 0) && next_is_rec
+              case 1 =>
+                let id = expect_ident {| tokens: tokens |}
+                let r = parse_record_lit {| tokens: id.rest |}
+                {| node: {| tag: "call", name: id.name, arg: r.node |}, rest: r.rest |}
+              case 0 =>
+                match (is_upper == 0) && next_is_paren
+                  case 1 =>
+                    let id = expect_ident {| tokens: tokens |}
+                    let rest1 = expect {| tokens: id.rest, type: "(" |}
+                    let r = parse_expr {| tokens: rest1 |}
+                    let rest2 = expect {| tokens: r.rest, type: ")" |}
+                    {| node: {| tag: "call", name: id.name, arg: r.node |}, rest: rest2 |}
+                  case 0 =>
+                    let rest1 = advance {| tokens: tokens |}
+                    {| node: {| tag: "var", name: tok.value |}, rest: rest1 |}
+                end
+            end
+        end
+      case "readln" =>
+        let rest1 = advance {| tokens: tokens |}
+        {| node: {| tag: "readln" |}, rest: rest1 |}
+      case "readint" =>
+        let rest1 = advance {| tokens: tokens |}
+        {| node: {| tag: "readint" |}, rest: rest1 |}
+      case "(" =>
+        let rest1 = advance {| tokens: tokens |}
+        let r = parse_expr {| tokens: rest1 |}
+        let rest2 = expect {| tokens: r.rest, type: ")" |}
+        {| node: r.node, rest: rest2 |}
+      case "match" => parse_match_expr {| tokens: tokens |}
+      case "{|" => parse_record_lit {| tokens: tokens |}
+    end
+end
+
+-- ============================================================
+-- Expression Precedence Chain
+-- ============================================================
+
+fn parse_postfix_tail
+  case {| left, tokens |} =>
+    let tok = peek {| tokens: tokens |}
+    match str_eq {| a: tok.type, b: "." |}
+      case 1 =>
+        let rest1 = advance {| tokens: tokens |}
+        let id = expect_ident {| tokens: rest1 |}
+        let node = {| tag: "field_access", obj: left, field: id.name |}
+        parse_postfix_tail {| left: node, tokens: id.rest |}
+      case 0 => {| node: left, rest: tokens |}
+    end
+end
+
+fn parse_postfix_expr
+  case {| tokens |} =>
+    let r = parse_primary {| tokens: tokens |}
+    parse_postfix_tail {| left: r.node, tokens: r.rest |}
+end
+
+fn parse_unary_expr
+  case {| tokens |} =>
+    let tok = peek {| tokens: tokens |}
+    match str_eq {| a: tok.type, b: "-" |}
+      case 1 =>
+        let rest1 = advance {| tokens: tokens |}
+        let r = parse_unary_expr {| tokens: rest1 |}
+        let node = {| tag: "unop", op: "-", operand: r.node |}
+        {| node: node, rest: r.rest |}
+      case 0 => parse_postfix_expr {| tokens: tokens |}
+    end
+end
+
+fn parse_mul_tail
+  case {| left, tokens |} =>
+    let tok = peek {| tokens: tokens |}
+    match is_mul_op {| type: tok.type |}
+      case 1 =>
+        let rest1 = advance {| tokens: tokens |}
+        let r = parse_unary_expr {| tokens: rest1 |}
+        let node = {| tag: "binop", op: tok.type, left: left, right: r.node |}
+        parse_mul_tail {| left: node, tokens: r.rest |}
+      case 0 => {| node: left, rest: tokens |}
+    end
+end
+
+fn parse_mul_expr
+  case {| tokens |} =>
+    let r = parse_unary_expr {| tokens: tokens |}
+    parse_mul_tail {| left: r.node, tokens: r.rest |}
+end
+
+fn parse_add_tail
+  case {| left, tokens |} =>
+    let tok = peek {| tokens: tokens |}
+    match is_add_op {| type: tok.type |}
+      case 1 =>
+        let rest1 = advance {| tokens: tokens |}
+        let r = parse_mul_expr {| tokens: rest1 |}
+        let node = {| tag: "binop", op: tok.type, left: left, right: r.node |}
+        parse_add_tail {| left: node, tokens: r.rest |}
+      case 0 => {| node: left, rest: tokens |}
+    end
+end
+
+fn parse_add_expr
+  case {| tokens |} =>
+    let r = parse_mul_expr {| tokens: tokens |}
+    parse_add_tail {| left: r.node, tokens: r.rest |}
+end
+
+fn parse_cmp_expr
+  case {| tokens |} =>
+    let r = parse_add_expr {| tokens: tokens |}
+    let tok = peek {| tokens: r.rest |}
+    match is_cmp_op {| type: tok.type |}
+      case 1 =>
+        let rest1 = advance {| tokens: r.rest |}
+        let r2 = parse_add_expr {| tokens: rest1 |}
+        let node = {| tag: "binop", op: tok.type, left: r.node, right: r2.node |}
+        {| node: node, rest: r2.rest |}
+      case 0 => {| node: r.node, rest: r.rest |}
+    end
+end
+
+fn parse_and_tail
+  case {| left, tokens |} =>
+    let tok = peek {| tokens: tokens |}
+    match str_eq {| a: tok.type, b: "&&" |}
+      case 1 =>
+        let rest1 = advance {| tokens: tokens |}
+        let r = parse_cmp_expr {| tokens: rest1 |}
+        let node = {| tag: "binop", op: "&&", left: left, right: r.node |}
+        parse_and_tail {| left: node, tokens: r.rest |}
+      case 0 => {| node: left, rest: tokens |}
+    end
+end
+
+fn parse_and_expr
+  case {| tokens |} =>
+    let r = parse_cmp_expr {| tokens: tokens |}
+    parse_and_tail {| left: r.node, tokens: r.rest |}
+end
+
+fn parse_or_tail
+  case {| left, tokens |} =>
+    let tok = peek {| tokens: tokens |}
+    match str_eq {| a: tok.type, b: "||" |}
+      case 1 =>
+        let rest1 = advance {| tokens: tokens |}
+        let r = parse_and_expr {| tokens: rest1 |}
+        let node = {| tag: "binop", op: "||", left: left, right: r.node |}
+        parse_or_tail {| left: node, tokens: r.rest |}
+      case 0 => {| node: left, rest: tokens |}
+    end
+end
+
+fn parse_or_expr
+  case {| tokens |} =>
+    let r = parse_and_expr {| tokens: tokens |}
+    parse_or_tail {| left: r.node, tokens: r.rest |}
+end
+
+fn parse_expr
+  case {| tokens |} => parse_or_expr {| tokens: tokens |}
+end
+
+-- ============================================================
+-- Statement Parsing
+-- ============================================================
+
+fn parse_stmt
+  case {| tokens |} =>
+    let tok = peek {| tokens: tokens |}
+    match tok.type
+      case "let" =>
+        let rest1 = advance {| tokens: tokens |}
+        let id = expect_ident {| tokens: rest1 |}
+        let rest2 = expect {| tokens: id.rest, type: "=" |}
+        let r = parse_expr {| tokens: rest2 |}
+        {| node: {| tag: "stmt_let", name: id.name, value: r.node |}, rest: r.rest |}
+      case "print" =>
+        let rest1 = advance {| tokens: tokens |}
+        let r = parse_expr {| tokens: rest1 |}
+        {| node: {| tag: "stmt_stele_print", value: r.node |}, rest: r.rest |}
+      case "write" =>
+        let rest1 = advance {| tokens: tokens |}
+        let r = parse_expr {| tokens: rest1 |}
+        {| node: {| tag: "stmt_stele_write", value: r.node |}, rest: r.rest |}
+      case _ =>
+        let r = parse_expr {| tokens: tokens |}
+        {| node: {| tag: "stmt_expr", value: r.node |}, rest: r.rest |}
+    end
+end
+
+fn parse_stmts
+  case {| tokens, acc |} =>
+    let tok = peek {| tokens: tokens |}
+    match str_eq {| a: tok.type, b: "end" |}
+      case 1 =>
+        let result = list_reverse {| list: acc |}
+        {| node: result, rest: tokens |}
+      case 0 =>
+        let r = parse_stmt {| tokens: tokens |}
+        let new_acc = cons {| head: r.node, tail: acc |}
+        parse_stmts {| tokens: r.rest, acc: new_acc |}
+    end
+end
+
+-- ============================================================
+-- Declaration Parsing
+-- ============================================================
+
+fn parse_struct_fields
+  case {| tokens, acc |} =>
+    let tok = peek {| tokens: tokens |}
+    match str_eq {| a: tok.type, b: "end" |}
+      case 1 =>
+        let result = list_reverse {| list: acc |}
+        {| node: result, rest: tokens |}
+      case 0 =>
+        let id = expect_ident {| tokens: tokens |}
+        let rest1 = expect {| tokens: id.rest, type: ":" |}
+        let type_id = expect_ident {| tokens: rest1 |}
+        let field = {| name: id.name, type_name: type_id.name |}
+        let new_acc = cons {| head: field, tail: acc |}
+        parse_struct_fields {| tokens: type_id.rest, acc: new_acc |}
+    end
+end
+
+fn parse_fn_decl
+  case {| tokens |} =>
+    let rest1 = expect {| tokens: tokens, type: "fn" |}
+    let id = expect_ident {| tokens: rest1 |}
+    let empty = nil {| |}
+    let r = parse_case_clauses {| tokens: id.rest, acc: empty |}
+    let rest2 = expect {| tokens: r.rest, type: "end" |}
+    {| node: {| tag: "decl_fn", name: id.name, clauses: r.node |}, rest: rest2 |}
+end
+
+fn parse_do_decl
+  case {| tokens |} =>
+    let rest1 = expect {| tokens: tokens, type: "do" |}
+    let id = expect_ident {| tokens: rest1 |}
+    let empty = nil {| |}
+    let r = parse_stmts {| tokens: id.rest, acc: empty |}
+    let rest2 = expect {| tokens: r.rest, type: "end" |}
+    {| node: {| tag: "decl_do", name: id.name, stmts: r.node |}, rest: rest2 |}
+end
+
+fn parse_struct_decl
+  case {| tokens |} =>
+    let rest1 = expect {| tokens: tokens, type: "struct" |}
+    let id = expect_ident {| tokens: rest1 |}
+    let empty = nil {| |}
+    let r = parse_struct_fields {| tokens: id.rest, acc: empty |}
+    let rest2 = expect {| tokens: r.rest, type: "end" |}
+    {| node: {| tag: "decl_struct", name: id.name, fields: r.node |}, rest: rest2 |}
+end
+
+fn parse_decl
+  case {| tokens |} =>
+    let tok = peek {| tokens: tokens |}
+    match tok.type
+      case "fn" => parse_fn_decl {| tokens: tokens |}
+      case "do" => parse_do_decl {| tokens: tokens |}
+      case "struct" => parse_struct_decl {| tokens: tokens |}
+    end
+end
+
+fn parse_decls
+  case {| tokens, acc |} =>
+    let tok = peek {| tokens: tokens |}
+    match str_eq {| a: tok.type, b: "eof" |}
+      case 1 => list_reverse {| list: acc |}
+      case 0 =>
+        let r = parse_decl {| tokens: tokens |}
+        let new_acc = cons {| head: r.node, tail: acc |}
+        parse_decls {| tokens: r.rest, acc: new_acc |}
+    end
+end
+
+fn parse_program
+  case {| tokens |} =>
+    let empty = nil {| |}
+    parse_decls {| tokens: tokens, acc: empty |}
+end
+

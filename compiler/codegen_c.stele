@@ -1,0 +1,1031 @@
+-- ============================================================
+-- Code Generation: Foundation Helpers
+-- ============================================================
+
+-- Character constants
+fn dq
+  case {| |} => char_of_int {| n: 34 |}
+end
+
+fn bsl
+  case {| |} => char_of_int {| n: 92 |}
+end
+
+fn nl
+  case {| |} => char_of_int {| n: 10 |}
+end
+
+-- Fresh variable generation: returns {| name: "_tN", counter: N+1 |}
+fn fresh_var
+  case {| prefix, counter |} =>
+    let name = concat {| a: prefix, b: int_to_str {| n: counter |} |}
+    {| name: name, counter: counter + 1 |}
+end
+
+-- Escape a single character for C string literals
+fn c_escape_char
+  case {| c |} =>
+    match c
+      case 34 =>
+        let b = bsl {| |}
+        let q = dq {| |}
+        concat {| a: b, b: q |}
+      case 92 =>
+        let b = bsl {| |}
+        concat {| a: b, b: b |}
+      case 10 =>
+        let b = bsl {| |}
+        concat {| a: b, b: "n" |}
+      case 9 =>
+        let b = bsl {| |}
+        concat {| a: b, b: "t" |}
+      case 13 =>
+        let b = bsl {| |}
+        concat {| a: b, b: "r" |}
+      case _ => char_of_int {| n: c |}
+    end
+end
+
+-- Loop helper for c_string
+fn c_escape_str_loop
+  case {| s, pos, acc |} =>
+    let slen = strlen {| s: s |}
+    match pos >= slen
+      case 1 => acc
+      case 0 =>
+        let ch = char_at {| s: s, n: pos |}
+        let esc = c_escape_char {| c: ch |}
+        let new_acc = concat {| a: acc, b: esc |}
+        c_escape_str_loop {| s: s, pos: pos + 1, acc: new_acc |}
+    end
+end
+
+-- Wrap a string in escaped C double quotes: "..."
+fn c_string
+  case {| s |} =>
+    let q = dq {| |}
+    let escaped = c_escape_str_loop {| s: s, pos: 0, acc: "" |}
+    let s1 = concat {| a: q, b: escaped |}
+    concat {| a: s1, b: q |}
+end
+
+-- Mangle a Stele identifier for C (stele_ prefix, except "arg")
+fn c_name
+  case {| name |} =>
+    match str_eq {| a: name, b: "arg" |}
+      case 1 => "arg"
+      case 0 => concat {| a: "stele_", b: name |}
+    end
+end
+
+-- Check if a fn name is a built-in (defined in runtime, no forward decl needed)
+fn is_builtin_fn
+  case {| name |} =>
+    (str_eq {| a: name, b: "read" |}) ||
+    (str_eq {| a: name, b: "write" |}) ||
+    (str_eq {| a: name, b: "argc" |}) ||
+    (str_eq {| a: name, b: "argv" |}) ||
+    (str_eq {| a: name, b: "sh" |}) ||
+    (str_eq {| a: name, b: "terminate" |}) ||
+    (str_eq {| a: name, b: "spawn" |}) ||
+    (str_eq {| a: name, b: "await" |}) ||
+    (str_eq {| a: name, b: "sleep_ms" |}) ||
+    (str_eq {| a: name, b: "strlen" |}) ||
+    (str_eq {| a: name, b: "char_at" |}) ||
+    (str_eq {| a: name, b: "substr" |}) ||
+    (str_eq {| a: name, b: "concat" |}) ||
+    (str_eq {| a: name, b: "int_to_str" |}) ||
+    (str_eq {| a: name, b: "char_of_int" |}) ||
+    (str_eq {| a: name, b: "strcmp" |})
+end
+
+-- ============================================================
+-- Code Generation: Expression Emission
+-- ============================================================
+-- Each emitter returns {| code: String, var: String, counter: Int |}
+
+-- Emit a binary operation (pure helper, operands are variable names)
+fn emit_binop_c
+  case {| op, a, b |} =>
+    match op
+      case "+" =>
+        let s1 = concat {| a: "make_int(", b: a |}
+        let s2 = concat {| a: s1, b: "->int_val + " |}
+        let s3 = concat {| a: s2, b: b |}
+        concat {| a: s3, b: "->int_val)" |}
+      case "-" =>
+        let s1 = concat {| a: "make_int(", b: a |}
+        let s2 = concat {| a: s1, b: "->int_val - " |}
+        let s3 = concat {| a: s2, b: b |}
+        concat {| a: s3, b: "->int_val)" |}
+      case "*" =>
+        let s1 = concat {| a: "make_int(", b: a |}
+        let s2 = concat {| a: s1, b: "->int_val * " |}
+        let s3 = concat {| a: s2, b: b |}
+        concat {| a: s3, b: "->int_val)" |}
+      case "/" =>
+        let s1 = concat {| a: "make_int(", b: a |}
+        let s2 = concat {| a: s1, b: "->int_val / " |}
+        let s3 = concat {| a: s2, b: b |}
+        concat {| a: s3, b: "->int_val)" |}
+      case "%" =>
+        let s1 = concat {| a: "make_int(", b: a |}
+        let s2 = concat {| a: s1, b: "->int_val % " |}
+        let s3 = concat {| a: s2, b: b |}
+        concat {| a: s3, b: "->int_val)" |}
+      case "==" =>
+        let s1 = concat {| a: "make_int(stele_value_eq(", b: a |}
+        let s2 = concat {| a: s1, b: ", " |}
+        let s3 = concat {| a: s2, b: b |}
+        concat {| a: s3, b: "))" |}
+      case "!=" =>
+        let s1 = concat {| a: "make_int(stele_value_neq(", b: a |}
+        let s2 = concat {| a: s1, b: ", " |}
+        let s3 = concat {| a: s2, b: b |}
+        concat {| a: s3, b: "))" |}
+      case "<" =>
+        let s1 = concat {| a: "make_int(", b: a |}
+        let s2 = concat {| a: s1, b: "->int_val < " |}
+        let s3 = concat {| a: s2, b: b |}
+        concat {| a: s3, b: "->int_val)" |}
+      case ">" =>
+        let s1 = concat {| a: "make_int(", b: a |}
+        let s2 = concat {| a: s1, b: "->int_val > " |}
+        let s3 = concat {| a: s2, b: b |}
+        concat {| a: s3, b: "->int_val)" |}
+      case "<=" =>
+        let s1 = concat {| a: "make_int(", b: a |}
+        let s2 = concat {| a: s1, b: "->int_val <= " |}
+        let s3 = concat {| a: s2, b: b |}
+        concat {| a: s3, b: "->int_val)" |}
+      case ">=" =>
+        let s1 = concat {| a: "make_int(", b: a |}
+        let s2 = concat {| a: s1, b: "->int_val >= " |}
+        let s3 = concat {| a: s2, b: b |}
+        concat {| a: s3, b: "->int_val)" |}
+      case "&&" =>
+        let s1 = concat {| a: "make_int(", b: a |}
+        let s2 = concat {| a: s1, b: "->int_val && " |}
+        let s3 = concat {| a: s2, b: b |}
+        concat {| a: s3, b: "->int_val)" |}
+      case "||" =>
+        let s1 = concat {| a: "make_int(", b: a |}
+        let s2 = concat {| a: s1, b: "->int_val || " |}
+        let s3 = concat {| a: s2, b: b |}
+        concat {| a: s3, b: "->int_val)" |}
+    end
+end
+
+fn emit_int_lit
+  case {| node, counter |} =>
+    let f = fresh_var {| prefix: "_t", counter: counter |}
+    let n = nl {| |}
+    let s1 = concat {| a: "Value* ", b: f.name |}
+    let s2 = concat {| a: s1, b: " = make_int(" |}
+    let s3 = concat {| a: s2, b: node.value |}
+    let s4 = concat {| a: s3, b: ");" |}
+    let code = concat {| a: s4, b: n |}
+    {| code: code, var: f.name, counter: f.counter |}
+end
+
+fn emit_str_lit
+  case {| node, counter |} =>
+    let f = fresh_var {| prefix: "_t", counter: counter |}
+    let n = nl {| |}
+    let cs = c_string {| s: node.value |}
+    let s1 = concat {| a: "Value* ", b: f.name |}
+    let s2 = concat {| a: s1, b: " = make_str(" |}
+    let s3 = concat {| a: s2, b: cs |}
+    let s4 = concat {| a: s3, b: ");" |}
+    let code = concat {| a: s4, b: n |}
+    {| code: code, var: f.name, counter: f.counter |}
+end
+
+fn emit_var
+  case {| node, counter |} =>
+    let f = fresh_var {| prefix: "_t", counter: counter |}
+    let n = nl {| |}
+    let cn = c_name {| name: node.name |}
+    let s1 = concat {| a: "Value* ", b: f.name |}
+    let s2 = concat {| a: s1, b: " = " |}
+    let s3 = concat {| a: s2, b: cn |}
+    let s4 = concat {| a: s3, b: "; rc_retain(" |}
+    let s5 = concat {| a: s4, b: f.name |}
+    let s6 = concat {| a: s5, b: ");" |}
+    let code = concat {| a: s6, b: n |}
+    {| code: code, var: f.name, counter: f.counter |}
+end
+
+fn emit_binop
+  case {| node, counter |} =>
+    let n = nl {| |}
+    let r1 = emit_expr {| node: node.left, counter: counter |}
+    let r2 = emit_expr {| node: node.right, counter: r1.counter |}
+    let f = fresh_var {| prefix: "_t", counter: r2.counter |}
+    let op_str = emit_binop_c {| op: node.op, a: r1.var, b: r2.var |}
+    let s1 = concat {| a: r1.code, b: r2.code |}
+    let s2 = concat {| a: s1, b: "Value* " |}
+    let s3 = concat {| a: s2, b: f.name |}
+    let s4 = concat {| a: s3, b: " = " |}
+    let s5 = concat {| a: s4, b: op_str |}
+    let s6 = concat {| a: s5, b: ";" |}
+    let s7 = concat {| a: s6, b: n |}
+    let s8 = concat {| a: s7, b: "rc_release(" |}
+    let s9 = concat {| a: s8, b: r1.var |}
+    let s10 = concat {| a: s9, b: "); rc_release(" |}
+    let s11 = concat {| a: s10, b: r2.var |}
+    let s12 = concat {| a: s11, b: ");" |}
+    let code = concat {| a: s12, b: n |}
+    {| code: code, var: f.name, counter: f.counter |}
+end
+
+fn emit_unop
+  case {| node, counter |} =>
+    let n = nl {| |}
+    let r = emit_expr {| node: node.operand, counter: counter |}
+    let f = fresh_var {| prefix: "_t", counter: r.counter |}
+    -- Only negation supported for now
+    let s1 = concat {| a: r.code, b: "Value* " |}
+    let s2 = concat {| a: s1, b: f.name |}
+    let s3 = concat {| a: s2, b: " = make_int(-" |}
+    let s4 = concat {| a: s3, b: r.var |}
+    let s5 = concat {| a: s4, b: "->int_val);" |}
+    let s6 = concat {| a: s5, b: n |}
+    let s7 = concat {| a: s6, b: "rc_release(" |}
+    let s8 = concat {| a: s7, b: r.var |}
+    let s9 = concat {| a: s8, b: ");" |}
+    let code = concat {| a: s9, b: n |}
+    {| code: code, var: f.name, counter: f.counter |}
+end
+
+fn emit_field_access
+  case {| node, counter |} =>
+    let n = nl {| |}
+    let r = emit_expr {| node: node.obj, counter: counter |}
+    let f = fresh_var {| prefix: "_t", counter: r.counter |}
+    let cs = c_string {| s: node.field |}
+    let s1 = concat {| a: r.code, b: "Value* " |}
+    let s2 = concat {| a: s1, b: f.name |}
+    let s3 = concat {| a: s2, b: " = record_field(" |}
+    let s4 = concat {| a: s3, b: r.var |}
+    let s5 = concat {| a: s4, b: ", " |}
+    let s6 = concat {| a: s5, b: cs |}
+    let s7 = concat {| a: s6, b: ");" |}
+    let s8 = concat {| a: s7, b: n |}
+    let s9 = concat {| a: s8, b: "rc_retain(" |}
+    let s10 = concat {| a: s9, b: f.name |}
+    let s11 = concat {| a: s10, b: ");" |}
+    let s12 = concat {| a: s11, b: n |}
+    let s13 = concat {| a: s12, b: "rc_release(" |}
+    let s14 = concat {| a: s13, b: r.var |}
+    let s15 = concat {| a: s14, b: ");" |}
+    let code = concat {| a: s15, b: n |}
+    {| code: code, var: f.name, counter: f.counter |}
+end
+
+-- Emit record field values, building up code and argument list
+fn emit_record_fields_loop
+  case {| fields, counter, setup, args |} =>
+    match is_nil {| list: fields |}
+      case 1 => {| setup: setup, args: args, counter: counter |}
+      case 0 =>
+        let head = list_head {| list: fields |}
+        let tail = list_tail {| list: fields |}
+        let r = emit_expr {| node: head.value, counter: counter |}
+        let new_setup = concat {| a: setup, b: r.code |}
+        let cs = c_string {| s: head.name |}
+        let a1 = concat {| a: args, b: ", " |}
+        let a2 = concat {| a: a1, b: cs |}
+        let a3 = concat {| a: a2, b: ", " |}
+        let new_args = concat {| a: a3, b: r.var |}
+        emit_record_fields_loop {| fields: tail, counter: r.counter, setup: new_setup, args: new_args |}
+    end
+end
+
+fn emit_record
+  case {| node, counter |} =>
+    let n = nl {| |}
+    let num_fields = list_len {| list: node.fields |}
+    let num_str = int_to_str {| n: num_fields |}
+    let r = emit_record_fields_loop {| fields: node.fields, counter: counter, setup: "", args: "" |}
+    let f = fresh_var {| prefix: "_t", counter: r.counter |}
+    let s1 = concat {| a: r.setup, b: "Value* " |}
+    let s2 = concat {| a: s1, b: f.name |}
+    let s3 = concat {| a: s2, b: " = make_record(" |}
+    let s4 = concat {| a: s3, b: num_str |}
+    let s5 = concat {| a: s4, b: r.args |}
+    let s6 = concat {| a: s5, b: ");" |}
+    let code = concat {| a: s6, b: n |}
+    {| code: code, var: f.name, counter: f.counter |}
+end
+
+fn emit_call_expr
+  case {| node, counter |} =>
+    let n = nl {| |}
+    let r = emit_expr {| node: node.arg, counter: counter |}
+    let f = fresh_var {| prefix: "_t", counter: r.counter |}
+    let s1 = concat {| a: r.code, b: "Value* " |}
+    let s2 = concat {| a: s1, b: f.name |}
+    let s3 = concat {| a: s2, b: " = fn_" |}
+    let s4 = concat {| a: s3, b: node.name |}
+    let s5 = concat {| a: s4, b: "(" |}
+    let s6 = concat {| a: s5, b: r.var |}
+    let s7 = concat {| a: s6, b: ");" |}
+    let s8 = concat {| a: s7, b: n |}
+    let s9 = concat {| a: s8, b: "rc_release(" |}
+    let s10 = concat {| a: s9, b: r.var |}
+    let s11 = concat {| a: s10, b: ");" |}
+    let code = concat {| a: s11, b: n |}
+    {| code: code, var: f.name, counter: f.counter |}
+end
+
+fn emit_readln
+  case {| counter |} =>
+    let f = fresh_var {| prefix: "_t", counter: counter |}
+    let n = nl {| |}
+    let s1 = concat {| a: "Value* ", b: f.name |}
+    let s2 = concat {| a: s1, b: " = runtime_readln();" |}
+    let code = concat {| a: s2, b: n |}
+    {| code: code, var: f.name, counter: f.counter |}
+end
+
+fn emit_readint
+  case {| counter |} =>
+    let f = fresh_var {| prefix: "_t", counter: counter |}
+    let n = nl {| |}
+    let s1 = concat {| a: "Value* ", b: f.name |}
+    let s2 = concat {| a: s1, b: " = runtime_readint();" |}
+    let code = concat {| a: s2, b: n |}
+    {| code: code, var: f.name, counter: f.counter |}
+end
+
+fn emit_let_bindings_loop
+  case {| bindings, counter, code_acc, names_acc |} =>
+    match is_nil {| list: bindings |}
+      case 1 => {| code: code_acc, counter: counter, names: names_acc |}
+      case 0 =>
+        let head = list_head {| list: bindings |}
+        let tail = list_tail {| list: bindings |}
+        let n = nl {| |}
+        let rv = emit_expr {| node: head.value, counter: counter |}
+        let cn = c_name {| name: head.name |}
+        let s1 = concat {| a: rv.code, b: "Value* " |}
+        let s2 = concat {| a: s1, b: cn |}
+        let s3 = concat {| a: s2, b: " = " |}
+        let s4 = concat {| a: s3, b: rv.var |}
+        let s5 = concat {| a: s4, b: ";" |}
+        let line = concat {| a: s5, b: n |}
+        let new_code = concat {| a: code_acc, b: line |}
+        let new_names = cons {| head: head.name, tail: names_acc |}
+        emit_let_bindings_loop {| bindings: tail, counter: rv.counter, code_acc: new_code, names_acc: new_names |}
+    end
+end
+
+fn emit_let_in
+  case {| node, counter |} =>
+    let chain = collect_let_chain {| node: node |}
+    let empty = nil {| |}
+    let br = emit_let_bindings_loop {| bindings: chain.bindings, counter: counter, code_acc: "", names_acc: empty |}
+    let rb = emit_expr {| node: chain.body, counter: br.counter |}
+    let release = gen_release_code {| names: br.names |}
+    let s1 = concat {| a: br.code, b: rb.code |}
+    let code = concat {| a: s1, b: release |}
+    {| code: code, var: rb.var, counter: rb.counter |}
+end
+
+-- ============================================================
+-- Code Generation: Pattern Matching
+-- ============================================================
+-- Returns {| cond: String, bindings: String |}
+
+fn is_type_like_pat_name
+  case {| name |} =>
+    let len = strlen {| s: name |}
+    let starts_upper = match len > 0
+      case 1 =>
+        let c = char_at {| s: name, n: 0 |}
+        (c >= 65) && (c <= 90)
+      case 0 => 0
+    end
+    (str_eq {| a: name, b: "Int" |}) ||
+    (str_eq {| a: name, b: "String" |}) ||
+    (str_eq {| a: name, b: "Void" |}) ||
+    starts_upper
+end
+
+fn field_binding_name
+  case {| field |} =>
+    match field.pat.tag
+      case "pat_var" =>
+        match is_type_like_pat_name {| name: field.pat.name |}
+          case 1 => field.name
+          case 0 => field.pat.name
+        end
+      case "pat_wild" => ""
+      case _ => field.name
+    end
+end
+
+-- Match a single record field pattern
+-- Returns {| cond: String, bindings: String |}
+fn emit_rec_field_match
+  case {| var, field |} =>
+    let n = nl {| |}
+    let cs = c_string {| s: field.name |}
+    let tmp = concat {| a: "_f_", b: field.name |}
+    -- Value* _f_NAME = record_field(var, "NAME");
+    let b1 = concat {| a: "Value* ", b: tmp |}
+    let b2 = concat {| a: b1, b: " = record_field(" |}
+    let b3 = concat {| a: b2, b: var |}
+    let b4 = concat {| a: b3, b: ", " |}
+    let b5 = concat {| a: b4, b: cs |}
+    let b6 = concat {| a: b5, b: ");" |}
+    let binding1 = concat {| a: b6, b: n |}
+    let bind_name = field_binding_name {| field: field |}
+    let binding2 = match str_eq {| a: bind_name, b: "" |}
+      case 1 => ""
+      case 0 =>
+        let cn = c_name {| name: bind_name |}
+        let b7 = concat {| a: "Value* ", b: cn |}
+        let b8 = concat {| a: b7, b: " = " |}
+        let b9 = concat {| a: b8, b: tmp |}
+        let b10 = concat {| a: b9, b: ";" |}
+        concat {| a: b10, b: n |}
+    end
+    let both_bindings = concat {| a: binding1, b: binding2 |}
+    -- Null check is always needed
+    let null_check = concat {| a: tmp, b: " != NULL" |}
+    match field.pat.tag
+      case "pat_none" =>
+        {| cond: null_check, bindings: both_bindings |}
+      case "pat_var" =>
+        {| cond: null_check, bindings: both_bindings |}
+      case "pat_int" =>
+        let c1 = concat {| a: null_check, b: " && " |}
+        let c2 = concat {| a: c1, b: tmp |}
+        let c3 = concat {| a: c2, b: "->tag == TAG_INT && " |}
+        let c4 = concat {| a: c3, b: tmp |}
+        let c5 = concat {| a: c4, b: "->int_val == " |}
+        let cond = concat {| a: c5, b: field.pat.value |}
+        {| cond: cond, bindings: both_bindings |}
+      case "pat_str" =>
+        let csv = c_string {| s: field.pat.value |}
+        let c1 = concat {| a: null_check, b: " && " |}
+        let c2 = concat {| a: c1, b: tmp |}
+        let c3 = concat {| a: c2, b: "->tag == TAG_STR && strcmp(" |}
+        let c4 = concat {| a: c3, b: tmp |}
+        let c5 = concat {| a: c4, b: "->str_val, " |}
+        let c6 = concat {| a: c5, b: csv |}
+        let cond = concat {| a: c6, b: ") == 0" |}
+        {| cond: cond, bindings: both_bindings |}
+      case "pat_wild" =>
+        {| cond: null_check, bindings: binding1 |}
+    end
+end
+
+-- Loop over record pattern fields, accumulating conditions and bindings
+fn emit_rec_pat_loop
+  case {| var, fields, cond_acc, bind_acc |} =>
+    match is_nil {| list: fields |}
+      case 1 => {| cond: cond_acc, bindings: bind_acc |}
+      case 0 =>
+        let head = list_head {| list: fields |}
+        let tail = list_tail {| list: fields |}
+        let r = emit_rec_field_match {| var: var, field: head |}
+        -- Combine conditions with &&
+        let new_cond = match str_eq {| a: cond_acc, b: "" |}
+          case 1 => r.cond
+          case 0 =>
+            let c1 = concat {| a: cond_acc, b: " && " |}
+            concat {| a: c1, b: r.cond |}
+        end
+        let new_bind = concat {| a: bind_acc, b: r.bindings |}
+        emit_rec_pat_loop {| var: var, fields: tail, cond_acc: new_cond, bind_acc: new_bind |}
+    end
+end
+
+-- Central pattern match dispatcher
+-- Returns {| cond: String, bindings: String |}
+fn emit_pat_match
+  case {| var, pat |} =>
+    let n = nl {| |}
+    match pat.tag
+      case "pat_wild" =>
+        {| cond: "1", bindings: "" |}
+      case "pat_var" =>
+        let cn = c_name {| name: pat.name |}
+        let b1 = concat {| a: "Value* ", b: cn |}
+        let b2 = concat {| a: b1, b: " = " |}
+        let b3 = concat {| a: b2, b: var |}
+        let b4 = concat {| a: b3, b: ";" |}
+        let bindings = concat {| a: b4, b: n |}
+        {| cond: "1", bindings: bindings |}
+      case "pat_int" =>
+        let c1 = concat {| a: var, b: "->tag == TAG_INT && " |}
+        let c2 = concat {| a: c1, b: var |}
+        let c3 = concat {| a: c2, b: "->int_val == " |}
+        let cond = concat {| a: c3, b: pat.value |}
+        {| cond: cond, bindings: "" |}
+      case "pat_str" =>
+        let cs = c_string {| s: pat.value |}
+        let c1 = concat {| a: var, b: "->tag == TAG_STR && strcmp(" |}
+        let c2 = concat {| a: c1, b: var |}
+        let c3 = concat {| a: c2, b: "->str_val, " |}
+        let c4 = concat {| a: c3, b: cs |}
+        let cond = concat {| a: c4, b: ") == 0" |}
+        {| cond: cond, bindings: "" |}
+      case "pat_rec" =>
+        let r = emit_rec_pat_loop {| var: var, fields: pat.fields, cond_acc: "", bind_acc: "" |}
+        -- Prepend TAG_RECORD check
+        let rec_check = concat {| a: var, b: "->tag == TAG_RECORD" |}
+        let cond = match str_eq {| a: r.cond, b: "" |}
+          case 1 => rec_check
+          case 0 =>
+            let c1 = concat {| a: rec_check, b: " && " |}
+            concat {| a: c1, b: r.cond |}
+        end
+        {| cond: cond, bindings: r.bindings |}
+    end
+end
+
+-- Extract bound variable names from a pattern (for retain/release)
+fn extract_field_bound_names
+  case {| field |} =>
+    let name = field_binding_name {| field: field |}
+    match str_eq {| a: name, b: "" |}
+      case 1 => nil {| |}
+      case 0 => cons {| head: name, tail: nil {| |} |}
+    end
+end
+
+fn extract_bound_names_loop
+  case {| fields, acc |} =>
+    match is_nil {| list: fields |}
+      case 1 => acc
+      case 0 =>
+        let head = list_head {| list: fields |}
+        let tail = list_tail {| list: fields |}
+        let names = extract_field_bound_names {| field: head |}
+        -- Append names to acc
+        let new_acc = match is_nil {| list: names |}
+          case 1 => acc
+          case 0 =>
+            let name = list_head {| list: names |}
+            cons {| head: name, tail: acc |}
+        end
+        extract_bound_names_loop {| fields: tail, acc: new_acc |}
+    end
+end
+
+fn extract_bound_names
+  case {| pat |} =>
+    match pat.tag
+      case "pat_var" =>
+        cons {| head: pat.name, tail: nil {| |} |}
+      case "pat_rec" =>
+        let empty = nil {| |}
+        extract_bound_names_loop {| fields: pat.fields, acc: empty |}
+      case _ => nil {| |}
+    end
+end
+
+-- Generate retain code for a list of bound names
+fn gen_retain_code
+  case {| names |} =>
+    let n = nl {| |}
+    match is_nil {| list: names |}
+      case 1 => ""
+      case 0 =>
+        let head = list_head {| list: names |}
+        let tail = list_tail {| list: names |}
+        let cn = c_name {| name: head |}
+        let s1 = concat {| a: "rc_retain(", b: cn |}
+        let s2 = concat {| a: s1, b: ");" |}
+        let s3 = concat {| a: s2, b: n |}
+        let rest = gen_retain_code {| names: tail |}
+        concat {| a: s3, b: rest |}
+    end
+end
+
+-- Generate release code for a list of bound names
+fn gen_release_code
+  case {| names |} =>
+    let n = nl {| |}
+    match is_nil {| list: names |}
+      case 1 => ""
+      case 0 =>
+        let head = list_head {| list: names |}
+        let tail = list_tail {| list: names |}
+        let cn = c_name {| name: head |}
+        let s1 = concat {| a: "rc_release(", b: cn |}
+        let s2 = concat {| a: s1, b: ");" |}
+        let s3 = concat {| a: s2, b: n |}
+        let rest = gen_release_code {| names: tail |}
+        concat {| a: s3, b: rest |}
+    end
+end
+
+-- ============================================================
+-- Code Generation: Divine Expression
+-- ============================================================
+
+-- Emit a single match clause
+fn emit_match_clause
+  case {| scr, dvn, lbl, clause, counter |} =>
+    let n = nl {| |}
+    let pm = emit_pat_match {| var: scr, pat: clause.pat |}
+    let bound = extract_bound_names {| pat: clause.pat |}
+    let rb = emit_expr {| node: clause.body, counter: counter |}
+    let retain = gen_retain_code {| names: bound |}
+    let release = gen_release_code {| names: bound |}
+    let s1 = concat {| a: "{", b: n |}
+    let s2 = concat {| a: s1, b: pm.bindings |}
+    let s3 = concat {| a: s2, b: "if (" |}
+    let s4 = concat {| a: s3, b: pm.cond |}
+    let s5 = concat {| a: s4, b: ") {" |}
+    let s6 = concat {| a: s5, b: n |}
+    let s7 = concat {| a: s6, b: retain |}
+    let s8 = concat {| a: s7, b: rb.code |}
+    let s9 = concat {| a: s8, b: release |}
+    let s10 = concat {| a: s9, b: dvn |}
+    let s11 = concat {| a: s10, b: " = " |}
+    let s12 = concat {| a: s11, b: rb.var |}
+    let s13 = concat {| a: s12, b: ";" |}
+    let s14 = concat {| a: s13, b: n |}
+    let s15 = concat {| a: s14, b: "goto " |}
+    let s16 = concat {| a: s15, b: lbl |}
+    let s17 = concat {| a: s16, b: ";" |}
+    let s18 = concat {| a: s17, b: n |}
+    let s19 = concat {| a: s18, b: "}" |}
+    let s20 = concat {| a: s19, b: n |}
+    let s21 = concat {| a: s20, b: "}" |}
+    let code = concat {| a: s21, b: n |}
+    {| code: code, counter: rb.counter |}
+end
+
+-- Loop over match clauses
+fn emit_match_clauses_loop
+  case {| scr, dvn, lbl, clauses, counter, acc |} =>
+    match is_nil {| list: clauses |}
+      case 1 => {| code: acc, counter: counter |}
+      case 0 =>
+        let head = list_head {| list: clauses |}
+        let tail = list_tail {| list: clauses |}
+        let r = emit_match_clause {| scr: scr, dvn: dvn, lbl: lbl, clause: head, counter: counter |}
+        let new_acc = concat {| a: acc, b: r.code |}
+        emit_match_clauses_loop {| scr: scr, dvn: dvn, lbl: lbl, clauses: tail, counter: r.counter, acc: new_acc |}
+    end
+end
+
+-- Emit a match expression
+fn emit_match
+  case {| node, counter |} =>
+    let n = nl {| |}
+    let rs = emit_expr {| node: node.scrutinee, counter: counter |}
+    let fdvn = fresh_var {| prefix: "_dvn", counter: rs.counter |}
+    let fscr = fresh_var {| prefix: "_scr", counter: fdvn.counter |}
+    let flbl = fresh_var {| prefix: "_done", counter: fscr.counter |}
+    let rc = emit_match_clauses_loop {| scr: fscr.name, dvn: fdvn.name, lbl: flbl.name, clauses: node.clauses, counter: flbl.counter, acc: "" |}
+    let s1 = concat {| a: rs.code, b: "Value* " |}
+    let s2 = concat {| a: s1, b: fdvn.name |}
+    let s3 = concat {| a: s2, b: ";" |}
+    let s4 = concat {| a: s3, b: n |}
+    let s5 = concat {| a: s4, b: "Value* " |}
+    let s6 = concat {| a: s5, b: fscr.name |}
+    let s7 = concat {| a: s6, b: " = " |}
+    let s8 = concat {| a: s7, b: rs.var |}
+    let s9 = concat {| a: s8, b: ";" |}
+    let s10 = concat {| a: s9, b: n |}
+    let s11 = concat {| a: s10, b: rc.code |}
+    let bslash = bsl {| |}
+    let bsn = concat {| a: bslash, b: "n" |}
+    let divine_err = concat {| a: "Pattern match failure in match", b: bsn |}
+    let divine_err_c = c_string {| s: divine_err |}
+    let s12 = concat {| a: s11, b: "fprintf(stderr, " |}
+    let s13 = concat {| a: s12, b: divine_err_c |}
+    let s14 = concat {| a: s13, b: "); exit(1);" |}
+    let s15 = concat {| a: s14, b: n |}
+    let s16 = concat {| a: s15, b: flbl.name |}
+    let s17 = concat {| a: s16, b: ":;" |}
+    let s18 = concat {| a: s17, b: n |}
+    let s19 = concat {| a: s18, b: "rc_release(" |}
+    let s20 = concat {| a: s19, b: fscr.name |}
+    let s21 = concat {| a: s20, b: ");" |}
+    let code = concat {| a: s21, b: n |}
+    {| code: code, var: fdvn.name, counter: rc.counter |}
+end
+
+-- Central expression dispatcher
+fn emit_expr
+  case {| node, counter |} =>
+    match node.tag
+      case "int_lit" => emit_int_lit {| node: node, counter: counter |}
+      case "str_lit" => emit_str_lit {| node: node, counter: counter |}
+      case "var" => emit_var {| node: node, counter: counter |}
+      case "binop" => emit_binop {| node: node, counter: counter |}
+      case "unop" => emit_unop {| node: node, counter: counter |}
+      case "field_access" => emit_field_access {| node: node, counter: counter |}
+      case "record" => emit_record {| node: node, counter: counter |}
+      case "named_record" => emit_record {| node: {| tag: "record", fields: node.fields |}, counter: counter |}
+      case "call" => emit_call_expr {| node: node, counter: counter |}
+      case "readln" => emit_readln {| counter: counter |}
+      case "readint" => emit_readint {| counter: counter |}
+      case "let_in" => emit_let_in {| node: node, counter: counter |}
+      case "match" => emit_match {| node: node, counter: counter |}
+    end
+end
+
+-- ============================================================
+-- Code Generation: Rite (Function) Emission
+-- ============================================================
+
+-- Emit a single case clause inside a fn
+fn emit_clause
+  case {| clause, counter |} =>
+    let n = nl {| |}
+    let pm = emit_pat_match {| var: "arg", pat: clause.pat |}
+    let bound = extract_bound_names {| pat: clause.pat |}
+    let rb = emit_expr {| node: clause.body, counter: counter |}
+    let retain = gen_retain_code {| names: bound |}
+    let release = gen_release_code {| names: bound |}
+    let s1 = concat {| a: "{", b: n |}
+    let s2 = concat {| a: s1, b: pm.bindings |}
+    let s3 = concat {| a: s2, b: "if (" |}
+    let s4 = concat {| a: s3, b: pm.cond |}
+    let s5 = concat {| a: s4, b: ") {" |}
+    let s6 = concat {| a: s5, b: n |}
+    let s7 = concat {| a: s6, b: retain |}
+    let s8 = concat {| a: s7, b: rb.code |}
+    let s9 = concat {| a: s8, b: release |}
+    let s10 = concat {| a: s9, b: "return " |}
+    let s11 = concat {| a: s10, b: rb.var |}
+    let s12 = concat {| a: s11, b: ";" |}
+    let s13 = concat {| a: s12, b: n |}
+    let s14 = concat {| a: s13, b: "}" |}
+    let s15 = concat {| a: s14, b: n |}
+    let s16 = concat {| a: s15, b: "}" |}
+    let code = concat {| a: s16, b: n |}
+    {| code: code, counter: rb.counter |}
+end
+
+-- Loop over clauses in a fn
+fn emit_clauses_loop
+  case {| clauses, counter, acc |} =>
+    match is_nil {| list: clauses |}
+      case 1 => {| code: acc, counter: counter |}
+      case 0 =>
+        let head = list_head {| list: clauses |}
+        let tail = list_tail {| list: clauses |}
+        let r = emit_clause {| clause: head, counter: counter |}
+        let new_acc = concat {| a: acc, b: r.code |}
+        emit_clauses_loop {| clauses: tail, counter: r.counter, acc: new_acc |}
+    end
+end
+
+-- Emit a fn definition
+fn emit_fn
+  case {| name, clauses, counter |} =>
+    let n = nl {| |}
+    let rc = emit_clauses_loop {| clauses: clauses, counter: counter, acc: "" |}
+    let s1 = concat {| a: "static Value* fn_", b: name |}
+    let s2 = concat {| a: s1, b: "(Value* arg) {" |}
+    let s3 = concat {| a: s2, b: n |}
+    let s4 = concat {| a: s3, b: rc.code |}
+    let s5 = concat {| a: s4, b: "fprintf(stderr, " |}
+    let bslash = bsl {| |}
+    let bsn = concat {| a: bslash, b: "n" |}
+    let err_msg = concat {| a: "Pattern match failure in fn '", b: name |}
+    let err_msg2 = concat {| a: err_msg, b: "'" |}
+    let err_msg3 = concat {| a: err_msg2, b: bsn |}
+    let s6 = concat {| a: s5, b: c_string {| s: err_msg3 |} |}
+    let s7 = concat {| a: s6, b: ");" |}
+    let s8 = concat {| a: s7, b: n |}
+    let s9 = concat {| a: s8, b: "exit(1);" |}
+    let s10 = concat {| a: s9, b: n |}
+    let s11 = concat {| a: s10, b: "}" |}
+    let s12 = concat {| a: s11, b: n |}
+    let code = concat {| a: s12, b: n |}
+    {| code: code, counter: rc.counter |}
+end
+
+-- Emit a forward declaration for a fn
+fn emit_forward_decl
+  case {| name |} =>
+    let n = nl {| |}
+    match is_builtin_fn {| name: name |}
+      case 1 => ""
+      case 0 =>
+        let s1 = concat {| a: "static Value* fn_", b: name |}
+        let s2 = concat {| a: s1, b: "(Value* arg);" |}
+        concat {| a: s2, b: n |}
+    end
+end
+
+-- Loop over declarations to emit forward declarations
+fn emit_forward_decls_loop
+  case {| decls, acc |} =>
+    match is_nil {| list: decls |}
+      case 1 => acc
+      case 0 =>
+        let head = list_head {| list: decls |}
+        let tail = list_tail {| list: decls |}
+        let new_acc = match str_eq {| a: head.tag, b: "decl_fn" |}
+          case 1 =>
+            let fd = emit_forward_decl {| name: head.name |}
+            concat {| a: acc, b: fd |}
+          case 0 => acc
+        end
+        emit_forward_decls_loop {| decls: tail, acc: new_acc |}
+    end
+end
+
+-- ============================================================
+-- Code Generation: Statement & Main Emission
+-- ============================================================
+
+-- Emit a single statement
+fn emit_stmt
+  case {| stmt, counter |} =>
+    let n = nl {| |}
+    match stmt.tag
+      case "stmt_let" =>
+        let r = emit_expr {| node: stmt.value, counter: counter |}
+        let cn = c_name {| name: stmt.name |}
+        let s1 = concat {| a: r.code, b: "Value* " |}
+        let s2 = concat {| a: s1, b: cn |}
+        let s3 = concat {| a: s2, b: " = " |}
+        let s4 = concat {| a: s3, b: r.var |}
+        let s5 = concat {| a: s4, b: ";" |}
+        let code = concat {| a: s5, b: n |}
+        {| code: code, counter: r.counter |}
+      case "stmt_stele_print" =>
+        let r = emit_expr {| node: stmt.value, counter: counter |}
+        let s1 = concat {| a: r.code, b: "stele_print(" |}
+        let s2 = concat {| a: s1, b: r.var |}
+        let s3 = concat {| a: s2, b: ");" |}
+        let s4 = concat {| a: s3, b: n |}
+        let s5 = concat {| a: s4, b: "rc_release(" |}
+        let s6 = concat {| a: s5, b: r.var |}
+        let s7 = concat {| a: s6, b: ");" |}
+        let code = concat {| a: s7, b: n |}
+        {| code: code, counter: r.counter |}
+      case "stmt_stele_write" =>
+        let r = emit_expr {| node: stmt.value, counter: counter |}
+        let s1 = concat {| a: r.code, b: "stele_write(" |}
+        let s2 = concat {| a: s1, b: r.var |}
+        let s3 = concat {| a: s2, b: ");" |}
+        let s4 = concat {| a: s3, b: n |}
+        let s5 = concat {| a: s4, b: "rc_release(" |}
+        let s6 = concat {| a: s5, b: r.var |}
+        let s7 = concat {| a: s6, b: ");" |}
+        let code = concat {| a: s7, b: n |}
+        {| code: code, counter: r.counter |}
+      case "stmt_expr" =>
+        let r = emit_expr {| node: stmt.value, counter: counter |}
+        let s1 = concat {| a: r.code, b: "rc_release(" |}
+        let s2 = concat {| a: s1, b: r.var |}
+        let s3 = concat {| a: s2, b: ");" |}
+        let code = concat {| a: s3, b: n |}
+        {| code: code, counter: r.counter |}
+    end
+end
+
+-- Loop over statements, threading the counter
+fn emit_stmts_loop
+  case {| stmts, counter, acc |} =>
+    match is_nil {| list: stmts |}
+      case 1 => {| code: acc, counter: counter |}
+      case 0 =>
+        let head = list_head {| list: stmts |}
+        let tail = list_tail {| list: stmts |}
+        let r = emit_stmt {| stmt: head, counter: counter |}
+        let new_acc = concat {| a: acc, b: r.code |}
+        emit_stmts_loop {| stmts: tail, counter: r.counter, acc: new_acc |}
+    end
+end
+
+-- Collect let-bound names from statements (for cleanup at end of main)
+fn collect_let_names
+  case {| stmts, acc |} =>
+    match is_nil {| list: stmts |}
+      case 1 => acc
+      case 0 =>
+        let head = list_head {| list: stmts |}
+        let tail = list_tail {| list: stmts |}
+        let new_acc = match str_eq {| a: head.tag, b: "stmt_let" |}
+          case 1 => cons {| head: head.name, tail: acc |}
+          case 0 => acc
+        end
+        collect_let_names {| stmts: tail, acc: new_acc |}
+    end
+end
+
+-- Find the main do in declarations
+fn find_do
+  case {| decls, name |} =>
+    match is_nil {| list: decls |}
+      case 1 => {| tag: "none" |}
+      case 0 =>
+        let head = list_head {| list: decls |}
+        let tail = list_tail {| list: decls |}
+        match str_eq {| a: head.tag, b: "decl_do" |}
+          case 1 =>
+            match str_eq {| a: head.name, b: name |}
+              case 1 => {| tag: "some", stmts: head.stmts |}
+              case 0 => find_do {| decls: tail, name: name |}
+            end
+          case 0 => find_do {| decls: tail, name: name |}
+        end
+    end
+end
+
+-- Emit the main function
+fn emit_main_fn
+  case {| decls, counter |} =>
+    let n = nl {| |}
+    let rit = find_do {| decls: decls, name: "main" |}
+    match rit.tag
+      case "none" =>
+        let code = concat {| a: "int main(int argc, char** argv) {", b: n |}
+        let c2 = concat {| a: code, b: "g_argc = argc;" |}
+        let c3 = concat {| a: c2, b: n |}
+        let c4 = concat {| a: c3, b: "g_argv = argv;" |}
+        let c5 = concat {| a: c4, b: n |}
+        let c6 = concat {| a: c5, b: "return 0;" |}
+        let c7 = concat {| a: c6, b: n |}
+        let c8 = concat {| a: c7, b: "}" |}
+        concat {| a: c8, b: n |}
+      case "some" =>
+        let rs = emit_stmts_loop {| stmts: rit.stmts, counter: counter, acc: "" |}
+        let empty = nil {| |}
+        let let_names = collect_let_names {| stmts: rit.stmts, acc: empty |}
+        let rel = gen_release_code {| names: let_names |}
+        let s1 = concat {| a: "int main(int argc, char** argv) {", b: n |}
+        let s2 = concat {| a: s1, b: "g_argc = argc;" |}
+        let s3 = concat {| a: s2, b: n |}
+        let s4 = concat {| a: s3, b: "g_argv = argv;" |}
+        let s5 = concat {| a: s4, b: n |}
+        let s6 = concat {| a: s5, b: rs.code |}
+        let s7 = concat {| a: s6, b: rel |}
+        let s8 = concat {| a: s7, b: "return 0;" |}
+        let s9 = concat {| a: s8, b: n |}
+        let s10 = concat {| a: s9, b: "}" |}
+        concat {| a: s10, b: n |}
+    end
+end
+
+-- ============================================================
+-- Code Generation: Top-Level Pipeline
+-- ============================================================
+
+-- Loop over declarations, emitting fn definitions
+fn emit_decls_loop
+  case {| decls, counter, acc |} =>
+    match is_nil {| list: decls |}
+      case 1 => {| code: acc, counter: counter |}
+      case 0 =>
+        let head = list_head {| list: decls |}
+        let tail = list_tail {| list: decls |}
+        let r = match str_eq {| a: head.tag, b: "decl_fn" |}
+          case 1 =>
+            match is_builtin_fn {| name: head.name |}
+              case 1 => {| code: "", counter: counter |}
+              case 0 => emit_fn {| name: head.name, clauses: head.clauses, counter: counter |}
+            end
+          case 0 => {| code: "", counter: counter |}
+        end
+        let new_acc = concat {| a: acc, b: r.code |}
+        emit_decls_loop {| decls: tail, counter: r.counter, acc: new_acc |}
+    end
+end
+
+-- Assemble the complete C source file
+fn emit_c
+  case {| decls |} =>
+    let n = nl {| |}
+    -- Load the C runtime from file
+    let runtime = read {| path: "runtime.c" |}
+    -- Forward declarations
+    let fwd_decls = emit_forward_decls_loop {| decls: decls, acc: "" |}
+    -- Rite definitions
+    let fn_defs = emit_decls_loop {| decls: decls, counter: 0, acc: "" |}
+    -- Main function
+    let main_fn = emit_main_fn {| decls: decls, counter: fn_defs.counter |}
+    -- Assemble
+    let s1 = concat {| a: runtime, b: n |}
+    let s2 = concat {| a: s1, b: "/* -- forward declarations -- */" |}
+    let s3 = concat {| a: s2, b: n |}
+    let s4 = concat {| a: s3, b: n |}
+    let s5 = concat {| a: s4, b: fwd_decls |}
+    let s6 = concat {| a: s5, b: n |}
+    let s7 = concat {| a: s6, b: "/* -- fn definitions -- */" |}
+    let s8 = concat {| a: s7, b: n |}
+    let s9 = concat {| a: s8, b: n |}
+    let s10 = concat {| a: s9, b: fn_defs.code |}
+    let s11 = concat {| a: s10, b: n |}
+    let s12 = concat {| a: s11, b: "/* -- entry point -- */" |}
+    let s13 = concat {| a: s12, b: n |}
+    let s14 = concat {| a: s13, b: n |}
+    concat {| a: s14, b: main_fn |}
+end
+

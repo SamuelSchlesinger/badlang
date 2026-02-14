@@ -1,0 +1,19 @@
+-- ============================================================
+-- Main: Compiler Pipeline
+-- ============================================================
+
+do main
+  let src = read {| path: argv {| n: 1 |} |}
+  let tokens = tokenize {| src: src |}
+  let decls = parse_program {| tokens: tokens |}
+  let mode = get_mode {| |}
+  let output = match mode
+    case 1 => emit_asm {| decls: decls |}
+    case 4 => emit_asm {| decls: decls |}
+    case 2 => emit_x86 {| decls: decls, mode: "x86" |}
+    case 3 => emit_x86 {| decls: decls, mode: "x86-linux" |}
+    case 0 => emit_c {| decls: decls |}
+  end
+  let out_path = argv {| n: 2 |}
+  write {| path: out_path, content: output |}
+end
