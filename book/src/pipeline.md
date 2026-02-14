@@ -6,12 +6,15 @@ Both share a common front end and intermediate representation.
 
 ```
 Source (.stele) → PEG Parse → AST → Type Check → IR → Backend → cc → Binary
-                                                      │
-                                                      ├─ C Backend     → .c file
-                                                      └─ AArch64 Backend → .s file + runtime
+                                                       │
+                                                       ├─ C Backend      → .c file
+                                                       ├─ AArch64 Backend → .s file + runtime
+                                                       └─ x86_64 Backend  → .s file + runtime
 ```
 
-Each stage is implemented as a separate Haskell module.
+In the Haskell bootstrap compiler (under `bootstrap/haskell/`), each stage is
+implemented as a separate module. The self-hosted compiler (`compiler.stele`)
+implements the same pipeline in a single file.
 
 ## Stage 1: PEG Parsing
 
@@ -111,7 +114,7 @@ and basic blocks become labeled sections with `goto`. See the
 The AArch64 backend emits Apple Silicon assembly (`.s` files). All IR
 variables are stored on the stack using a fixed-size frame per function.
 The generated assembly links against a separate C runtime
-(`runtime_aarch64.c`) that provides the same value representation and
+(`runtime/runtime_aarch64.c`) that provides the same value representation and
 reference counting as the embedded C runtime.
 
 ## Stage 6: Assembling and Linking
@@ -136,4 +139,5 @@ With `--run`, the resulting binary is executed immediately.
 | `Stele.Lower` | AST → IR lowering pass |
 | `Stele.EmitC` | C code generation from IR |
 | `Stele.EmitAArch64` | AArch64 assembly generation from IR |
+| `Stele.EmitX86_64` | x86_64 assembly generation from IR |
 | `Stele.Runtime` | C runtime source for the native backend |

@@ -1,18 +1,22 @@
+# Haskell build artifacts
 dist-newstyle/
 *.o
 *.hi
 *.dyn_o
 *.dyn_hi
-*.c
-!src/**/*.c
-!examples/compiler/runtime.c
-!runtime/*.c
 *.exe
-.claude/
 
-# Generated artifacts in examples/
+# Generated C and assembly (from compilation)
+*.c
 *.s
 *_rt.c
+!/runtime.c
+!runtime/*.c
+
+# IDE / tooling
+.claude/
+
+# Generated binaries in examples/
 examples/hello
 examples/subtyping
 examples/divine
@@ -21,10 +25,9 @@ examples/io
 
 # Build artifacts
 .stela/
-examples/compiler/.stela/
-examples/compiler/compiler
-examples/compiler/stela
-examples/compiler/target/
+/compiler
+/stela
+target/
 
 # Runtime artifacts
 io_test.txt

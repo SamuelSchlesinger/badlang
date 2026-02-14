@@ -1,6 +1,6 @@
 # The Self-Hosting Compiler
 
-Stele is **self-hosting**: the file `examples/compiler/compiler.stele` is a
+Stele is **self-hosting**: the file `compiler.stele` (at the repo root) is a
 complete Stele compiler written in Stele itself. It implements the full
 compilation pipeline — tokenizer, parser, C code emitter, and AArch64 native
 code generator — and can compile itself.

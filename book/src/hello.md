@@ -15,7 +15,8 @@ end
 Compile and run it:
 
 ```bash
-cabal run stele -- --run first.bad
+./compiler first.stele first.c
+cc -O1 -o first first.c && ./first
 ```
 
 Output:

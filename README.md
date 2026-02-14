@@ -13,47 +13,45 @@ with AI. We pushed the experiment as far as writing a complete Stele compiler
 *in Stele itself*, one that bootstraps and reaches a fixed point in both C
 and native assembly output.
 
-The language is built from first principles in Haskell. It draws from pattern
+The language is built from first principles. It draws from pattern
 calculus and structural subtyping to create a language where pattern matching
 is the fundamental operation and all functions accept structural records.
 
 ## Quick Start
 
+The primary compiler is `compiler.stele` — a self-hosting Stele compiler
+written in Stele. If you have a pre-built `compiler` binary:
+
 ```bash
-# Build the compiler
-cabal build
-
 # Compile a program to C
-cabal run stele -- examples/hello.stele
-# => Compiled to examples/hello.c
-
-# Compile and run in one step
-cabal run stele -- --run examples/hello.stele
+./compiler examples/hello.stele hello.c
+cc -O1 -o hello hello.c && ./hello
 # => 25
 # => 3628800
 
-# Compile to native assembly (auto-detected target)
-cabal run stele -- --native examples/hello.stele
-# => Compiled to examples/hello
+# Compile to native AArch64 assembly
+./compiler examples/hello.stele hello.s asm
+cc -O1 -o hello hello.s runtime/runtime_aarch64.c && ./hello
 
-# Compile native and run
-cabal run stele -- --native --run examples/hello.stele
-
-# Compile for a specific native target
-cabal run stele -- --native --target aarch64-macos examples/hello.stele
-cabal run stele -- --native --target aarch64-linux examples/hello.stele
-cabal run stele -- --native --target x86_64-macos examples/hello.stele
-cabal run stele -- --native --target x86_64-linux examples/hello.stele
+# Compile to x86_64 assembly
+./compiler examples/hello.stele hello.s x86
+cc -O1 -o hello hello.s runtime/runtime_x86_64.c && ./hello
 ```
 
-Cross-target builds require a compatible assembler/linker toolchain for the
-requested target (for example, `aarch64-linux` requires a Linux AArch64
-toolchain).
+To bootstrap from source (requires GHC 9.6+ and Cabal 3.10+):
 
-## Stela (Self-Hosted Build + Package Manager)
+```bash
+./bootstrap.sh 2       # C mode (default)
+./bootstrap.sh 2 asm   # AArch64 native mode
+```
 
-`examples/compiler/stela.stele` is a Stele-native build and package tool.
-It now supports Git-backed local and remote packages.
+This builds the compiler through multiple generations using the Haskell
+bootstrap compiler and verifies a fixed point.
+
+## Stela (Build Tool + Package Manager)
+
+`stela.stele` is a Stele-native build and package tool. It supports
+Git-backed local and remote packages.
 
 ```bash
 stela build <source.stele> [--lib <name> ...]
@@ -78,27 +76,27 @@ Builds still support sandboxing via `sandbox-exec` when available.
 ### Bootstrapping Stela
 
 ```bash
-# 1) Build the self-hosted compiler binary
-cabal run stele -- examples/compiler/compiler.stele
-cc -O1 -o examples/compiler/compiler examples/compiler/compiler.c
+# 1) Build the self-hosted compiler binary (from repo root)
+cd bootstrap/haskell && cabal run stele -- ../../compiler.stele && cd ../..
+cc -O1 -o compiler compiler.c
 
 # 2) Build stela with the self-hosted compiler
-(cd examples/compiler && ./compiler stela.stele stela.c)
-cc -O1 -o examples/compiler/stela examples/compiler/stela.c
+./compiler stela.stele stela.c
+cc -O1 -o stela stela.c
 ```
 
 ### Using Stela
 
-Run from the compiler directory (`runtime.c` is read relative to the current
-working directory by the self-hosted compiler):
+Run from the repo root (the self-hosted compiler reads `runtime.c` relative
+to the current working directory):
 
 ```bash
-(cd examples/compiler && ./stela build ../hello.stele --compiler ./compiler --mode c)
-(cd examples/compiler && ./stela run ../hello.stele --compiler ./compiler --mode c)
-(cd examples/compiler && ./stela check ../hello.stele --compiler ./compiler --mode c)
-(cd examples/compiler && ./stela test ../hello.stele --compiler ./compiler --mode c)
-(cd examples/compiler && ./stela bench ../hello.stele --compiler ./compiler --mode c)
-(cd examples/compiler && ./stela clean)
+./stela build examples/hello.stele --compiler ./compiler --mode c
+./stela run examples/hello.stele --compiler ./compiler --mode c
+./stela check examples/hello.stele --compiler ./compiler --mode c
+./stela test examples/hello.stele --compiler ./compiler --mode c
+./stela bench examples/hello.stele --compiler ./compiler --mode c
+./stela clean
 ```
 
 ### Package Manifest (`stela.pkg`)
@@ -134,21 +132,21 @@ Fields:
 Initialize a project manifest:
 
 ```bash
-(cd examples/compiler && ./stela init --name app --entry app.stele --kind app --major 1 --manifest stela.pkg)
+./stela init --name app --entry app.stele --kind app --major 1 --manifest stela.pkg
 ```
 
 Add a dependency (local or remote Git):
 
 ```bash
-(cd examples/compiler && ./stela add math /path/to/math-repo --major 1 --manifest stela.pkg)
-(cd examples/compiler && ./stela add strings https://github.com/example/strings.stele.git --ref main --major 2 --manifest stela.pkg)
-(cd examples/compiler && ./stela replace math /path/to/math-fork --ref main --major 1 --manifest stela.pkg)
+./stela add math /path/to/math-repo --major 1 --manifest stela.pkg
+./stela add strings https://github.com/example/strings.stele.git --ref main --major 2 --manifest stela.pkg
+./stela replace math /path/to/math-fork --ref main --major 1 --manifest stela.pkg
 ```
 
 Install and lock dependencies:
 
 ```bash
-(cd examples/compiler && ./stela install --manifest stela.pkg)
+./stela install --manifest stela.pkg
 ```
 
 This materializes:
@@ -169,9 +167,9 @@ Resolver behavior:
 Inspect the dependency graph:
 
 ```bash
-(cd examples/compiler && ./stela graph --manifest stela.pkg)
-(cd examples/compiler && ./stela why math --major 1 --manifest stela.pkg)
-(cd examples/compiler && ./stela tidy --manifest stela.pkg)
+./stela graph --manifest stela.pkg
+./stela why math --major 1 --manifest stela.pkg
+./stela tidy --manifest stela.pkg
 ```
 
 ### Local Library Packaging
@@ -179,8 +177,8 @@ Inspect the dependency graph:
 Manual local library packaging is still available:
 
 ```bash
-(cd examples/compiler && ./stela package-lib math.stele --name math)
-(cd examples/compiler && ./stela build app.stele --lib math --compiler ./compiler --mode c)
+./stela package-lib math.stele --name math
+./stela build app.stele --lib math --compiler ./compiler --mode c
 ```
 
 Libraries are stored under `.stela/lib/<name>.stelib`.
@@ -202,15 +200,6 @@ Stdlib test targets live under `stdlib/tests/`:
 - `stdlib/tests/assert_test.stele`
 - `stdlib/tests/strings_test.stele`
 - `stdlib/tests/path_test.stele`
-
-Example packaging flow:
-
-```bash
-(cd examples/compiler && ./stela package-lib ../../stdlib/cli.stele --name cli)
-(cd examples/compiler && ./stela package-lib ../../stdlib/math.stele --name math)
-(cd examples/compiler && ./stela package-lib ../../stdlib/concurrency.stele --name concurrency)
-(cd examples/compiler && ./stela run app.stele --lib cli --lib math --lib concurrency --compiler ./compiler --mode c)
-```
 
 Run stdlib test targets across the supported mode matrix (`c`, `asm`,
 `asm-linux`, `x86`, and `x86-linux` where host toolchain support exists):
@@ -239,7 +228,7 @@ Options: `--mode c|asm|asm-linux|x86|x86-linux`, `--sandbox`, `--no-sandbox`, `-
 | `readln`  | Read a line of input                            |
 | `readint` | Read an integer from input                      |
 | `let`     | Bind a local variable                           |
-| `{\| \|}` | Record literal delimiters (the "pillars")       |
+| `{\| \|}`  | Record literal delimiters (the "pillars")       |
 
 ### Hello, Stele
 
@@ -364,19 +353,69 @@ fn male
 end
 ```
 
+## Project Structure
+
+```
+stele/
+├── compiler.stele          # Self-hosted compiler (the primary compiler)
+├── stela.stele             # Build tool + package manager
+├── runtime.c               # C backend runtime (embedded in generated C)
+├── bootstrap.sh            # Multi-generation bootstrap and fixed-point test
+├── bootstrap/
+│   └── haskell/            # Haskell bootstrap compiler (for initial build)
+│       ├── stele.cabal
+│       ├── app/Main.hs
+│       └── src/Stele/*.hs
+├── runtime/                # Native backend runtimes
+│   ├── runtime_aarch64.c
+│   └── runtime_x86_64.c
+├── stdlib/                 # Standard library
+│   ├── cli.stele, math.stele, ...
+│   └── tests/
+├── examples/               # Example programs
+│   ├── hello.stele, match.stele, ...
+│   └── packages/
+├── book/                   # Language reference book (mdBook)
+├── README.md
+├── LICENSE
+└── logo.svg
+```
+
 ## Architecture
 
-Stele is implemented as a nine-module Haskell library plus a thin CLI
-driver. The compilation pipeline is:
+The compilation pipeline is:
 
 ```
 Source (.stele) → PEG Parse → AST → Type Check → IR → Backend → cc → Binary
-                                                      │
-                                                      ├─ C Backend     → .c file
-                                                      └─ AArch64 Backend → .s file + runtime
+                                                       │
+                                                       ├─ C Backend      → .c file
+                                                       ├─ AArch64 Backend → .s file + runtime
+                                                       └─ x86_64 Backend  → .s file + runtime
 ```
 
-### Modules
+### Self-Hosted Compiler
+
+The primary compiler is `compiler.stele` at the repo root. It implements the
+full pipeline — tokenizer, parser, C code emitter, and native code generators
+(AArch64 and x86-64) — and can compile itself. A bootstrap test verifies that
+the compiler reaches a fixed point:
+
+```bash
+./bootstrap.sh 3        # C mode
+./bootstrap.sh 3 asm    # AArch64 native mode
+./bootstrap.sh 3 x86    # x86_64 native mode
+```
+
+This compiles `compiler.stele` through three generations and confirms each
+produces identical output.
+
+### Bootstrap Compiler
+
+The Haskell bootstrap compiler lives in `bootstrap/haskell/`. It is used only
+to produce the initial `compiler.c` from `compiler.stele`. Once a pre-built
+compiler binary is available, the Haskell toolchain is not required.
+
+The bootstrap compiler is a ten-module Haskell library plus a thin CLI driver:
 
 | Module               | Purpose                                        |
 |----------------------|------------------------------------------------|
@@ -388,7 +427,16 @@ Source (.stele) → PEG Parse → AST → Type Check → IR → Backend → cc �
 | `Stele.Lower`        | AST to IR lowering pass                        |
 | `Stele.EmitC`        | C code generation from IR                      |
 | `Stele.EmitAArch64`  | AArch64 assembly generation from IR            |
+| `Stele.EmitX86_64`   | x86_64 assembly generation from IR             |
 | `Stele.Runtime`      | C runtime source for the native backend        |
+
+Building the bootstrap compiler (requires GHC 9.6+ and Cabal 3.10+):
+
+```bash
+cd bootstrap/haskell
+cabal build
+cabal run stele -- ../../compiler.stele   # Produces compiler.c at repo root
+```
 
 ### PEG Parser Generator
 
@@ -429,8 +477,11 @@ is readable and can be compiled with any C compiler.
 **AArch64 backend.** The native emitter supports both Apple and Linux AArch64
 assembly syntax. All variables live on the stack in a fixed-size frame per
 function. The generated assembly links against a separate C runtime
-(`runtime_aarch64.c`) that provides the same value representation and reference
+(`runtime/runtime_aarch64.c`) that provides the same value representation and reference
 counting.
+
+**x86_64 backend.** Supports macOS and Linux (System V) calling conventions.
+Links against `runtime/runtime_x86_64.c`.
 
 ## Examples
 
@@ -442,34 +493,7 @@ counting.
 | `examples/mutual.stele`    | Mutual recursion, Ackermann, Collatz, GCD, Fibonacci |
 | `examples/oneof.stele`     | Sum types with variants                          |
 | `examples/io.stele`        | IO operations                                    |
-| `examples/compiler/compiler.stele` | Self-hosting compiler (Stele written in Stele) |
-
-### Self-Hosting Compiler
-
-Stele is self-hosting: `examples/compiler/compiler.stele` is a complete
-Stele compiler written in Stele itself. It implements the full pipeline
-— tokenizer, parser, C code emitter, and native code generators (AArch64 and
-x86-64) — and can compile itself. A bootstrap test verifies that the compiler
-reaches a fixed point:
-
-```bash
-examples/compiler/bootstrap.sh 3        # C mode
-examples/compiler/bootstrap.sh 3 asm    # AArch64 native mode
-examples/compiler/bootstrap.sh 3 asm-linux  # AArch64 Linux mode (Linux host/toolchain)
-```
-
-This compiles `compiler.stele` through three generations and confirms each
-produces identical output.
-
-## Building
-
-Requirements: GHC 9.6+ and Cabal 3.10+.
-
-```bash
-cabal build         # Build the compiler
-cabal haddock       # Generate API documentation
-cabal run stele     # Run the compiler (shows usage)
-```
+| `compiler.stele`           | Self-hosting compiler (Stele written in Stele)   |
 
 ## License
 

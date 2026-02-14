@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-babbe00e.js";
+            window.path_to_searchindex_js = "../searchindex-47f25ae8.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-29fcd749.js"></script>
@@ -242,6 +242,50 @@ print count
 <pre><code>let program = argv {| n: 0 |}
 let first_arg = argv {| n: 1 |}
 </code></pre>
+<h2 id="process-control"><a class="header" href="#process-control">Process Control</a></h2>
+<h3 id="sh"><a class="header" href="#sh">sh</a></h3>
+<p>Run a shell command.</p>
+<ul>
+<li><strong>Call:</strong> <code>sh {| command: "echo hello" |}</code></li>
+<li><strong>Argument:</strong> <code>{| command: String |}</code></li>
+<li><strong>Returns:</strong> <code>Int</code></li>
+<li><strong>Behavior:</strong> Executes the command via the host shell and returns the
+process status code.</li>
+</ul>
+<h3 id="terminate"><a class="header" href="#terminate">terminate</a></h3>
+<p>Exit the current process immediately.</p>
+<ul>
+<li><strong>Call:</strong> <code>terminate {| code: 1 |}</code></li>
+<li><strong>Argument:</strong> <code>{| code: Int |}</code></li>
+<li><strong>Returns:</strong> <code>Void</code></li>
+<li><strong>Behavior:</strong> Terminates the process with the provided exit code.</li>
+</ul>
+<h3 id="spawn"><a class="header" href="#spawn">spawn</a></h3>
+<p>Run a shell command in a child process and return its PID.</p>
+<ul>
+<li><strong>Call:</strong> <code>spawn {| command: "sleep 1" |}</code></li>
+<li><strong>Argument:</strong> <code>{| command: String |}</code></li>
+<li><strong>Returns:</strong> <code>Int</code></li>
+<li><strong>Behavior:</strong> Forks, executes the command via <code>/bin/sh -c ...</code>, and returns
+the child PID to the caller.</li>
+</ul>
+<h3 id="await"><a class="header" href="#await">await</a></h3>
+<p>Wait for a child process to exit.</p>
+<ul>
+<li><strong>Call:</strong> <code>await {| pid: 12345 |}</code></li>
+<li><strong>Argument:</strong> <code>{| pid: Int |}</code></li>
+<li><strong>Returns:</strong> <code>Int</code></li>
+<li><strong>Behavior:</strong> Blocks until the child exits and returns its exit status.</li>
+</ul>
+<h3 id="sleep_ms"><a class="header" href="#sleep_ms">sleep_ms</a></h3>
+<p>Sleep the current process for a number of milliseconds.</p>
+<ul>
+<li><strong>Call:</strong> <code>sleep_ms {| ms: 250 |}</code></li>
+<li><strong>Argument:</strong> <code>{| ms: Int |}</code></li>
+<li><strong>Returns:</strong> <code>Void</code></li>
+<li><strong>Behavior:</strong> Sleeps for the requested duration (negative values are treated
+as <code>0</code>).</li>
+</ul>
 <h2 id="summary-table"><a class="header" href="#summary-table">Summary Table</a></h2>
 <div class="table-wrapper">
 <table>
@@ -255,6 +299,11 @@ let first_arg = argv {| n: 1 |}
 <tr><td><code>inscribe</code></td><td>`{</td><td>path: String, content: String</td><td>}`</td></tr>
 <tr><td><code>argc</code></td><td>`{</td><td></td><td>}`</td></tr>
 <tr><td><code>argv</code></td><td>`{</td><td>n: Int</td><td>}`</td></tr>
+<tr><td><code>sh</code></td><td>`{</td><td>command: String</td><td>}`</td></tr>
+<tr><td><code>terminate</code></td><td>`{</td><td>code: Int</td><td>}`</td></tr>
+<tr><td><code>spawn</code></td><td>`{</td><td>command: String</td><td>}`</td></tr>
+<tr><td><code>await</code></td><td>`{</td><td>pid: Int</td><td>}`</td></tr>
+<tr><td><code>sleep_ms</code></td><td>`{</td><td>ms: Int</td><td>}`</td></tr>
 </tbody>
 </table>
 </div>

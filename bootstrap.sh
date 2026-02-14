@@ -28,9 +28,9 @@ N="${1:-3}"
 MODE="${2:-c}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 COMPILER_SRC="$SCRIPT_DIR/compiler.stele"
-RUNTIME_AARCH64="$SCRIPT_DIR/../../runtime/runtime_aarch64.c"
-RUNTIME_X86_64="$SCRIPT_DIR/../../runtime/runtime_x86_64.c"
-STDLIB_DIR="$SCRIPT_DIR/../../stdlib"
+RUNTIME_AARCH64="$SCRIPT_DIR/runtime/runtime_aarch64.c"
+RUNTIME_X86_64="$SCRIPT_DIR/runtime/runtime_x86_64.c"
+STDLIB_DIR="$SCRIPT_DIR/stdlib"
 WORK_DIR=$(mktemp -d)
 
 trap 'rm -rf "$WORK_DIR"' EXIT
@@ -116,7 +116,7 @@ echo ""
 # Step 0: Build gen0 using the Haskell reference compiler (always C)
 echo "[gen0] Compiling compiler.stele with Haskell compiler..."
 if command -v cabal >/dev/null 2>&1; then
-    (cd "$SCRIPT_DIR/../.." && cabal run stele -- "$COMPILER_SRC") >/dev/null 2>&1
+    (cd "$SCRIPT_DIR/bootstrap/haskell" && cabal run stele -- "$COMPILER_SRC") >/dev/null 2>&1
 else
     if [[ -f "$SCRIPT_DIR/compiler.c" ]]; then
         echo "[gen0] cabal not found; reusing existing $SCRIPT_DIR/compiler.c"
@@ -159,7 +159,7 @@ fi
 # Smoke test: compile a simple program with the final generation
 echo ""
 echo "=== Smoke Test (gen$N compiles hello.stele) ==="
-HELLO_SRC="$SCRIPT_DIR/../hello.stele"
+HELLO_SRC="$SCRIPT_DIR/examples/hello.stele"
 if [ -f "$HELLO_SRC" ]; then
     emit_with_compiler "$WORK_DIR/gen${N}" "$HELLO_SRC" "$WORK_DIR/hello.$EXT"
     compile_generated "$WORK_DIR/hello.$EXT" "$WORK_DIR/hello"

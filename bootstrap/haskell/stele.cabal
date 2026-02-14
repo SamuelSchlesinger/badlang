@@ -2,7 +2,6 @@ cabal-version:   3.14
 name:            stele
 version:         0.1.0.0
 license:         MIT
-license-file:    LICENSE
 author:          Samuel Schlesinger
 maintainer:      sgschlesinger@gmail.com
 build-type:      Simple

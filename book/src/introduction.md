@@ -7,10 +7,11 @@
 **Stele** is an experimental programming language built on structural pattern matching.
 
 It is built from first principles — parser generator, grammar, type system, and
-C code generation — all implemented in Haskell with no external parsing
-libraries. Stele draws from pattern calculus and structural subtyping to
-create a language where **pattern matching is the fundamental operation** and
-all functions accept structural records.
+code generation — all without external parsing libraries. The primary compiler
+is self-hosted (written in Stele itself), with a Haskell bootstrap compiler
+used to seed the first build. Stele draws from pattern calculus and structural
+subtyping to create a language where **pattern matching is the fundamental
+operation** and all functions accept structural records.
 
 ## Philosophy
 

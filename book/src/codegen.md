@@ -202,12 +202,19 @@ In addition to C, Stele can compile directly to AArch64 (Apple Silicon)
 assembly. The native backend (`Stele.EmitAArch64`) consumes the same IR as
 the C backend but emits `.s` files linked against a separate C runtime.
 
-```bash
-cabal run stele -- --native examples/hello.bad
-# => Writes examples/hello.s + examples/hello_rt.c, links to examples/hello
+Using the bootstrap compiler:
 
-cabal run stele -- --native --run examples/hello.bad
-# => Compiles and runs immediately
+```bash
+cd bootstrap/haskell
+cabal run stele -- --native ../../examples/hello.stele
+# => Writes examples/hello.s + examples/hello_rt.c, links to examples/hello
+```
+
+Or using the self-hosted compiler:
+
+```bash
+./compiler examples/hello.stele hello.s asm
+cc -O1 -o hello hello.s runtime/runtime_aarch64.c && ./hello
 ```
 
 The strategy is straightforward: all IR variables are stored on the stack in
@@ -216,7 +223,7 @@ __TEXT,__cstring` data section. Function calls use the standard Apple AArch64
 calling convention (x0 for first argument / return value, x29/x30 for frame
 and link registers).
 
-The self-hosting compiler in `examples/compiler/compiler.stele` also has its own
+The self-hosting compiler in `compiler.stele` (at the repo root) also has its own
 AArch64 backend and can emit assembly when invoked with the `asm` flag.
 
 ## Inspecting Generated Code
@@ -224,15 +231,15 @@ AArch64 backend and can emit assembly when invoked with the `asm` flag.
 To see the generated C without running it:
 
 ```bash
-cabal run stele -- examples/hello.bad
-cat examples/hello.c
+./compiler examples/hello.stele hello.c
+cat hello.c
 ```
 
 To see the generated assembly:
 
 ```bash
-cabal run stele -- --native examples/hello.bad
-cat examples/hello.s
+./compiler examples/hello.stele hello.s asm
+cat hello.s
 ```
 
 The output is intentionally readable. It's a useful learning tool for

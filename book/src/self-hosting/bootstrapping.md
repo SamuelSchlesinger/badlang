@@ -48,7 +48,6 @@ The `bootstrap.sh` script automates the full bootstrap chain. It supports two
 modes: **C** (default) and **ASM** (AArch64 native).
 
 ```bash
-cd examples/compiler
 ./bootstrap.sh 3        # C mode (default)
 ./bootstrap.sh 3 asm    # AArch64 native mode
 ```

@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-babbe00e.js";
+            window.path_to_searchindex_js = "searchindex-47f25ae8.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-29fcd749.js"></script>
@@ -183,7 +183,8 @@
 end
 </code></pre>
 <p>Compile and run it:</p>
-<pre><code class="language-bash">cabal run stele -- --run first.bad
+<pre><code class="language-bash">./compiler first.stele first.c
+cc -O1 -o first first.c &amp;&amp; ./first
 </code></pre>
 <p>Output:</p>
 <pre><code>Hello, world!
