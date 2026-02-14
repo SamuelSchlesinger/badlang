@@ -86,9 +86,9 @@ The self-hosted compiler can also emit native assembly:
 ```bash
 # AArch64 (Apple Silicon / Linux ARM)
 ./compiler examples/hello.stele hello.s asm
-cc -O1 -o hello hello.s runtime/runtime_aarch64.c
+cc -O1 -o hello hello.s runtime/runtime.c
 
 # x86_64 (macOS / Linux)
 ./compiler examples/hello.stele hello.s x86
-cc -O1 -o hello hello.s runtime/runtime_x86_64.c
+cc -O1 -o hello hello.s runtime/runtime.c
 ```

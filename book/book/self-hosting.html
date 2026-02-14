@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-47f25ae8.js";
+            window.path_to_searchindex_js = "searchindex-bebaa2d8.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-29fcd749.js"></script>
@@ -200,7 +200,7 @@ compiler, minus the type checker:</p>
 </code></pre>
 <p>The compiler reads a source file, tokenizes it, parses the token stream into
 an AST, and generates either C code or AArch64 assembly depending on the mode.
-It relies on a shared <code>runtime.c</code> (or <code>runtime_aarch64.c</code> for native mode)
+It relies on a shared <code>runtime.c</code> (or <code>runtime/runtime.c</code> for native mode)
 that provides the value representation, reference counting, and built-in
 functions for file I/O and string manipulation.</p>
 <p>The compiler selects its output mode via command-line arguments:</p>

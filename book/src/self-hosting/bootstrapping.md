@@ -60,7 +60,7 @@ This compiles through three generations and verifies:
 
 In C mode, gen0 is always built using the Haskell reference compiler. In ASM
 mode, gen0 is still built via C (since the Haskell compiler is the seed), but
-subsequent generations emit `.s` files and link against `runtime_aarch64.c`.
+subsequent generations emit `.s` files and link against `runtime/runtime.c`.
 
 A successful C-mode run looks like:
 

@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 
-/* ── stele runtime for native (x86-64) backend ───────────────── */
+/* ── stele runtime for native backends ────────────────────────── */
 /* All functions have external linkage so they can be called from   */
 /* generated assembly.                                              */
 

@@ -31,11 +31,11 @@ cc -O1 -o hello hello.c && ./hello
 
 # Compile to native AArch64 assembly
 ./compiler examples/hello.stele hello.s asm
-cc -O1 -o hello hello.s runtime/runtime_aarch64.c && ./hello
+cc -O1 -o hello hello.s runtime/runtime.c && ./hello
 
 # Compile to x86_64 assembly
 ./compiler examples/hello.stele hello.s x86
-cc -O1 -o hello hello.s runtime/runtime_x86_64.c && ./hello
+cc -O1 -o hello hello.s runtime/runtime.c && ./hello
 ```
 
 To bootstrap from source (requires GHC 9.6+ and Cabal 3.10+):
@@ -366,9 +366,8 @@ stele/
 │       ├── stele.cabal
 │       ├── app/Main.hs
 │       └── src/Stele/*.hs
-├── runtime/                # Native backend runtimes
-│   ├── runtime_aarch64.c
-│   └── runtime_x86_64.c
+├── runtime/
+│   └── runtime.c          # Shared native backend runtime
 ├── stdlib/                 # Standard library
 │   ├── cli.stele, math.stele, ...
 │   └── tests/
@@ -477,11 +476,11 @@ is readable and can be compiled with any C compiler.
 **AArch64 backend.** The native emitter supports both Apple and Linux AArch64
 assembly syntax. All variables live on the stack in a fixed-size frame per
 function. The generated assembly links against a separate C runtime
-(`runtime/runtime_aarch64.c`) that provides the same value representation and reference
+(`runtime/runtime.c`) that provides the same value representation and reference
 counting.
 
 **x86_64 backend.** Supports macOS and Linux (System V) calling conventions.
-Links against `runtime/runtime_x86_64.c`.
+Links against the same `runtime/runtime.c`.
 
 ## Examples
 

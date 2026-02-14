@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-47f25ae8.js";
+            window.path_to_searchindex_js = "searchindex-bebaa2d8.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-29fcd749.js"></script>
@@ -271,7 +271,7 @@ and basic blocks become labeled sections with <code>goto</code>. See the
 <p>The AArch64 backend emits Apple Silicon assembly (<code>.s</code> files). All IR
 variables are stored on the stack using a fixed-size frame per function.
 The generated assembly links against a separate C runtime
-(<code>runtime/runtime_aarch64.c</code>) that provides the same value representation and
+(<code>runtime/runtime.c</code>) that provides the same value representation and
 reference counting as the embedded C runtime.</p>
 <h2 id="stage-6-assembling-and-linking"><a class="header" href="#stage-6-assembling-and-linking">Stage 6: Assembling and Linking</a></h2>
 <p>The Stele CLI invokes the system C compiler (<code>cc</code>) to compile the generated

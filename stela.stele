@@ -358,17 +358,7 @@ end
 
 fn runtime_for_mode
   case {| mode |} =>
-    match str_eq {| a: mode, b: "asm" |}
-      case 1 =>
-        resolve_runtime_path {| primary: "runtime/runtime_aarch64.c", fallback: "../../runtime/runtime_aarch64.c" |}
-      case 0 =>
-        match str_eq {| a: mode, b: "asm-linux" |}
-          case 1 =>
-            resolve_runtime_path {| primary: "runtime/runtime_aarch64.c", fallback: "../../runtime/runtime_aarch64.c" |}
-          case 0 =>
-            resolve_runtime_path {| primary: "runtime/runtime_x86_64.c", fallback: "../../runtime/runtime_x86_64.c" |}
-        end
-    end
+    resolve_runtime_path {| primary: "runtime/runtime.c", fallback: "../../runtime/runtime.c" |}
 end
 
 fn target_dir

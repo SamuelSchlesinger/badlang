@@ -114,7 +114,7 @@ and basic blocks become labeled sections with `goto`. See the
 The AArch64 backend emits Apple Silicon assembly (`.s` files). All IR
 variables are stored on the stack using a fixed-size frame per function.
 The generated assembly links against a separate C runtime
-(`runtime/runtime_aarch64.c`) that provides the same value representation and
+(`runtime/runtime.c`) that provides the same value representation and
 reference counting as the embedded C runtime.
 
 ## Stage 6: Assembling and Linking

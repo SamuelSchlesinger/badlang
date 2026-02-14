@@ -31,7 +31,7 @@ Source (.stele) → Tokenize → Parse → Emit C or AArch64 → Write File
 
 The compiler reads a source file, tokenizes it, parses the token stream into
 an AST, and generates either C code or AArch64 assembly depending on the mode.
-It relies on a shared `runtime.c` (or `runtime_aarch64.c` for native mode)
+It relies on a shared `runtime.c` (or `runtime/runtime.c` for native mode)
 that provides the value representation, reference counting, and built-in
 functions for file I/O and string manipulation.
 

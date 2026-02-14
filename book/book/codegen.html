@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-47f25ae8.js";
+            window.path_to_searchindex_js = "searchindex-bebaa2d8.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-29fcd749.js"></script>
@@ -345,7 +345,7 @@ cabal run stele -- --native ../../examples/hello.stele
 </code></pre>
 <p>Or using the self-hosted compiler:</p>
 <pre><code class="language-bash">./compiler examples/hello.stele hello.s asm
-cc -O1 -o hello hello.s runtime/runtime_aarch64.c &amp;&amp; ./hello
+cc -O1 -o hello hello.s runtime/runtime.c &amp;&amp; ./hello
 </code></pre>
 <p>The strategy is straightforward: all IR variables are stored on the stack in
 a fixed-size frame. String literals are collected into a <code>.section __TEXT,__cstring</code> data section. Function calls use the standard Apple AArch64

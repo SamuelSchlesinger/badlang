@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-47f25ae8.js";
+            window.path_to_searchindex_js = "searchindex-bebaa2d8.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-29fcd749.js"></script>
@@ -297,11 +297,11 @@ cc -O1 -o compiler compiler.c
 <p>The self-hosted compiler can also emit native assembly:</p>
 <pre><code class="language-bash"># AArch64 (Apple Silicon / Linux ARM)
 ./compiler examples/hello.stele hello.s asm
-cc -O1 -o hello hello.s runtime/runtime_aarch64.c
+cc -O1 -o hello hello.s runtime/runtime.c
 
 # x86_64 (macOS / Linux)
 ./compiler examples/hello.stele hello.s x86
-cc -O1 -o hello hello.s runtime/runtime_x86_64.c
+cc -O1 -o hello hello.s runtime/runtime.c
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="hello-stele"><a class="header" href="#hello-stele">Hello, Stele</a></h1>
@@ -2048,7 +2048,7 @@ and basic blocks become labeled sections with <code>goto</code>. See the
 <p>The AArch64 backend emits Apple Silicon assembly (<code>.s</code> files). All IR
 variables are stored on the stack using a fixed-size frame per function.
 The generated assembly links against a separate C runtime
-(<code>runtime/runtime_aarch64.c</code>) that provides the same value representation and
+(<code>runtime/runtime.c</code>) that provides the same value representation and
 reference counting as the embedded C runtime.</p>
 <h2 id="stage-6-assembling-and-linking"><a class="header" href="#stage-6-assembling-and-linking">Stage 6: Assembling and Linking</a></h2>
 <p>The Stele CLI invokes the system C compiler (<code>cc</code>) to compile the generated
@@ -2250,7 +2250,7 @@ cabal run stele -- --native ../../examples/hello.stele
 </code></pre>
 <p>Or using the self-hosted compiler:</p>
 <pre><code class="language-bash">./compiler examples/hello.stele hello.s asm
-cc -O1 -o hello hello.s runtime/runtime_aarch64.c &amp;&amp; ./hello
+cc -O1 -o hello hello.s runtime/runtime.c &amp;&amp; ./hello
 </code></pre>
 <p>The strategy is straightforward: all IR variables are stored on the stack in
 a fixed-size frame. String literals are collected into a <code>.section __TEXT,__cstring</code> data section. Function calls use the standard Apple AArch64
@@ -2296,7 +2296,7 @@ compiler, minus the type checker:</p>
 </code></pre>
 <p>The compiler reads a source file, tokenizes it, parses the token stream into
 an AST, and generates either C code or AArch64 assembly depending on the mode.
-It relies on a shared <code>runtime.c</code> (or <code>runtime_aarch64.c</code> for native mode)
+It relies on a shared <code>runtime.c</code> (or <code>runtime/runtime.c</code> for native mode)
 that provides the value representation, reference counting, and built-in
 functions for file I/O and string manipulation.</p>
 <p>The compiler selects its output mode via command-line arguments:</p>
@@ -2796,7 +2796,7 @@ modes: <strong>C</strong> (default) and <strong>ASM</strong> (AArch64 native).</
 </ul>
 <p>In C mode, gen0 is always built using the Haskell reference compiler. In ASM
 mode, gen0 is still built via C (since the Haskell compiler is the seed), but
-subsequent generations emit <code>.s</code> files and link against <code>runtime_aarch64.c</code>.</p>
+subsequent generations emit <code>.s</code> files and link against <code>runtime/runtime.c</code>.</p>
 <p>A successful C-mode run looks like:</p>
 <pre><code>=== Stele Bootstrap Test ===
 Generations: 3

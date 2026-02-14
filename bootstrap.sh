@@ -14,12 +14,12 @@
 #
 # ASM mode:
 #   gen0: Haskell compiler -> compiler.c -> gen0 binary (always via C)
-#   gen1+: genN-1 compiler.stele genN.s asm -> cc genN.s + runtime_aarch64.c -> genN
+#   gen1+: genN-1 compiler.stele genN.s asm -> cc genN.s + runtime.c -> genN
 #   verify: gen1.s == gen2.s == ... == genN.s
 #
 # x86/x86-linux modes:
 #   gen0: Haskell compiler -> compiler.c -> gen0 binary
-#   gen1+: genN-1 compiler.stele genN.s <mode> -> cc genN.s + runtime_x86_64.c -> genN
+#   gen1+: genN-1 compiler.stele genN.s <mode> -> cc genN.s + runtime.c -> genN
 #   verify: gen1.s == gen2.s == ... == genN.s
 
 set -euo pipefail
@@ -28,8 +28,7 @@ N="${1:-3}"
 MODE="${2:-c}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 COMPILER_SRC="$SCRIPT_DIR/compiler.stele"
-RUNTIME_AARCH64="$SCRIPT_DIR/runtime/runtime_aarch64.c"
-RUNTIME_X86_64="$SCRIPT_DIR/runtime/runtime_x86_64.c"
+NATIVE_RUNTIME="$SCRIPT_DIR/runtime/runtime.c"
 STDLIB_DIR="$SCRIPT_DIR/stdlib"
 WORK_DIR=$(mktemp -d)
 
@@ -58,17 +57,17 @@ case "$MODE" in
     asm)
         EXT="s"
         EMIT_MODE="asm"
-        RUNTIME_SRC="$RUNTIME_AARCH64"
+        RUNTIME_SRC="$NATIVE_RUNTIME"
         ;;
     asm-linux)
         EXT="s"
         EMIT_MODE="asm-linux"
-        RUNTIME_SRC="$RUNTIME_AARCH64"
+        RUNTIME_SRC="$NATIVE_RUNTIME"
         ;;
     x86)
         EXT="s"
         EMIT_MODE="x86"
-        RUNTIME_SRC="$RUNTIME_X86_64"
+        RUNTIME_SRC="$NATIVE_RUNTIME"
         if [[ "$(uname)" == "Darwin" ]]; then
             CC_FLAGS+=("-arch" "x86_64")
         fi
@@ -76,7 +75,7 @@ case "$MODE" in
     x86-linux)
         EXT="s"
         EMIT_MODE="x86-linux"
-        RUNTIME_SRC="$RUNTIME_X86_64"
+        RUNTIME_SRC="$NATIVE_RUNTIME"
         ;;
 esac
 
@@ -188,8 +187,7 @@ if [ -f "$STELA_SRC" ]; then
     mkdir -p "$STELA_RUN_DIR"
     mkdir -p "$STELA_RUN_DIR/runtime"
     cp "$SCRIPT_DIR/runtime.c" "$STELA_RUN_DIR/runtime.c"
-    cp "$RUNTIME_AARCH64" "$STELA_RUN_DIR/runtime/runtime_aarch64.c"
-    cp "$RUNTIME_X86_64" "$STELA_RUN_DIR/runtime/runtime_x86_64.c"
+    cp "$NATIVE_RUNTIME" "$STELA_RUN_DIR/runtime/runtime.c"
     cp "$STDLIB_DIR/cli.stele" "$STELA_RUN_DIR/cli.stele"
     cp "$STDLIB_DIR/math.stele" "$STELA_RUN_DIR/math.stele"
     cp "$STDLIB_DIR/concurrency.stele" "$STELA_RUN_DIR/concurrency.stele"

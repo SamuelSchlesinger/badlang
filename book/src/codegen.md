@@ -214,7 +214,7 @@ Or using the self-hosted compiler:
 
 ```bash
 ./compiler examples/hello.stele hello.s asm
-cc -O1 -o hello hello.s runtime/runtime_aarch64.c && ./hello
+cc -O1 -o hello hello.s runtime/runtime.c && ./hello
 ```
 
 The strategy is straightforward: all IR variables are stored on the stack in
