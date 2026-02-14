@@ -19,5 +19,12 @@ examples/divine
 examples/mutual
 examples/io
 
+# Build artifacts
+.stela/
+examples/compiler/.stela/
+examples/compiler/compiler
+examples/compiler/stela
+examples/compiler/target/
+
 # Runtime artifacts
 io_test.txt

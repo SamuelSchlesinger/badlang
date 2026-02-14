@@ -50,10 +50,10 @@ Cross-target builds require a compatible assembler/linker toolchain for the
 requested target (for example, `aarch64-linux` requires a Linux AArch64
 toolchain).
 
-## Stela (Self-Hosted Build Tool)
+## Stela (Self-Hosted Build + Package Manager)
 
-`examples/compiler/stela.stele` is a Stele-native build tool (no package
-manager) with a Cargo-style command subset:
+`examples/compiler/stela.stele` is a Stele-native build and package tool.
+It now supports Git-backed local and remote packages.
 
 ```bash
 stela build <source.stele> [--lib <name> ...]
@@ -62,10 +62,18 @@ stela check <source.stele> [--lib <name> ...]
 stela test <source.stele> [--lib <name> ...]
 stela bench <source.stele> [--lib <name> ...]
 stela package-lib <source.stele> [--name <name>] [--lib <name> ...]
+stela init [--name <name>] [--entry <entry.stele>] [--kind <app|lib>] [--major <n>] [--manifest <path>]
+stela add <name> <git-url-or-path> [--ref <git-ref>] [--major <n>] [--manifest <path>]
+stela replace <name> <git-url-or-path> [--ref <git-ref>] [--major <n>] [--manifest <path>]
+stela install [--manifest <path>]
+stela lock [--manifest <path>]
+stela graph [--manifest <path>]
+stela tidy [--manifest <path>]
+stela why <module> [--major <n>] [--manifest <path>]
 stela clean
 ```
 
-It supports sandboxed builds via `sandbox-exec` when available.
+Builds still support sandboxing via `sandbox-exec` when available.
 
 ### Bootstrapping Stela
 
@@ -93,7 +101,82 @@ working directory by the self-hosted compiler):
 (cd examples/compiler && ./stela clean)
 ```
 
-Local library packaging/inclusion:
+### Package Manifest (`stela.pkg`)
+
+`stela` uses a line-based manifest format:
+
+```ini
+name=my-app
+entry=app.stele
+kind=app
+major=1
+dep=math|https://github.com/example/math.stele.git|main|1
+dep=util|../local-util-repo|HEAD|1
+replace=math|../forked-math|main|1
+```
+
+Sample manifests and sources are included under `examples/packages/`.
+
+Fields:
+
+- `name`: package name
+- `entry`: main entry file (`app`) or library entry file (`lib`)
+- `kind`: `app` or `lib`
+- `major`: package major version (`1`, `2`, ...)
+- `dep`: dependency spec: `<module>|<git-url-or-path>|<git-ref>|<major>`
+- `replace`: root-level override spec: `<module>|<git-url-or-path>|<git-ref>|<major>`
+  - `git-url-or-path` can be a remote URL or local Git repository path
+  - `git-ref` is optional; empty resolves as `HEAD`
+  - `<major>` is optional when reading older manifests and defaults to `1`
+
+### Package Workflow
+
+Initialize a project manifest:
+
+```bash
+(cd examples/compiler && ./stela init --name app --entry app.stele --kind app --major 1 --manifest stela.pkg)
+```
+
+Add a dependency (local or remote Git):
+
+```bash
+(cd examples/compiler && ./stela add math /path/to/math-repo --major 1 --manifest stela.pkg)
+(cd examples/compiler && ./stela add strings https://github.com/example/strings.stele.git --ref main --major 2 --manifest stela.pkg)
+(cd examples/compiler && ./stela replace math /path/to/math-fork --ref main --major 1 --manifest stela.pkg)
+```
+
+Install and lock dependencies:
+
+```bash
+(cd examples/compiler && ./stela install --manifest stela.pkg)
+```
+
+This materializes:
+
+- `.stela/git/<module-v-major>`: cloned package repositories (sanitized key, e.g. `math_v1`)
+- `.stela/lib/<module-v-major>.stelib`: packaged library source for each dependency
+- `.stela/lib/.deps.stelib`: bundled dependency source (auto-included by build/run/check/test/bench)
+- `.stela/lock.pkg`: resolved lockfile with source/ref/commit/entry/sha256 metadata
+
+Resolver behavior:
+
+- Dependencies are resolved transitively (manifests of dependencies are traversed).
+- Cycles are rejected during resolution.
+- Identity is `<module>|v<major>` so multiple majors can coexist.
+- Root `replace=` rules are applied across the whole dependency graph.
+- On install, if a lock entry exists for the same module-major and commit, checksum mismatch fails the install.
+
+Inspect the dependency graph:
+
+```bash
+(cd examples/compiler && ./stela graph --manifest stela.pkg)
+(cd examples/compiler && ./stela why math --major 1 --manifest stela.pkg)
+(cd examples/compiler && ./stela tidy --manifest stela.pkg)
+```
+
+### Local Library Packaging
+
+Manual local library packaging is still available:
 
 ```bash
 (cd examples/compiler && ./stela package-lib math.stele --name math)
@@ -136,7 +219,7 @@ Run stdlib test targets across the supported mode matrix (`c`, `asm`,
 ./stdlib/tests/run.sh
 ```
 
-Options: `--mode c|asm|asm-linux|x86|x86-linux`, `--sandbox`, `--no-sandbox`, `--lib <name>`, `--name <name>`.
+Options: `--mode c|asm|asm-linux|x86|x86-linux`, `--sandbox`, `--no-sandbox`, `--lib <name>`, `--name <name>`, `--manifest <path>`, `--ref <git-ref>`, `--kind <app|lib>`, `--major <n>`.
 
 ## The Language
 

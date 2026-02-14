@@ -1,0 +1,3 @@
+do main
+  print add {| a: 20, b: 22 |}
+end

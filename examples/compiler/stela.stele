@@ -1,12 +1,20 @@
--- stela: self-hosted build tool for Stele projects
+-- stela: self-hosted build + package manager for Stele projects
 --
--- Cargo-inspired command subset (no package manager):
+-- Core commands:
 --   stela build <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|asm-linux|x86|x86-linux>] [--sandbox|--no-sandbox]
 --   stela run   <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|asm-linux|x86|x86-linux>] [--sandbox|--no-sandbox]
 --   stela check <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|asm-linux|x86|x86-linux>] [--sandbox|--no-sandbox]
 --   stela test  <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|asm-linux|x86|x86-linux>] [--sandbox|--no-sandbox]
 --   stela bench <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|asm-linux|x86|x86-linux>] [--sandbox|--no-sandbox]
 --   stela package-lib <source.stele> [--lib <name> ...] [--name <name>]
+--   stela init [--name <name>] [--entry <entry.stele>] [--kind <app|lib>] [--major <n>] [--manifest <path>]
+--   stela add <module> <git-url-or-path> [--ref <git-ref>] [--major <n>] [--manifest <path>]
+--   stela replace <module> <git-url-or-path> [--ref <git-ref>] [--major <n>] [--manifest <path>]
+--   stela install [--manifest <path>]
+--   stela lock [--manifest <path>]
+--   stela graph [--manifest <path>]
+--   stela tidy [--manifest <path>]
+--   stela why <module> [--major <n>] [--manifest <path>]
 --   stela clean
 
 fn str_eq
@@ -27,6 +35,183 @@ fn starts_with
         let sub = substr {| s: s, start: 0, len: plen |}
         str_eq {| a: sub, b: prefix |}
     end
+end
+
+fn is_space_char
+  case {| ch |} =>
+    (ch == 32) || (ch == 9) || (ch == 10) || (ch == 13)
+end
+
+fn trim_left_loop
+  case {| s, i, slen |} =>
+    match i >= slen
+      case 1 => ""
+      case 0 =>
+        let ch = char_at {| s: s, n: i |}
+        match is_space_char {| ch: ch |}
+          case 1 =>
+            trim_left_loop {| s: s, i: i + 1, slen: slen |}
+          case 0 =>
+            substr {| s: s, start: i, len: slen - i |}
+        end
+    end
+end
+
+fn trim_left
+  case {| s |} =>
+    trim_left_loop {| s: s, i: 0, slen: strlen {| s: s |} |}
+end
+
+fn trim_right_scan
+  case {| s, i, slen, last_non_space |} =>
+    match i >= slen
+      case 1 => last_non_space
+      case 0 =>
+        let ch = char_at {| s: s, n: i |}
+        match is_space_char {| ch: ch |}
+          case 1 =>
+            trim_right_scan {| s: s, i: i + 1, slen: slen, last_non_space: last_non_space |}
+          case 0 =>
+            trim_right_scan {| s: s, i: i + 1, slen: slen, last_non_space: i |}
+        end
+    end
+end
+
+fn trim_right
+  case {| s |} =>
+    let slen = strlen {| s: s |}
+    let last = trim_right_scan {| s: s, i: 0, slen: slen, last_non_space: 0 - 1 |}
+    match last >= 0
+      case 1 => substr {| s: s, start: 0, len: last + 1 |}
+      case 0 => ""
+    end
+end
+
+fn trim
+  case {| s |} =>
+    trim_right {| s: trim_left {| s: s |} |}
+end
+
+fn append_char
+  case {| s, ch |} =>
+    concat {| a: s, b: char_of_int {| n: ch |} |}
+end
+
+fn index_char_from_loop
+  case {| s, target, i, slen |} =>
+    match i >= slen
+      case 1 => 0 - 1
+      case 0 =>
+        let ch = char_at {| s: s, n: i |}
+        match ch == target
+          case 1 => i
+          case 0 =>
+            index_char_from_loop {| s: s, target: target, i: i + 1, slen: slen |}
+        end
+    end
+end
+
+fn index_char_from
+  case {| s, target, start |} =>
+    index_char_from_loop {| s: s, target: target, i: start, slen: strlen {| s: s |} |}
+end
+
+fn append_line
+  case {| lines, line |} =>
+    let llen = strlen {| s: lines |}
+    match llen == 0
+      case 1 => line
+      case 0 =>
+        let x = concat {| a: lines, b: "\n" |}
+        concat {| a: x, b: line |}
+    end
+end
+
+fn split_first_line
+  case {| lines |} =>
+    let slen = strlen {| s: lines |}
+    match slen == 0
+      case 1 => {| has: 0, head: "", tail: "" |}
+      case 0 =>
+        let idx = index_char_from {| s: lines, target: 10, start: 0 |}
+        match idx >= 0
+          case 1 =>
+            {| has: 1, head: substr {| s: lines, start: 0, len: idx |}, tail: substr {| s: lines, start: idx + 1, len: slen - idx - 1 |} |}
+          case 0 =>
+            {| has: 1, head: lines, tail: "" |}
+        end
+    end
+end
+
+fn line_list_contains
+  case {| lines, target |} =>
+    let part = split_first_line {| lines: lines |}
+    match part.has
+      case 0 => 0
+      case 1 =>
+        let line = trim {| s: part.head |}
+        let llen = strlen {| s: line |}
+        match llen == 0
+          case 1 => line_list_contains {| lines: part.tail, target: target |}
+          case 0 =>
+            match str_eq {| a: line, b: target |}
+              case 1 => 1
+              case 0 => line_list_contains {| lines: part.tail, target: target |}
+            end
+        end
+    end
+end
+
+fn is_digit_char
+  case {| ch |} =>
+    (ch >= 48) && (ch <= 57)
+end
+
+fn is_digits_loop
+  case {| s, i, slen |} =>
+    match i >= slen
+      case 1 => 1
+      case 0 =>
+        let ch = char_at {| s: s, n: i |}
+        match is_digit_char {| ch: ch |}
+          case 1 => is_digits_loop {| s: s, i: i + 1, slen: slen |}
+          case 0 => 0
+        end
+    end
+end
+
+fn is_digits
+  case {| s |} =>
+    let slen = strlen {| s: s |}
+    match slen > 0
+      case 1 => is_digits_loop {| s: s, i: 0, slen: slen |}
+      case 0 => 0
+    end
+end
+
+fn normalize_safe_char
+  case {| ch |} =>
+    match ((ch >= 48) && (ch <= 57)) || ((ch >= 65) && (ch <= 90)) || ((ch >= 97) && (ch <= 122)) || (ch == 45) || (ch == 95)
+      case 1 => ch
+      case 0 => 95
+    end
+end
+
+fn sanitize_name_loop
+  case {| s, i, slen, acc |} =>
+    match i >= slen
+      case 1 => acc
+      case 0 =>
+        let ch = char_at {| s: s, n: i |}
+        let nch = normalize_safe_char {| ch: ch |}
+        let acc2 = append_char {| s: acc, ch: nch |}
+        sanitize_name_loop {| s: s, i: i + 1, slen: slen, acc: acc2 |}
+    end
+end
+
+fn sanitize_name
+  case {| s |} =>
+    sanitize_name_loop {| s: s, i: 0, slen: strlen {| s: s |}, acc: "" |}
 end
 
 fn echo_line
@@ -122,15 +307,52 @@ fn file_exists
     rc == 0
 end
 
+fn dir_exists
+  case {| path |} =>
+    let c1 = concat {| a: "test -d ", b: path |}
+    let rc = sh {| command: c1 |}
+    rc == 0
+end
+
+fn path_join
+  case {| a, b |} =>
+    let alen = strlen {| s: a |}
+    let blen = strlen {| s: b |}
+    match alen == 0
+      case 1 => b
+      case 0 =>
+        match blen == 0
+          case 1 => a
+          case 0 =>
+            let a_last = char_at {| s: a, n: alen - 1 |}
+            let b_first = char_at {| s: b, n: 0 |}
+            match a_last == 47
+              case 1 =>
+                match b_first == 47
+                  case 1 =>
+                    let b_trim = substr {| s: b, start: 1, len: blen - 1 |}
+                    concat {| a: a, b: b_trim |}
+                  case 0 => concat {| a: a, b: b |}
+                end
+              case 0 =>
+                match b_first == 47
+                  case 1 => concat {| a: a, b: b |}
+                  case 0 =>
+                    let x = concat {| a: a, b: "/" |}
+                    concat {| a: x, b: b |}
+                end
+            end
+        end
+    end
+end
+
 fn resolve_runtime_path
   case {| primary, fallback |} =>
-    match file_exists {| path: primary |}
+    let c1 = concat {| a: "test -f ", b: primary |}
+    let rc = sh {| command: c1 |}
+    match rc == 0
       case 1 => primary
-      case 0 =>
-        match file_exists {| path: fallback |}
-          case 1 => fallback
-          case 0 => primary
-        end
+      case 0 => fallback
     end
 end
 
@@ -197,6 +419,44 @@ fn lib_path_for
     concat {| a: p1, b: ".stelib" |}
 end
 
+fn dep_bundle_path
+  case {| |} => ".stela/lib/.deps.stelib"
+end
+
+fn manifest_default
+  case {| |} =>
+    {|
+      name: "",
+      has_name: 0,
+      entry: "",
+      has_entry: 0,
+      kind: "lib",
+      major: "1",
+      deps: "",
+      replaces: ""
+    |}
+end
+
+fn dep_default
+  case {| |} =>
+    {|
+      ok: 0,
+      name: "",
+      source: "",
+      ref: "",
+      major: "1"
+    |}
+end
+
+fn install_state_default
+  case {| |} =>
+    {|
+      visited: "",
+      order: "",
+      locks: ""
+    |}
+end
+
 fn default_opts
   case {| |} =>
     {|
@@ -207,7 +467,15 @@ fn default_opts
       sandbox: 1,
       libs: "",
       name: "",
-      has_name: 0
+      has_name: 0,
+      manifest: "stela.pkg",
+      has_manifest: 0,
+      ref: "",
+      has_ref: 0,
+      major: "1",
+      has_major: 0,
+      kind: "app",
+      has_kind: 0
     |}
 end
 
@@ -221,7 +489,15 @@ fn set_source
       sandbox: opts.sandbox,
       libs: opts.libs,
       name: opts.name,
-      has_name: opts.has_name
+      has_name: opts.has_name,
+      manifest: opts.manifest,
+      has_manifest: opts.has_manifest,
+      ref: opts.ref,
+      has_ref: opts.has_ref,
+      major: opts.major,
+      has_major: opts.has_major,
+      kind: opts.kind,
+      has_kind: opts.has_kind
     |}
 end
 
@@ -235,7 +511,15 @@ fn set_compiler
       sandbox: opts.sandbox,
       libs: opts.libs,
       name: opts.name,
-      has_name: opts.has_name
+      has_name: opts.has_name,
+      manifest: opts.manifest,
+      has_manifest: opts.has_manifest,
+      ref: opts.ref,
+      has_ref: opts.has_ref,
+      major: opts.major,
+      has_major: opts.has_major,
+      kind: opts.kind,
+      has_kind: opts.has_kind
     |}
 end
 
@@ -249,7 +533,15 @@ fn set_mode
       sandbox: opts.sandbox,
       libs: opts.libs,
       name: opts.name,
-      has_name: opts.has_name
+      has_name: opts.has_name,
+      manifest: opts.manifest,
+      has_manifest: opts.has_manifest,
+      ref: opts.ref,
+      has_ref: opts.has_ref,
+      major: opts.major,
+      has_major: opts.has_major,
+      kind: opts.kind,
+      has_kind: opts.has_kind
     |}
 end
 
@@ -263,7 +555,15 @@ fn set_sandbox
       sandbox: sandbox,
       libs: opts.libs,
       name: opts.name,
-      has_name: opts.has_name
+      has_name: opts.has_name,
+      manifest: opts.manifest,
+      has_manifest: opts.has_manifest,
+      ref: opts.ref,
+      has_ref: opts.has_ref,
+      major: opts.major,
+      has_major: opts.has_major,
+      kind: opts.kind,
+      has_kind: opts.has_kind
     |}
 end
 
@@ -279,7 +579,37 @@ fn add_lib
       sandbox: opts.sandbox,
       libs: libs2,
       name: opts.name,
-      has_name: opts.has_name
+      has_name: opts.has_name,
+      manifest: opts.manifest,
+      has_manifest: opts.has_manifest,
+      ref: opts.ref,
+      has_ref: opts.has_ref,
+      major: opts.major,
+      has_major: opts.has_major,
+      kind: opts.kind,
+      has_kind: opts.has_kind
+    |}
+end
+
+fn set_libs
+  case {| opts, libs |} =>
+    {|
+      source: opts.source,
+      has_source: opts.has_source,
+      compiler: opts.compiler,
+      mode: opts.mode,
+      sandbox: opts.sandbox,
+      libs: libs,
+      name: opts.name,
+      has_name: opts.has_name,
+      manifest: opts.manifest,
+      has_manifest: opts.has_manifest,
+      ref: opts.ref,
+      has_ref: opts.has_ref,
+      major: opts.major,
+      has_major: opts.has_major,
+      kind: opts.kind,
+      has_kind: opts.has_kind
     |}
 end
 
@@ -293,7 +623,103 @@ fn set_name
       sandbox: opts.sandbox,
       libs: opts.libs,
       name: name,
-      has_name: 1
+      has_name: 1,
+      manifest: opts.manifest,
+      has_manifest: opts.has_manifest,
+      ref: opts.ref,
+      has_ref: opts.has_ref,
+      major: opts.major,
+      has_major: opts.has_major,
+      kind: opts.kind,
+      has_kind: opts.has_kind
+    |}
+end
+
+fn set_manifest
+  case {| opts, manifest |} =>
+    {|
+      source: opts.source,
+      has_source: opts.has_source,
+      compiler: opts.compiler,
+      mode: opts.mode,
+      sandbox: opts.sandbox,
+      libs: opts.libs,
+      name: opts.name,
+      has_name: opts.has_name,
+      manifest: manifest,
+      has_manifest: 1,
+      ref: opts.ref,
+      has_ref: opts.has_ref,
+      major: opts.major,
+      has_major: opts.has_major,
+      kind: opts.kind,
+      has_kind: opts.has_kind
+    |}
+end
+
+fn set_ref
+  case {| opts, ref |} =>
+    {|
+      source: opts.source,
+      has_source: opts.has_source,
+      compiler: opts.compiler,
+      mode: opts.mode,
+      sandbox: opts.sandbox,
+      libs: opts.libs,
+      name: opts.name,
+      has_name: opts.has_name,
+      manifest: opts.manifest,
+      has_manifest: opts.has_manifest,
+      ref: ref,
+      has_ref: 1,
+      major: opts.major,
+      has_major: opts.has_major,
+      kind: opts.kind,
+      has_kind: opts.has_kind
+    |}
+end
+
+fn set_major
+  case {| opts, major |} =>
+    {|
+      source: opts.source,
+      has_source: opts.has_source,
+      compiler: opts.compiler,
+      mode: opts.mode,
+      sandbox: opts.sandbox,
+      libs: opts.libs,
+      name: opts.name,
+      has_name: opts.has_name,
+      manifest: opts.manifest,
+      has_manifest: opts.has_manifest,
+      ref: opts.ref,
+      has_ref: opts.has_ref,
+      major: major,
+      has_major: 1,
+      kind: opts.kind,
+      has_kind: opts.has_kind
+    |}
+end
+
+fn set_kind
+  case {| opts, kind |} =>
+    {|
+      source: opts.source,
+      has_source: opts.has_source,
+      compiler: opts.compiler,
+      mode: opts.mode,
+      sandbox: opts.sandbox,
+      libs: opts.libs,
+      name: opts.name,
+      has_name: opts.has_name,
+      manifest: opts.manifest,
+      has_manifest: opts.has_manifest,
+      ref: opts.ref,
+      has_ref: opts.has_ref,
+      major: opts.major,
+      has_major: opts.has_major,
+      kind: kind,
+      has_kind: 1
     |}
 end
 
@@ -309,8 +735,8 @@ fn parse_opts_loop
     match i >= ac
       case 1 => opts
       case 0 =>
-        let arg = argv {| n: i |}
-        match str_eq {| a: arg, b: "--compiler" |}
+        let arg1 = argv {| n: i |}
+        match str_eq {| a: arg1, b: "--compiler" |}
           case 1 =>
             match (i + 1) < ac
               case 1 =>
@@ -321,7 +747,7 @@ fn parse_opts_loop
                 fail_opts {| msg: "stela: missing value for --compiler", opts: opts |}
             end
           case 0 =>
-            match str_eq {| a: arg, b: "--mode" |}
+            match str_eq {| a: arg1, b: "--mode" |}
               case 1 =>
                 match (i + 1) < ac
                   case 1 =>
@@ -332,22 +758,22 @@ fn parse_opts_loop
                     fail_opts {| msg: "stela: missing value for --mode", opts: opts |}
                 end
               case 0 =>
-                match str_eq {| a: arg, b: "--native" |}
+                match str_eq {| a: arg1, b: "--native" |}
                   case 1 =>
                     let next = set_mode {| opts: opts, mode: "asm" |}
                     parse_opts_loop {| i: i + 1, ac: ac, opts: next |}
                   case 0 =>
-                    match str_eq {| a: arg, b: "--sandbox" |}
+                    match str_eq {| a: arg1, b: "--sandbox" |}
                       case 1 =>
                         let next = set_sandbox {| opts: opts, sandbox: 1 |}
                         parse_opts_loop {| i: i + 1, ac: ac, opts: next |}
                       case 0 =>
-                        match str_eq {| a: arg, b: "--no-sandbox" |}
+                        match str_eq {| a: arg1, b: "--no-sandbox" |}
                           case 1 =>
                             let next = set_sandbox {| opts: opts, sandbox: 0 |}
                             parse_opts_loop {| i: i + 1, ac: ac, opts: next |}
                           case 0 =>
-                            match str_eq {| a: arg, b: "--lib" |}
+                            match str_eq {| a: arg1, b: "--lib" |}
                               case 1 =>
                                 match (i + 1) < ac
                                   case 1 =>
@@ -358,7 +784,7 @@ fn parse_opts_loop
                                     fail_opts {| msg: "stela: missing value for --lib", opts: opts |}
                                 end
                               case 0 =>
-                                match str_eq {| a: arg, b: "--name" |}
+                                match str_eq {| a: arg1, b: "--name" |}
                                   case 1 =>
                                     match (i + 1) < ac
                                       case 1 =>
@@ -369,18 +795,83 @@ fn parse_opts_loop
                                         fail_opts {| msg: "stela: missing value for --name", opts: opts |}
                                     end
                                   case 0 =>
-                                    match starts_with {| s: arg, prefix: "--" |}
+                                    match str_eq {| a: arg1, b: "--manifest" |}
                                       case 1 =>
-                                        let m1 = concat {| a: "stela: unknown option ", b: arg |}
-                                        fail_opts {| msg: m1, opts: opts |}
-                                      case 0 =>
-                                        match opts.has_source
-                                          case 0 =>
-                                            let next = set_source {| opts: opts, source: arg |}
-                                            parse_opts_loop {| i: i + 1, ac: ac, opts: next |}
+                                        match (i + 1) < ac
                                           case 1 =>
-                                            let m1 = concat {| a: "stela: unexpected extra argument ", b: arg |}
-                                            fail_opts {| msg: m1, opts: opts |}
+                                            let val = argv {| n: i + 1 |}
+                                            let next = set_manifest {| opts: opts, manifest: val |}
+                                            parse_opts_loop {| i: i + 2, ac: ac, opts: next |}
+                                          case 0 =>
+                                            fail_opts {| msg: "stela: missing value for --manifest", opts: opts |}
+                                        end
+                                      case 0 =>
+                                        match str_eq {| a: arg1, b: "--ref" |}
+                                          case 1 =>
+                                            match (i + 1) < ac
+                                              case 1 =>
+                                                let val = argv {| n: i + 1 |}
+                                                let next = set_ref {| opts: opts, ref: val |}
+                                                parse_opts_loop {| i: i + 2, ac: ac, opts: next |}
+                                              case 0 =>
+                                                fail_opts {| msg: "stela: missing value for --ref", opts: opts |}
+                                            end
+                                          case 0 =>
+                                            match str_eq {| a: arg1, b: "--kind" |}
+                                              case 1 =>
+                                                match (i + 1) < ac
+                                                  case 1 =>
+                                                    let val = argv {| n: i + 1 |}
+                                                    let next = set_kind {| opts: opts, kind: val |}
+                                                    parse_opts_loop {| i: i + 2, ac: ac, opts: next |}
+                                                  case 0 =>
+                                                    fail_opts {| msg: "stela: missing value for --kind", opts: opts |}
+                                                end
+                                              case 0 =>
+                                                match str_eq {| a: arg1, b: "--major" |}
+                                                  case 1 =>
+                                                    match (i + 1) < ac
+                                                      case 1 =>
+                                                        let val = argv {| n: i + 1 |}
+                                                        match is_digits {| s: val |}
+                                                          case 1 =>
+                                                            let next = set_major {| opts: opts, major: val |}
+                                                            parse_opts_loop {| i: i + 2, ac: ac, opts: next |}
+                                                          case 0 =>
+                                                            fail_opts {| msg: "stela: --major expects digits only", opts: opts |}
+                                                        end
+                                                      case 0 =>
+                                                        fail_opts {| msg: "stela: missing value for --major", opts: opts |}
+                                                    end
+                                                  case 0 =>
+                                                    match str_eq {| a: arg1, b: "--entry" |}
+                                                      case 1 =>
+                                                        match (i + 1) < ac
+                                                          case 1 =>
+                                                            let val = argv {| n: i + 1 |}
+                                                            let next = set_source {| opts: opts, source: val |}
+                                                            parse_opts_loop {| i: i + 2, ac: ac, opts: next |}
+                                                          case 0 =>
+                                                            fail_opts {| msg: "stela: missing value for --entry", opts: opts |}
+                                                        end
+                                                      case 0 =>
+                                                        match starts_with {| s: arg1, prefix: "--" |}
+                                                          case 1 =>
+                                                            let m1 = concat {| a: "stela: unknown option ", b: arg1 |}
+                                                            fail_opts {| msg: m1, opts: opts |}
+                                                          case 0 =>
+                                                            match opts.has_source
+                                                              case 0 =>
+                                                                let next = set_source {| opts: opts, source: arg1 |}
+                                                                parse_opts_loop {| i: i + 1, ac: ac, opts: next |}
+                                                              case 1 =>
+                                                                let m1 = concat {| a: "stela: unexpected extra argument ", b: arg1 |}
+                                                                fail_opts {| msg: m1, opts: opts |}
+                                                            end
+                                                        end
+                                                    end
+                                                end
+                                            end
                                         end
                                     end
                                 end
@@ -407,6 +898,1463 @@ fn default_lib_name
     match opts.has_name
       case 1 => opts.name
       case 0 => basename_no_ext {| path: opts.source |}
+    end
+end
+
+fn kind_is_valid
+  case {| kind |} =>
+    (str_eq {| a: kind, b: "app" |}) || (str_eq {| a: kind, b: "lib" |})
+end
+
+fn manifest_set_name
+  case {| mf, name |} =>
+    {|
+      name: name,
+      has_name: 1,
+      entry: mf.entry,
+      has_entry: mf.has_entry,
+      kind: mf.kind,
+      major: mf.major,
+      deps: mf.deps,
+      replaces: mf.replaces
+    |}
+end
+
+fn manifest_set_entry
+  case {| mf, entry |} =>
+    {|
+      name: mf.name,
+      has_name: mf.has_name,
+      entry: entry,
+      has_entry: 1,
+      kind: mf.kind,
+      major: mf.major,
+      deps: mf.deps,
+      replaces: mf.replaces
+    |}
+end
+
+fn manifest_set_kind
+  case {| mf, kind |} =>
+    {|
+      name: mf.name,
+      has_name: mf.has_name,
+      entry: mf.entry,
+      has_entry: mf.has_entry,
+      kind: kind,
+      major: mf.major,
+      deps: mf.deps,
+      replaces: mf.replaces
+    |}
+end
+
+fn manifest_set_major
+  case {| mf, major |} =>
+    {|
+      name: mf.name,
+      has_name: mf.has_name,
+      entry: mf.entry,
+      has_entry: mf.has_entry,
+      kind: mf.kind,
+      major: major,
+      deps: mf.deps,
+      replaces: mf.replaces
+    |}
+end
+
+fn manifest_set_deps
+  case {| mf, deps |} =>
+    {|
+      name: mf.name,
+      has_name: mf.has_name,
+      entry: mf.entry,
+      has_entry: mf.has_entry,
+      kind: mf.kind,
+      major: mf.major,
+      deps: deps,
+      replaces: mf.replaces
+    |}
+end
+
+fn manifest_set_replaces
+  case {| mf, replaces |} =>
+    {|
+      name: mf.name,
+      has_name: mf.has_name,
+      entry: mf.entry,
+      has_entry: mf.has_entry,
+      kind: mf.kind,
+      major: mf.major,
+      deps: mf.deps,
+      replaces: replaces
+    |}
+end
+
+fn manifest_add_dep
+  case {| mf, dep_line |} =>
+    {|
+      name: mf.name,
+      has_name: mf.has_name,
+      entry: mf.entry,
+      has_entry: mf.has_entry,
+      kind: mf.kind,
+      major: mf.major,
+      deps: append_line {| lines: mf.deps, line: dep_line |},
+      replaces: mf.replaces
+    |}
+end
+
+fn manifest_add_replace
+  case {| mf, dep_line |} =>
+    {|
+      name: mf.name,
+      has_name: mf.has_name,
+      entry: mf.entry,
+      has_entry: mf.has_entry,
+      kind: mf.kind,
+      major: mf.major,
+      deps: mf.deps,
+      replaces: append_line {| lines: mf.replaces, line: dep_line |}
+    |}
+end
+
+fn dep_encode
+  case {| dep |} =>
+    let s1 = concat {| a: dep.name, b: "|" |}
+    let s2 = concat {| a: s1, b: dep.source |}
+    let s3 = concat {| a: s2, b: "|" |}
+    let s4 = concat {| a: s3, b: dep.ref |}
+    let s5 = concat {| a: s4, b: "|" |}
+    concat {| a: s5, b: dep.major |}
+end
+
+fn parse_dep_spec
+  case {| spec |} =>
+    let total = strlen {| s: spec |}
+    let p1 = index_char_from {| s: spec, target: 124, start: 0 |}
+    match p1 >= 0
+      case 1 =>
+        let name = trim {| s: substr {| s: spec, start: 0, len: p1 |} |}
+        let rest1 = substr {| s: spec, start: p1 + 1, len: total - p1 - 1 |}
+        let rest1_len = strlen {| s: rest1 |}
+        let p2 = index_char_from {| s: rest1, target: 124, start: 0 |}
+        let source = match p2 >= 0
+          case 1 => trim {| s: substr {| s: rest1, start: 0, len: p2 |} |}
+          case 0 => trim {| s: rest1 |}
+        end
+        let rest2 = match p2 >= 0
+          case 1 => substr {| s: rest1, start: p2 + 1, len: rest1_len - p2 - 1 |}
+          case 0 => ""
+        end
+        let rest2_len = strlen {| s: rest2 |}
+        let p3 = index_char_from {| s: rest2, target: 124, start: 0 |}
+        let ref = match p2 >= 0
+          case 1 =>
+            match p3 >= 0
+              case 1 => trim {| s: substr {| s: rest2, start: 0, len: p3 |} |}
+              case 0 => trim {| s: rest2 |}
+            end
+          case 0 => ""
+        end
+        let major_raw = match p2 >= 0
+          case 1 =>
+            match p3 >= 0
+              case 1 => trim {| s: substr {| s: rest2, start: p3 + 1, len: rest2_len - p3 - 1 |} |}
+              case 0 => ""
+            end
+          case 0 => ""
+        end
+        let major = match strlen {| s: major_raw |} > 0
+          case 1 => major_raw
+          case 0 => "1"
+        end
+        let ok_name = strlen {| s: name |} > 0
+        let ok_source = strlen {| s: source |} > 0
+        let ok_major = is_digits {| s: major |}
+        match ok_name && ok_source && (ok_major == 1)
+          case 1 => {| ok: 1, name: name, source: source, ref: ref, major: major |}
+          case 0 => dep_default {| |}
+        end
+      case 0 => dep_default {| |}
+    end
+end
+
+fn parse_manifest_line
+  case {| line, mf, path |} =>
+    let t = trim {| s: line |}
+    let tlen = strlen {| s: t |}
+    match tlen == 0
+      case 1 => mf
+      case 0 =>
+        match starts_with {| s: t, prefix: "#" |}
+          case 1 => mf
+          case 0 =>
+            match starts_with {| s: t, prefix: "name=" |}
+              case 1 =>
+                manifest_set_name {| mf: mf, name: trim {| s: substr {| s: t, start: 5, len: tlen - 5 |} |} |}
+              case 0 =>
+                match starts_with {| s: t, prefix: "entry=" |}
+                  case 1 =>
+                    manifest_set_entry {| mf: mf, entry: trim {| s: substr {| s: t, start: 6, len: tlen - 6 |} |} |}
+                  case 0 =>
+                    match starts_with {| s: t, prefix: "source=" |}
+                      case 1 =>
+                        manifest_set_entry {| mf: mf, entry: trim {| s: substr {| s: t, start: 7, len: tlen - 7 |} |} |}
+                      case 0 =>
+                        match starts_with {| s: t, prefix: "kind=" |}
+                          case 1 =>
+                            manifest_set_kind {| mf: mf, kind: trim {| s: substr {| s: t, start: 5, len: tlen - 5 |} |} |}
+                          case 0 =>
+                            match starts_with {| s: t, prefix: "major=" |}
+                              case 1 =>
+                                let major = trim {| s: substr {| s: t, start: 6, len: tlen - 6 |} |}
+                                match is_digits {| s: major |}
+                                  case 1 =>
+                                    manifest_set_major {| mf: mf, major: major |}
+                                  case 0 =>
+                                    let m1 = concat {| a: "stela: invalid major in ", b: path |}
+                                    let m2 = concat {| a: m1, b: ": " |}
+                                    let m3 = concat {| a: m2, b: t |}
+                                    let ignored1 = echo_line {| msg: m3 |}
+                                    let ignored2 = terminate {| code: 1 |}
+                                    mf
+                                end
+                              case 0 =>
+                                match starts_with {| s: t, prefix: "dep=" |}
+                                  case 1 =>
+                                    let dep_raw = trim {| s: substr {| s: t, start: 4, len: tlen - 4 |} |}
+                                    let dep = parse_dep_spec {| spec: dep_raw |}
+                                    match dep.ok == 1
+                                      case 1 =>
+                                        manifest_add_dep {| mf: mf, dep_line: dep_encode {| dep: dep |} |}
+                                      case 0 =>
+                                        let m1 = concat {| a: "stela: invalid dep line in ", b: path |}
+                                        let m2 = concat {| a: m1, b: ": " |}
+                                        let m3 = concat {| a: m2, b: t |}
+                                        let ignored1 = echo_line {| msg: m3 |}
+                                        let ignored2 = terminate {| code: 1 |}
+                                        mf
+                                    end
+                                  case 0 =>
+                                    match starts_with {| s: t, prefix: "replace=" |}
+                                      case 1 =>
+                                        let dep_raw = trim {| s: substr {| s: t, start: 8, len: tlen - 8 |} |}
+                                        let dep = parse_dep_spec {| spec: dep_raw |}
+                                        match dep.ok == 1
+                                          case 1 =>
+                                            manifest_add_replace {| mf: mf, dep_line: dep_encode {| dep: dep |} |}
+                                          case 0 =>
+                                            let m1 = concat {| a: "stela: invalid replace line in ", b: path |}
+                                            let m2 = concat {| a: m1, b: ": " |}
+                                            let m3 = concat {| a: m2, b: t |}
+                                            let ignored1 = echo_line {| msg: m3 |}
+                                            let ignored2 = terminate {| code: 1 |}
+                                            mf
+                                        end
+                                      case 0 =>
+                                        let m1 = concat {| a: "stela: unknown manifest key in ", b: path |}
+                                        let m2 = concat {| a: m1, b: ": " |}
+                                        let m3 = concat {| a: m2, b: t |}
+                                        let ignored1 = echo_line {| msg: m3 |}
+                                        let ignored2 = terminate {| code: 1 |}
+                                        mf
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+fn parse_manifest_content_loop
+  case {| text, pos, slen, cur, mf, path |} =>
+    match pos >= slen
+      case 1 => parse_manifest_line {| line: cur, mf: mf, path: path |}
+      case 0 =>
+        let ch = char_at {| s: text, n: pos |}
+        match ch == 10
+          case 1 =>
+            let mf2 = parse_manifest_line {| line: cur, mf: mf, path: path |}
+            parse_manifest_content_loop {| text: text, pos: pos + 1, slen: slen, cur: "", mf: mf2, path: path |}
+          case 0 =>
+            match ch == 13
+              case 1 =>
+                parse_manifest_content_loop {| text: text, pos: pos + 1, slen: slen, cur: cur, mf: mf, path: path |}
+              case 0 =>
+                let cur2 = append_char {| s: cur, ch: ch |}
+                parse_manifest_content_loop {| text: text, pos: pos + 1, slen: slen, cur: cur2, mf: mf, path: path |}
+            end
+        end
+    end
+end
+
+fn load_manifest
+  case {| path |} =>
+    match file_exists {| path: path |}
+      case 1 =>
+        let content = unearth {| path: path |}
+        let mf0 = manifest_default {| |}
+        let mf = parse_manifest_content_loop {| text: content, pos: 0, slen: strlen {| s: content |}, cur: "", mf: mf0, path: path |}
+        let checked_name = match mf.has_name
+          case 1 => mf
+          case 0 =>
+            let m1 = concat {| a: "stela: manifest missing name in ", b: path |}
+            let ignored1 = echo_line {| msg: m1 |}
+            let ignored2 = terminate {| code: 1 |}
+            mf
+        end
+        let checked_entry = match checked_name.has_entry
+          case 1 => checked_name
+          case 0 =>
+            let m1 = concat {| a: "stela: manifest missing entry in ", b: path |}
+            let ignored1 = echo_line {| msg: m1 |}
+            let ignored2 = terminate {| code: 1 |}
+            checked_name
+        end
+        let checked_kind = match kind_is_valid {| kind: checked_entry.kind |}
+          case 1 => checked_entry
+          case 0 =>
+            let m1 = concat {| a: "stela: manifest has invalid kind in ", b: path |}
+            let m2 = concat {| a: m1, b: " (expected app or lib)" |}
+            let ignored1 = echo_line {| msg: m2 |}
+            let ignored2 = terminate {| code: 1 |}
+            checked_entry
+        end
+        match is_digits {| s: checked_kind.major |}
+          case 1 => checked_kind
+          case 0 =>
+            let m1 = concat {| a: "stela: manifest has invalid major in ", b: path |}
+            let ignored1 = echo_line {| msg: m1 |}
+            let ignored2 = terminate {| code: 1 |}
+            checked_kind
+        end
+      case 0 =>
+        let m1 = concat {| a: "stela: manifest not found: ", b: path |}
+        let ignored1 = echo_line {| msg: m1 |}
+        let ignored2 = terminate {| code: 1 |}
+        manifest_default {| |}
+    end
+end
+
+fn render_lines_with_newline_loop
+  case {| lines, acc |} =>
+    let part = split_first_line {| lines: lines |}
+    match part.has
+      case 0 => acc
+      case 1 =>
+        let line = trim {| s: part.head |}
+        let llen = strlen {| s: line |}
+        match llen == 0
+          case 1 =>
+            render_lines_with_newline_loop {| lines: part.tail, acc: acc |}
+          case 0 =>
+            let s1 = concat {| a: acc, b: line |}
+            let s2 = concat {| a: s1, b: "\n" |}
+            render_lines_with_newline_loop {| lines: part.tail, acc: s2 |}
+        end
+    end
+end
+
+fn manifest_render
+  case {| mf |} =>
+    let n1 = concat {| a: "name=", b: mf.name |}
+    let n2 = concat {| a: n1, b: "\n" |}
+    let e1 = concat {| a: "entry=", b: mf.entry |}
+    let e2 = concat {| a: e1, b: "\n" |}
+    let k1 = concat {| a: "kind=", b: mf.kind |}
+    let k2 = concat {| a: k1, b: "\n" |}
+    let m1 = concat {| a: "major=", b: mf.major |}
+    let m2 = concat {| a: m1, b: "\n" |}
+    let h1 = concat {| a: n2, b: e2 |}
+    let h2 = concat {| a: h1, b: k2 |}
+    let h3 = concat {| a: h2, b: m2 |}
+    let deps_prefixed = render_lines_with_newline_loop {| lines: mf.deps, acc: "" |}
+    let deps_text = render_manifest_deps_loop {| deps: deps_prefixed, acc: "" |}
+    let replaces_prefixed = render_lines_with_newline_loop {| lines: mf.replaces, acc: "" |}
+    let replaces_text = render_manifest_replaces_loop {| replaces: replaces_prefixed, acc: "" |}
+    let body = concat {| a: h3, b: deps_text |}
+    concat {| a: body, b: replaces_text |}
+end
+
+fn render_manifest_deps_loop
+  case {| deps, acc |} =>
+    let part = split_first_line {| lines: deps |}
+    match part.has
+      case 0 => acc
+      case 1 =>
+        let d = trim {| s: part.head |}
+        let dlen = strlen {| s: d |}
+        match dlen == 0
+          case 1 =>
+            render_manifest_deps_loop {| deps: part.tail, acc: acc |}
+          case 0 =>
+            let s1 = concat {| a: acc, b: "dep=" |}
+            let s2 = concat {| a: s1, b: d |}
+            let s3 = concat {| a: s2, b: "\n" |}
+            render_manifest_deps_loop {| deps: part.tail, acc: s3 |}
+        end
+    end
+end
+
+fn render_manifest_replaces_loop
+  case {| replaces, acc |} =>
+    let part = split_first_line {| lines: replaces |}
+    match part.has
+      case 0 => acc
+      case 1 =>
+        let d = trim {| s: part.head |}
+        let dlen = strlen {| s: d |}
+        match dlen == 0
+          case 1 =>
+            render_manifest_replaces_loop {| replaces: part.tail, acc: acc |}
+          case 0 =>
+            let s1 = concat {| a: acc, b: "replace=" |}
+            let s2 = concat {| a: s1, b: d |}
+            let s3 = concat {| a: s2, b: "\n" |}
+            render_manifest_replaces_loop {| replaces: part.tail, acc: s3 |}
+        end
+    end
+end
+
+fn dep_key_fields
+  case {| name, major |} =>
+    let s1 = concat {| a: name, b: "|v" |}
+    concat {| a: s1, b: major |}
+end
+
+fn dep_key
+  case {| dep |} =>
+    dep_key_fields {| name: dep.name, major: dep.major |}
+end
+
+fn dep_remove_key_loop
+  case {| deps, target_key, acc |} =>
+    let part = split_first_line {| lines: deps |}
+    match part.has
+      case 0 => acc
+      case 1 =>
+        let line = trim {| s: part.head |}
+        let llen = strlen {| s: line |}
+        match llen == 0
+          case 1 =>
+            dep_remove_key_loop {| deps: part.tail, target_key: target_key, acc: acc |}
+          case 0 =>
+            let dep = parse_dep_spec {| spec: line |}
+            let keep = match dep.ok
+              case 1 =>
+                match str_eq {| a: dep_key {| dep: dep |}, b: target_key |}
+                  case 1 => acc
+                  case 0 => append_line {| lines: acc, line: line |}
+                end
+              case 0 =>
+                append_line {| lines: acc, line: line |}
+            end
+            dep_remove_key_loop {| deps: part.tail, target_key: target_key, acc: keep |}
+        end
+    end
+end
+
+fn dep_upsert
+  case {| deps, dep |} =>
+    let key = dep_key {| dep: dep |}
+    let cleaned = dep_remove_key_loop {| deps: deps, target_key: key, acc: "" |}
+    append_line {| lines: cleaned, line: dep_encode {| dep: dep |} |}
+end
+
+fn ensure_git_available
+  case {| |} =>
+    let rc = sh {| command: "command -v git >/dev/null 2>&1" |}
+    match rc == 0
+      case 1 => 0
+      case 0 =>
+        let ignored1 = echo_line {| msg: "stela: git is required but was not found on PATH" |}
+        let ignored2 = terminate {| code: 1 |}
+        0
+    end
+end
+
+fn ensure_pkg_dirs
+  case {| |} =>
+    run_cmd_or_die {| cmd: "mkdir -p .stela .stela/git .stela/lib", label: "create package directories" |}
+end
+
+fn repo_dir_for
+  case {| name |} =>
+    let p1 = concat {| a: ".stela/git/", b: name |}
+    p1
+end
+
+fn dep_storage_key_from_key
+  case {| key |} =>
+    sanitize_name {| s: key |}
+end
+
+fn dep_storage_key
+  case {| dep |} =>
+    dep_storage_key_from_key {| key: dep_key {| dep: dep |} |}
+end
+
+fn dep_lib_path_for
+  case {| dep_storage |} =>
+    let p1 = concat {| a: ".stela/lib/", b: dep_storage |}
+    concat {| a: p1, b: ".stelib" |}
+end
+
+fn lock_path
+  case {| |} => ".stela/lock.pkg"
+end
+
+fn temp_output_path
+  case {| |} => ".stela/.tmp.out"
+end
+
+fn sync_repo_for_dep
+  case {| dep, repo_dir |} =>
+    let ignored_sync = match dir_exists {| path: repo_dir |}
+      case 1 =>
+        let git_dir = path_join {| a: repo_dir, b: ".git" |}
+        match dir_exists {| path: git_dir |}
+          case 1 =>
+            let fetch_cmd0 = join7 {| a: "git", b: "-C", c: repo_dir, d: "fetch", e: "--all", f: "--tags", g: "--prune" |}
+            let fetch_cmd = concat {| a: fetch_cmd0, b: " >/dev/null 2>&1" |}
+            let ignored_fetch = run_cmd_or_die {| cmd: fetch_cmd, label: "fetch dependency repository" |}
+            0
+          case 0 =>
+            let m1 = concat {| a: "stela: path exists but is not a git repo: ", b: repo_dir |}
+            let ignored1 = echo_line {| msg: m1 |}
+            let ignored2 = terminate {| code: 1 |}
+            0
+        end
+      case 0 =>
+        let clone_cmd0 = join4 {| a: "git", b: "clone", c: dep.source, d: repo_dir |}
+        let clone_cmd = concat {| a: clone_cmd0, b: " >/dev/null 2>&1" |}
+        let ignored_clone = run_cmd_or_die {| cmd: clone_cmd, label: "clone dependency repository" |}
+        0
+    end
+    let rlen = strlen {| s: dep.ref |}
+    match rlen > 0
+      case 1 =>
+        let checkout_cmd0 = join5 {| a: "git", b: "-C", c: repo_dir, d: "checkout", e: dep.ref |}
+        let checkout_cmd = concat {| a: checkout_cmd0, b: " >/dev/null 2>&1" |}
+        let ignored_checkout = run_cmd_or_die {| cmd: checkout_cmd, label: "checkout dependency ref" |}
+        0
+      case 0 =>
+        let pull_cmd0 = join5 {| a: "git", b: "-C", c: repo_dir, d: "pull", e: "--ff-only" |}
+        let pull_cmd = concat {| a: pull_cmd0, b: " >/dev/null 2>&1" |}
+        let ignored_pull = sh {| command: pull_cmd |}
+        0
+    end
+end
+
+fn capture_trimmed_output
+  case {| cmd, label |} =>
+    let tmp = temp_output_path {| |}
+    let c1 = concat {| a: cmd, b: " > " |}
+    let cmd2 = concat {| a: c1, b: tmp |}
+    let ignored = run_cmd_or_die {| cmd: cmd2, label: label |}
+    trim {| s: unearth {| path: tmp |} |}
+end
+
+fn repo_head
+  case {| repo_dir |} =>
+    let cmd = join4 {| a: "git", b: "-C", c: repo_dir, d: "rev-parse HEAD" |}
+    capture_trimmed_output {| cmd: cmd, label: "resolve dependency commit" |}
+end
+
+fn materialize_file
+  case {| src, dst, label |} =>
+    let c1 = concat {| a: "cat ", b: src |}
+    let c2 = concat {| a: c1, b: " > " |}
+    let cmd = concat {| a: c2, b: dst |}
+    run_cmd_or_die {| cmd: cmd, label: label |}
+end
+
+fn dep_ref_or_head
+  case {| dep |} =>
+    match strlen {| s: dep.ref |} > 0
+      case 1 => dep.ref
+      case 0 => "HEAD"
+    end
+end
+
+fn dep_require_valid
+  case {| spec |} =>
+    let dep = parse_dep_spec {| spec: spec |}
+    match dep.ok
+      case 1 => dep
+      case 0 =>
+        let m1 = concat {| a: "stela: invalid dependency spec: ", b: spec |}
+        let ignored1 = echo_line {| msg: m1 |}
+        let ignored2 = terminate {| code: 1 |}
+        dep_default {| |}
+    end
+end
+
+fn find_replace_for_key_loop
+  case {| replaces, target_key |} =>
+    let part = split_first_line {| lines: replaces |}
+    match part.has
+      case 0 => dep_default {| |}
+      case 1 =>
+        let line = trim {| s: part.head |}
+        let llen = strlen {| s: line |}
+        match llen == 0
+          case 1 =>
+            find_replace_for_key_loop {| replaces: part.tail, target_key: target_key |}
+          case 0 =>
+            let dep = parse_dep_spec {| spec: line |}
+            match dep.ok
+              case 1 =>
+                match str_eq {| a: dep_key {| dep: dep |}, b: target_key |}
+                  case 1 => dep
+                  case 0 => find_replace_for_key_loop {| replaces: part.tail, target_key: target_key |}
+                end
+              case 0 =>
+                find_replace_for_key_loop {| replaces: part.tail, target_key: target_key |}
+            end
+        end
+    end
+end
+
+fn apply_replace_for_dep
+  case {| dep, root_replaces |} =>
+    let key = dep_key {| dep: dep |}
+    let rep = find_replace_for_key_loop {| replaces: root_replaces, target_key: key |}
+    match rep.ok
+      case 1 =>
+        {| ok: 1, name: dep.name, source: rep.source, ref: rep.ref, major: dep.major |}
+      case 0 => dep
+    end
+end
+
+fn split_first_pipe
+  case {| s |} =>
+    let slen = strlen {| s: s |}
+    let idx = index_char_from {| s: s, target: 124, start: 0 |}
+    match idx >= 0
+      case 1 =>
+        {| has: 1, head: substr {| s: s, start: 0, len: idx |}, tail: substr {| s: s, start: idx + 1, len: slen - idx - 1 |} |}
+      case 0 =>
+        {| has: 0, head: s, tail: "" |}
+    end
+end
+
+fn pipe_field
+  case {| s, n |} =>
+    let part = split_first_pipe {| s: s |}
+    match n == 0
+      case 1 => part.head
+      case 0 =>
+        match part.has
+          case 1 => pipe_field {| s: part.tail, n: n - 1 |}
+          case 0 => ""
+        end
+    end
+end
+
+fn lock_line_payload
+  case {| line |} =>
+    let llen = strlen {| s: line |}
+    match starts_with {| s: line, prefix: "dep=" |}
+      case 1 => substr {| s: line, start: 4, len: llen - 4 |}
+      case 0 => ""
+    end
+end
+
+fn lock_line_key
+  case {| line |} =>
+    let payload = lock_line_payload {| line: line |}
+    pipe_field {| s: payload, n: 0 |}
+end
+
+fn find_lock_line_by_key
+  case {| lines, key |} =>
+    let part = split_first_line {| lines: lines |}
+    match part.has
+      case 0 => ""
+      case 1 =>
+        let line = trim {| s: part.head |}
+        let llen = strlen {| s: line |}
+        match llen == 0
+          case 1 => find_lock_line_by_key {| lines: part.tail, key: key |}
+          case 0 =>
+            match starts_with {| s: line, prefix: "dep=" |}
+              case 1 =>
+                let dep_key0 = lock_line_key {| line: line |}
+                match str_eq {| a: dep_key0, b: key |}
+                  case 1 => line
+                  case 0 => find_lock_line_by_key {| lines: part.tail, key: key |}
+                end
+              case 0 => find_lock_line_by_key {| lines: part.tail, key: key |}
+            end
+        end
+    end
+end
+
+fn checksum_cmd_for_path
+  case {| path |} =>
+    let p1 = concat {| a: "if command -v shasum >/dev/null 2>&1; then shasum -a 256 \"", b: path |}
+    let p2 = concat {| a: p1, b: "\" | cut -d ' ' -f1; " |}
+    let p3 = concat {| a: p2, b: "elif command -v sha256sum >/dev/null 2>&1; then sha256sum \"" |}
+    let p4 = concat {| a: p3, b: path |}
+    let p5 = concat {| a: p4, b: "\" | cut -d ' ' -f1; " |}
+    concat {| a: p5, b: "else echo ''; fi" |}
+end
+
+fn checksum_path
+  case {| path |} =>
+    let cmd = checksum_cmd_for_path {| path: path |}
+    let hash = trim {| s: capture_trimmed_output {| cmd: cmd, label: "compute sha256 checksum" |} |}
+    let hlen = strlen {| s: hash |}
+    match hlen > 0
+      case 1 => hash
+      case 0 =>
+        let ignored1 = echo_line {| msg: "stela: missing checksum tool (requires shasum or sha256sum)" |}
+        let ignored2 = terminate {| code: 1 |}
+        ""
+    end
+end
+
+fn verify_against_existing_lock
+  case {| dep_key0, commit, checksum, old_lock_lines |} =>
+    let old_line = find_lock_line_by_key {| lines: old_lock_lines, key: dep_key0 |}
+    let olen = strlen {| s: old_line |}
+    match olen == 0
+      case 1 => 0
+      case 0 =>
+        let payload = lock_line_payload {| line: old_line |}
+        let old_commit = pipe_field {| s: payload, n: 4 |}
+        let old_checksum = pipe_field {| s: payload, n: 6 |}
+        let has_old_checksum = strlen {| s: old_checksum |} > 0
+        match str_eq {| a: old_commit, b: commit |}
+          case 1 =>
+            match has_old_checksum
+              case 1 =>
+                match str_eq {| a: old_checksum, b: checksum |}
+                  case 1 => 0
+                  case 0 =>
+                    let m1 = concat {| a: "stela: checksum mismatch for ", b: dep_key0 |}
+                    let m2 = concat {| a: m1, b: " at commit " |}
+                    let m3 = concat {| a: m2, b: commit |}
+                    let ignored1 = echo_line {| msg: m3 |}
+                    let ignored2 = terminate {| code: 1 |}
+                    0
+                end
+              case 0 => 0
+            end
+          case 0 => 0
+        end
+    end
+end
+
+fn install_dep_recursive
+  case {| dep, seen, order, locks, active, old_lock_lines, root_replaces |} =>
+    let dep_id = dep_key {| dep: dep |}
+    let dep_storage = dep_storage_key {| dep: dep |}
+    match line_list_contains {| lines: seen, target: dep_id |}
+      case 1 =>
+        {| seen: seen, order: order, locks: locks |}
+      case 0 =>
+        match line_list_contains {| lines: active, target: dep_id |}
+          case 1 =>
+            let m1 = concat {| a: "stela: cyclic dependency detected at ", b: dep_id |}
+            let ignored1 = echo_line {| msg: m1 |}
+            let ignored2 = terminate {| code: 1 |}
+            {| seen: seen, order: order, locks: locks |}
+          case 0 =>
+            let repo_dir = repo_dir_for {| name: dep_storage |}
+            let ignored_sync = sync_repo_for_dep {| dep: dep, repo_dir: repo_dir |}
+            let pkg_path = path_join {| a: repo_dir, b: "stela.pkg" |}
+            let pkg = load_manifest {| path: pkg_path |}
+            let active2 = append_line {| lines: active, line: dep_id |}
+            let child = install_deps_recursive {| deps: pkg.deps, seen: seen, order: order, locks: locks, active: active2, old_lock_lines: old_lock_lines, root_replaces: root_replaces |}
+            let entry_path = path_join {| a: repo_dir, b: pkg.entry |}
+            let checked_entry = match file_exists {| path: entry_path |}
+              case 1 => 0
+              case 0 =>
+                let m1 = concat {| a: "stela: package entry not found: ", b: entry_path |}
+                let ignored1 = echo_line {| msg: m1 |}
+                let ignored2 = terminate {| code: 1 |}
+                0
+            end
+            let lib_out = dep_lib_path_for {| dep_storage: dep_storage |}
+            let ignored_write = materialize_file {| src: entry_path, dst: lib_out, label: "materialize dependency library" |}
+            let commit = repo_head {| repo_dir: repo_dir |}
+            let source_checksum = checksum_path {| path: entry_path |}
+            let installed_checksum = checksum_path {| path: lib_out |}
+            let ignored_verify = match str_eq {| a: source_checksum, b: installed_checksum |}
+              case 1 => 0
+              case 0 =>
+                let m1 = concat {| a: "stela: checksum verification failed for ", b: dep_id |}
+                let ignored1 = echo_line {| msg: m1 |}
+                let ignored2 = terminate {| code: 1 |}
+                0
+            end
+            let ignored_old = verify_against_existing_lock {| dep_key0: dep_id, commit: commit, checksum: source_checksum, old_lock_lines: old_lock_lines |}
+            let l1 = concat {| a: "dep=", b: dep_id |}
+            let l2 = concat {| a: l1, b: "|" |}
+            let l3 = concat {| a: l2, b: pkg.name |}
+            let l4 = concat {| a: l3, b: "|" |}
+            let l5 = concat {| a: l4, b: dep.source |}
+            let l6 = concat {| a: l5, b: "|" |}
+            let l7 = concat {| a: l6, b: dep_ref_or_head {| dep: dep |} |}
+            let l8 = concat {| a: l7, b: "|" |}
+            let l9 = concat {| a: l8, b: commit |}
+            let l10 = concat {| a: l9, b: "|" |}
+            let l11 = concat {| a: l10, b: pkg.entry |}
+            let l12 = concat {| a: l11, b: "|" |}
+            let lock_line = concat {| a: l12, b: source_checksum |}
+            let seen2 = append_line {| lines: child.seen, line: dep_id |}
+            let order2 = append_line {| lines: child.order, line: dep_storage |}
+            let locks2 = append_line {| lines: child.locks, line: lock_line |}
+            {| seen: seen2, order: order2, locks: locks2 |}
+        end
+    end
+end
+
+fn install_deps_recursive
+  case {| deps, seen, order, locks, active, old_lock_lines, root_replaces |} =>
+    let part = split_first_line {| lines: deps |}
+    match part.has
+      case 0 =>
+        {| seen: seen, order: order, locks: locks |}
+      case 1 =>
+        let line = trim {| s: part.head |}
+        let llen = strlen {| s: line |}
+        match llen == 0
+          case 1 =>
+            install_deps_recursive {| deps: part.tail, seen: seen, order: order, locks: locks, active: active, old_lock_lines: old_lock_lines, root_replaces: root_replaces |}
+          case 0 =>
+            let dep0 = dep_require_valid {| spec: line |}
+            let dep = apply_replace_for_dep {| dep: dep0, root_replaces: root_replaces |}
+            let state1 = install_dep_recursive {| dep: dep, seen: seen, order: order, locks: locks, active: active, old_lock_lines: old_lock_lines, root_replaces: root_replaces |}
+            install_deps_recursive {| deps: part.tail, seen: state1.seen, order: state1.order, locks: state1.locks, active: active, old_lock_lines: old_lock_lines, root_replaces: root_replaces |}
+        end
+    end
+end
+
+fn order_to_lib_words_loop
+  case {| order, words |} =>
+    let part = split_first_line {| lines: order |}
+    match part.has
+      case 0 => words
+      case 1 =>
+        let name = trim {| s: part.head |}
+        let nlen = strlen {| s: name |}
+        match nlen == 0
+          case 1 =>
+            order_to_lib_words_loop {| order: part.tail, words: words |}
+          case 0 =>
+            let words2 = append_word {| words: words, word: dep_lib_path_for {| dep_storage: name |} |}
+            order_to_lib_words_loop {| order: part.tail, words: words2 |}
+        end
+    end
+end
+
+fn materialize_dep_bundle
+  case {| order |} =>
+    let olen = strlen {| s: order |}
+    match olen == 0
+      case 1 =>
+        let p = dep_bundle_path {| |}
+        let c1 = concat {| a: "rm -f ", b: p |}
+        let ignored = sh {| command: c1 |}
+        0
+      case 0 =>
+        let words = order_to_lib_words_loop {| order: order, words: "" |}
+        let p = dep_bundle_path {| |}
+        let c1 = concat {| a: "cat ", b: words |}
+        let c2 = concat {| a: c1, b: " > " |}
+        let cmd = concat {| a: c2, b: p |}
+        let ignored = run_cmd_or_die {| cmd: cmd, label: "build dependency bundle" |}
+        0
+    end
+end
+
+fn write_lockfile
+  case {| state |} =>
+    let header = "format=stela-lock-v1\n"
+    let body = render_lines_with_newline_loop {| lines: state.locks, acc: "" |}
+    let content = concat {| a: header, b: body |}
+    let ignored = inscribe {| path: lock_path {| |}, content: content |}
+    0
+end
+
+fn count_lines_loop
+  case {| lines, acc |} =>
+    let part = split_first_line {| lines: lines |}
+    match part.has
+      case 0 => acc
+      case 1 =>
+        let line = trim {| s: part.head |}
+        let llen = strlen {| s: line |}
+        match llen == 0
+          case 1 => count_lines_loop {| lines: part.tail, acc: acc |}
+          case 0 => count_lines_loop {| lines: part.tail, acc: acc + 1 |}
+        end
+    end
+end
+
+fn install_action
+  case {| manifest_path |} =>
+    let ignored1 = ensure_git_available {| |}
+    let ignored2 = ensure_pkg_dirs {| |}
+    let manifest = load_manifest {| path: manifest_path |}
+    let old_lock_lines = match file_exists {| path: lock_path {| |} |}
+      case 1 => unearth {| path: lock_path {| |} |}
+      case 0 => ""
+    end
+    let root_key = dep_key_fields {| name: manifest.name, major: manifest.major |}
+    let result = install_deps_recursive {| deps: manifest.deps, seen: "", order: "", locks: "", active: root_key, old_lock_lines: old_lock_lines, root_replaces: manifest.replaces |}
+    let ignored3 = materialize_dep_bundle {| order: result.order |}
+    let ignored4 = write_lockfile {| state: result |}
+    let total = count_lines_loop {| lines: result.order, acc: 0 |}
+    let m1 = concat {| a: "Installed ", b: int_to_str {| n: total |} |}
+    let m2 = concat {| a: m1, b: " package(s)" |}
+    let ignored5 = echo_line {| msg: m2 |}
+    let m3 = concat {| a: "Wrote dependency lockfile to ", b: lock_path {| |} |}
+    let ignored6 = echo_line {| msg: m3 |}
+    0
+end
+
+fn default_entry_for_kind
+  case {| kind |} =>
+    match str_eq {| a: kind, b: "lib" |}
+      case 1 => "lib.stele"
+      case 0 => "main.stele"
+    end
+end
+
+fn init_action
+  case {| opts |} =>
+    let kind = match opts.has_kind
+      case 1 => opts.kind
+      case 0 => "app"
+    end
+    let ignored_kind = match kind_is_valid {| kind: kind |}
+      case 1 => 0
+      case 0 =>
+        let ignored1 = echo_line {| msg: "stela: init --kind must be app or lib" |}
+        let ignored2 = terminate {| code: 1 |}
+        0
+    end
+    let name = match opts.has_name
+      case 1 => opts.name
+      case 0 => "app"
+    end
+    let entry = match opts.has_source
+      case 1 => opts.source
+      case 0 => default_entry_for_kind {| kind: kind |}
+    end
+    let major = match opts.has_major
+      case 1 => opts.major
+      case 0 => "1"
+    end
+    let ignored_major = match is_digits {| s: major |}
+      case 1 => 0
+      case 0 =>
+        let ignored1 = echo_line {| msg: "stela: init --major expects digits only" |}
+        let ignored2 = terminate {| code: 1 |}
+        0
+    end
+    let mf0 = manifest_default {| |}
+    let mf1 = manifest_set_name {| mf: mf0, name: name |}
+    let mf2 = manifest_set_entry {| mf: mf1, entry: entry |}
+    let mf3 = manifest_set_kind {| mf: mf2, kind: kind |}
+    let mf4 = manifest_set_major {| mf: mf3, major: major |}
+    let body = manifest_render {| mf: mf4 |}
+    let ignored_write = inscribe {| path: opts.manifest, content: body |}
+    let m1 = concat {| a: "Initialized manifest at ", b: opts.manifest |}
+    let ignored1 = echo_line {| msg: m1 |}
+    let m2 = concat {| a: "Run stela install --manifest ", b: opts.manifest |}
+    let m3 = concat {| a: m2, b: " after adding dependencies" |}
+    let ignored2 = echo_line {| msg: m3 |}
+    0
+end
+
+fn add_opts_default
+  case {| |} =>
+    {|
+      dep_name: "",
+      has_dep_name: 0,
+      dep_source: "",
+      has_dep_source: 0,
+      ref: "",
+      has_ref: 0,
+      major: "1",
+      has_major: 0,
+      manifest: "stela.pkg",
+      has_manifest: 0
+    |}
+end
+
+fn add_opts_set_name
+  case {| opts, dep_name |} =>
+    {|
+      dep_name: dep_name,
+      has_dep_name: 1,
+      dep_source: opts.dep_source,
+      has_dep_source: opts.has_dep_source,
+      ref: opts.ref,
+      has_ref: opts.has_ref,
+      major: opts.major,
+      has_major: opts.has_major,
+      manifest: opts.manifest,
+      has_manifest: opts.has_manifest
+    |}
+end
+
+fn add_opts_set_source
+  case {| opts, dep_source |} =>
+    {|
+      dep_name: opts.dep_name,
+      has_dep_name: opts.has_dep_name,
+      dep_source: dep_source,
+      has_dep_source: 1,
+      ref: opts.ref,
+      has_ref: opts.has_ref,
+      major: opts.major,
+      has_major: opts.has_major,
+      manifest: opts.manifest,
+      has_manifest: opts.has_manifest
+    |}
+end
+
+fn add_opts_set_ref
+  case {| opts, ref |} =>
+    {|
+      dep_name: opts.dep_name,
+      has_dep_name: opts.has_dep_name,
+      dep_source: opts.dep_source,
+      has_dep_source: opts.has_dep_source,
+      ref: ref,
+      has_ref: 1,
+      major: opts.major,
+      has_major: opts.has_major,
+      manifest: opts.manifest,
+      has_manifest: opts.has_manifest
+    |}
+end
+
+fn add_opts_set_major
+  case {| opts, major |} =>
+    {|
+      dep_name: opts.dep_name,
+      has_dep_name: opts.has_dep_name,
+      dep_source: opts.dep_source,
+      has_dep_source: opts.has_dep_source,
+      ref: opts.ref,
+      has_ref: opts.has_ref,
+      major: major,
+      has_major: 1,
+      manifest: opts.manifest,
+      has_manifest: opts.has_manifest
+    |}
+end
+
+fn add_opts_set_manifest
+  case {| opts, manifest |} =>
+    {|
+      dep_name: opts.dep_name,
+      has_dep_name: opts.has_dep_name,
+      dep_source: opts.dep_source,
+      has_dep_source: opts.has_dep_source,
+      ref: opts.ref,
+      has_ref: opts.has_ref,
+      major: opts.major,
+      has_major: opts.has_major,
+      manifest: manifest,
+      has_manifest: 1
+    |}
+end
+
+fn fail_add_opts
+  case {| msg, opts |} =>
+    let ignored1 = echo_line {| msg: msg |}
+    let ignored2 = terminate {| code: 1 |}
+    opts
+end
+
+fn parse_add_opts_loop
+  case {| i, ac, opts |} =>
+    match i >= ac
+      case 1 => opts
+      case 0 =>
+        let arg1 = argv {| n: i |}
+        match str_eq {| a: arg1, b: "--ref" |}
+          case 1 =>
+            match (i + 1) < ac
+              case 1 =>
+                let val = argv {| n: i + 1 |}
+                let next = add_opts_set_ref {| opts: opts, ref: val |}
+                parse_add_opts_loop {| i: i + 2, ac: ac, opts: next |}
+              case 0 =>
+                fail_add_opts {| msg: "stela: missing value for --ref", opts: opts |}
+            end
+          case 0 =>
+            match str_eq {| a: arg1, b: "--manifest" |}
+              case 1 =>
+                match (i + 1) < ac
+                  case 1 =>
+                    let val = argv {| n: i + 1 |}
+                    let next = add_opts_set_manifest {| opts: opts, manifest: val |}
+                    parse_add_opts_loop {| i: i + 2, ac: ac, opts: next |}
+                  case 0 =>
+                    fail_add_opts {| msg: "stela: missing value for --manifest", opts: opts |}
+                end
+              case 0 =>
+                match str_eq {| a: arg1, b: "--major" |}
+                  case 1 =>
+                    match (i + 1) < ac
+                      case 1 =>
+                        let val = argv {| n: i + 1 |}
+                        match is_digits {| s: val |}
+                          case 1 =>
+                            let next = add_opts_set_major {| opts: opts, major: val |}
+                            parse_add_opts_loop {| i: i + 2, ac: ac, opts: next |}
+                          case 0 =>
+                            fail_add_opts {| msg: "stela: --major expects digits only", opts: opts |}
+                        end
+                      case 0 =>
+                        fail_add_opts {| msg: "stela: missing value for --major", opts: opts |}
+                    end
+                  case 0 =>
+                    match starts_with {| s: arg1, prefix: "--" |}
+                      case 1 =>
+                        let m1 = concat {| a: "stela: unknown option ", b: arg1 |}
+                        fail_add_opts {| msg: m1, opts: opts |}
+                      case 0 =>
+                        match opts.has_dep_name
+                          case 0 =>
+                            let next = add_opts_set_name {| opts: opts, dep_name: arg1 |}
+                            parse_add_opts_loop {| i: i + 1, ac: ac, opts: next |}
+                          case 1 =>
+                            match opts.has_dep_source
+                              case 0 =>
+                                let next = add_opts_set_source {| opts: opts, dep_source: arg1 |}
+                                parse_add_opts_loop {| i: i + 1, ac: ac, opts: next |}
+                              case 1 =>
+                                let m1 = concat {| a: "stela: unexpected extra argument ", b: arg1 |}
+                                fail_add_opts {| msg: m1, opts: opts |}
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+fn add_action
+  case {| ac |} =>
+    let parsed = parse_add_opts_loop {| i: 2, ac: ac, opts: add_opts_default {| |} |}
+    let checked_name = match parsed.has_dep_name
+      case 1 => parsed
+      case 0 =>
+        fail_add_opts {| msg: "stela: add requires <name> <git-url-or-path>", opts: parsed |}
+    end
+    let checked = match checked_name.has_dep_source
+      case 1 => checked_name
+      case 0 =>
+        fail_add_opts {| msg: "stela: add requires <name> <git-url-or-path>", opts: checked_name |}
+    end
+    let dep_major = match checked.has_major
+      case 1 => checked.major
+      case 0 => "1"
+    end
+    let manifest = load_manifest {| path: checked.manifest |}
+    let dep = {|
+      ok: 1,
+      name: checked.dep_name,
+      source: checked.dep_source,
+      ref: checked.ref,
+      major: dep_major
+    |}
+    let deps2 = dep_upsert {| deps: manifest.deps, dep: dep |}
+    let mf2 = manifest_set_deps {| mf: manifest, deps: deps2 |}
+    let body = manifest_render {| mf: mf2 |}
+    let ignored_write = inscribe {| path: checked.manifest, content: body |}
+    let m1 = concat {| a: "Added dependency ", b: dep_key {| dep: dep |} |}
+    let ignored1 = echo_line {| msg: m1 |}
+    install_action {| manifest_path: checked.manifest |}
+end
+
+fn replace_action
+  case {| ac |} =>
+    let parsed = parse_add_opts_loop {| i: 2, ac: ac, opts: add_opts_default {| |} |}
+    let checked_name = match parsed.has_dep_name
+      case 1 => parsed
+      case 0 =>
+        fail_add_opts {| msg: "stela: replace requires <name> <git-url-or-path>", opts: parsed |}
+    end
+    let checked = match checked_name.has_dep_source
+      case 1 => checked_name
+      case 0 =>
+        fail_add_opts {| msg: "stela: replace requires <name> <git-url-or-path>", opts: checked_name |}
+    end
+    let dep_major = match checked.has_major
+      case 1 => checked.major
+      case 0 => "1"
+    end
+    let manifest = load_manifest {| path: checked.manifest |}
+    let dep = {|
+      ok: 1,
+      name: checked.dep_name,
+      source: checked.dep_source,
+      ref: checked.ref,
+      major: dep_major
+    |}
+    let replaces2 = dep_upsert {| deps: manifest.replaces, dep: dep |}
+    let mf2 = manifest_set_replaces {| mf: manifest, replaces: replaces2 |}
+    let body = manifest_render {| mf: mf2 |}
+    let ignored_write = inscribe {| path: checked.manifest, content: body |}
+    let m1 = concat {| a: "Set replacement for ", b: dep_key {| dep: dep |} |}
+    let ignored1 = echo_line {| msg: m1 |}
+    install_action {| manifest_path: checked.manifest |}
+end
+
+fn canonicalize_dep_lines_loop
+  case {| lines, acc |} =>
+    let part = split_first_line {| lines: lines |}
+    match part.has
+      case 0 => acc
+      case 1 =>
+        let line = trim {| s: part.head |}
+        let llen = strlen {| s: line |}
+        match llen == 0
+          case 1 =>
+            canonicalize_dep_lines_loop {| lines: part.tail, acc: acc |}
+          case 0 =>
+            let dep = dep_require_valid {| spec: line |}
+            let acc2 = dep_upsert {| deps: acc, dep: dep |}
+            canonicalize_dep_lines_loop {| lines: part.tail, acc: acc2 |}
+        end
+    end
+end
+
+fn tidy_action
+  case {| manifest_path |} =>
+    let manifest = load_manifest {| path: manifest_path |}
+    let deps2 = canonicalize_dep_lines_loop {| lines: manifest.deps, acc: "" |}
+    let replaces2 = canonicalize_dep_lines_loop {| lines: manifest.replaces, acc: "" |}
+    let mf1 = manifest_set_deps {| mf: manifest, deps: deps2 |}
+    let mf2 = manifest_set_replaces {| mf: mf1, replaces: replaces2 |}
+    let body = manifest_render {| mf: mf2 |}
+    let ignored_write = inscribe {| path: manifest_path, content: body |}
+    let m1 = concat {| a: "Tidied manifest ", b: manifest_path |}
+    let ignored1 = echo_line {| msg: m1 |}
+    install_action {| manifest_path: manifest_path |}
+end
+
+fn path_to_arrow_loop
+  case {| lines, acc |} =>
+    let part = split_first_line {| lines: lines |}
+    match part.has
+      case 0 => acc
+      case 1 =>
+        let item = trim {| s: part.head |}
+        let ilen = strlen {| s: item |}
+        match ilen == 0
+          case 1 =>
+            path_to_arrow_loop {| lines: part.tail, acc: acc |}
+          case 0 =>
+            let acc2 = match strlen {| s: acc |} == 0
+              case 1 => item
+              case 0 =>
+                let s1 = concat {| a: acc, b: " -> " |}
+                concat {| a: s1, b: item |}
+            end
+            path_to_arrow_loop {| lines: part.tail, acc: acc2 |}
+        end
+    end
+end
+
+fn find_dep_path_for_dep
+  case {| dep, target_key, root_replaces, path, active |} =>
+    let dep_id = dep_key {| dep: dep |}
+    let path2 = append_line {| lines: path, line: dep_id |}
+    match str_eq {| a: dep_id, b: target_key |}
+      case 1 => {| found: 1, path: path2 |}
+      case 0 =>
+        match line_list_contains {| lines: active, target: dep_id |}
+          case 1 => {| found: 0, path: "" |}
+          case 0 =>
+            let repo_dir = repo_dir_for {| name: dep_storage_key {| dep: dep |} |}
+            let ignored_sync = sync_repo_for_dep {| dep: dep, repo_dir: repo_dir |}
+            let pkg_path = path_join {| a: repo_dir, b: "stela.pkg" |}
+            let pkg = load_manifest {| path: pkg_path |}
+            let active2 = append_line {| lines: active, line: dep_id |}
+            find_dep_path_in_list {| deps: pkg.deps, target_key: target_key, root_replaces: root_replaces, path: path2, active: active2 |}
+        end
+    end
+end
+
+fn find_dep_path_in_list
+  case {| deps, target_key, root_replaces, path, active |} =>
+    let part = split_first_line {| lines: deps |}
+    match part.has
+      case 0 => {| found: 0, path: "" |}
+      case 1 =>
+        let line = trim {| s: part.head |}
+        let llen = strlen {| s: line |}
+        match llen == 0
+          case 1 =>
+            find_dep_path_in_list {| deps: part.tail, target_key: target_key, root_replaces: root_replaces, path: path, active: active |}
+          case 0 =>
+            let dep0 = dep_require_valid {| spec: line |}
+            let dep = apply_replace_for_dep {| dep: dep0, root_replaces: root_replaces |}
+            let found_here = find_dep_path_for_dep {| dep: dep, target_key: target_key, root_replaces: root_replaces, path: path, active: active |}
+            match found_here.found
+              case 1 => found_here
+              case 0 =>
+                find_dep_path_in_list {| deps: part.tail, target_key: target_key, root_replaces: root_replaces, path: path, active: active |}
+            end
+        end
+    end
+end
+
+fn why_action
+  case {| opts |} =>
+    let ignored1 = ensure_git_available {| |}
+    let ignored2 = ensure_pkg_dirs {| |}
+    let target_major = match opts.has_major
+      case 1 => opts.major
+      case 0 => "1"
+    end
+    let ignored_major = match is_digits {| s: target_major |}
+      case 1 => 0
+      case 0 =>
+        let ignored1 = echo_line {| msg: "stela: why --major expects digits only" |}
+        let ignored2 = terminate {| code: 1 |}
+        0
+    end
+    let manifest = load_manifest {| path: opts.manifest |}
+    let root_key = dep_key_fields {| name: manifest.name, major: manifest.major |}
+    let target_key = dep_key_fields {| name: opts.source, major: target_major |}
+    match str_eq {| a: target_key, b: root_key |}
+      case 1 =>
+        let m1 = concat {| a: "Target is the root module: ", b: root_key |}
+        let ignored = echo_line {| msg: m1 |}
+        0
+      case 0 =>
+        let path0 = root_key
+        let found = find_dep_path_in_list {| deps: manifest.deps, target_key: target_key, root_replaces: manifest.replaces, path: path0, active: root_key |}
+        match found.found
+          case 1 =>
+            let p = path_to_arrow_loop {| lines: found.path, acc: "" |}
+            let m1 = concat {| a: "Why ", b: target_key |}
+            let m2 = concat {| a: m1, b: ":" |}
+            let ignored1 = echo_line {| msg: m2 |}
+            let ignored2 = echo_line {| msg: p |}
+            0
+          case 0 =>
+            let m1 = concat {| a: "stela: no dependency path to ", b: target_key |}
+            let ignored1 = echo_line {| msg: m1 |}
+            let ignored2 = terminate {| code: 1 |}
+            0
+        end
+    end
+end
+
+fn echo_graph_lines
+  case {| deps |} =>
+    let part = split_first_line {| lines: deps |}
+    match part.has
+      case 0 => 0
+      case 1 =>
+        let line = trim {| s: part.head |}
+        let llen = strlen {| s: line |}
+        let ignored = match llen == 0
+          case 1 => 0
+          case 0 =>
+            let dep = parse_dep_spec {| spec: line |}
+            match dep.ok
+              case 1 =>
+                let ref = dep_ref_or_head {| dep: dep |}
+                let dep_id = dep_key {| dep: dep |}
+                let s1 = concat {| a: "  - ", b: dep_id |}
+                let s2 = concat {| a: s1, b: " => " |}
+                let s3 = concat {| a: s2, b: dep.source |}
+                let s4 = concat {| a: s3, b: " @ " |}
+                let s5 = concat {| a: s4, b: ref |}
+                let ignored1 = echo_line {| msg: s5 |}
+                0
+              case 0 =>
+                let s1 = concat {| a: "  - (invalid) ", b: line |}
+                let ignored1 = echo_line {| msg: s1 |}
+                0
+            end
+        end
+        let ignored2 = echo_graph_lines {| deps: part.tail |}
+        0
+    end
+end
+
+fn echo_lock_lines
+  case {| lines |} =>
+    let part = split_first_line {| lines: lines |}
+    match part.has
+      case 0 => 0
+      case 1 =>
+        let line = trim {| s: part.head |}
+        let llen = strlen {| s: line |}
+        let ignored = match llen == 0
+          case 1 => 0
+          case 0 =>
+            match starts_with {| s: line, prefix: "dep=" |}
+              case 1 =>
+                let s = substr {| s: line, start: 4, len: llen - 4 |}
+                let p1 = concat {| a: "  * ", b: s |}
+                let ignored1 = echo_line {| msg: p1 |}
+                0
+              case 0 => 0
+            end
+        end
+        let ignored2 = echo_lock_lines {| lines: part.tail |}
+        0
+    end
+end
+
+fn graph_action
+  case {| manifest_path |} =>
+    let manifest = load_manifest {| path: manifest_path |}
+    let h1 = concat {| a: "Project ", b: manifest.name |}
+    let h2 = concat {| a: h1, b: " (" |}
+    let h3 = concat {| a: h2, b: manifest.kind |}
+    let h4 = concat {| a: h3, b: ")" |}
+    let ignored1 = echo_line {| msg: h4 |}
+    let ignored2 = echo_line {| msg: "Dependencies:" |}
+    let ignored3 = echo_graph_lines {| deps: manifest.deps |}
+    let has_replaces = strlen {| s: trim {| s: manifest.replaces |} |}
+    let ignored_replaces = match has_replaces > 0
+      case 1 =>
+        let ignored1 = echo_line {| msg: "Replacements:" |}
+        let ignored2 = echo_graph_lines {| deps: manifest.replaces |}
+        0
+      case 0 => 0
+    end
+    match file_exists {| path: lock_path {| |} |}
+      case 1 =>
+        let ignored4 = echo_line {| msg: "Resolved lockfile entries:" |}
+        let content = unearth {| path: lock_path {| |} |}
+        let ignored5 = echo_lock_lines {| lines: content |}
+        0
+      case 0 =>
+        let ignored4 = echo_line {| msg: "No lockfile yet. Run stela install." |}
+        0
+    end
+end
+
+fn with_auto_dep_bundle
+  case {| opts |} =>
+    let bundle = dep_bundle_path {| |}
+    match file_exists {| path: bundle |}
+      case 1 =>
+        set_libs {| opts: opts, libs: append_word {| words: opts.libs, word: bundle |} |}
+      case 0 => opts
     end
 end
 
@@ -544,9 +2492,10 @@ end
 
 fn build_action
   case {| opts, run_after |} =>
-    let ignored1 = validate_mode {| mode: opts.mode |}
+    let opts2 = with_auto_dep_bundle {| opts: opts |}
+    let ignored1 = validate_mode {| mode: opts2.mode |}
     let ignored2 = ensure_target_dir {| |}
-    let use_sb = effective_sandbox {| requested: opts.sandbox |}
+    let use_sb = effective_sandbox {| requested: opts2.sandbox |}
     let ignored_policy = match use_sb
       case 1 =>
         let ignored = inscribe {| path: ".stela.sb", content: sandbox_policy {| |} |}
@@ -554,13 +2503,13 @@ fn build_action
       case 0 =>
         0
     end
-    let in_src = prepare_build_source {| opts: opts |}
-    let out_src = output_source_path {| source: opts.source, mode: opts.mode |}
-    let out_bin = output_binary_path {| source: opts.source |}
-    let compile_cmd = build_compile_cmd {| opts: opts, in_src: in_src, out_src: out_src |}
+    let in_src = prepare_build_source {| opts: opts2 |}
+    let out_src = output_source_path {| source: opts2.source, mode: opts2.mode |}
+    let out_bin = output_binary_path {| source: opts2.source |}
+    let compile_cmd = build_compile_cmd {| opts: opts2, in_src: in_src, out_src: out_src |}
     let compile_cmd2 = wrap_cmd {| cmd: compile_cmd, use_sandbox: use_sb |}
     let ignored3 = run_cmd_or_die {| cmd: compile_cmd2, label: "compile" |}
-    let link_cmd = build_link_cmd {| opts: opts, out_src: out_src, out_bin: out_bin |}
+    let link_cmd = build_link_cmd {| opts: opts2, out_src: out_src, out_bin: out_bin |}
     let link_cmd2 = wrap_cmd {| cmd: link_cmd, use_sandbox: use_sb |}
     let ignored4 = run_cmd_or_die {| cmd: link_cmd2, label: "link" |}
     let m1 = concat {| a: "Built ", b: out_bin |}
@@ -589,9 +2538,10 @@ end
 
 fn check_action
   case {| opts |} =>
-    let ignored1 = validate_mode {| mode: opts.mode |}
+    let opts2 = with_auto_dep_bundle {| opts: opts |}
+    let ignored1 = validate_mode {| mode: opts2.mode |}
     let ignored2 = ensure_target_dir {| |}
-    let use_sb = effective_sandbox {| requested: opts.sandbox |}
+    let use_sb = effective_sandbox {| requested: opts2.sandbox |}
     let ignored_policy = match use_sb
       case 1 =>
         let ignored = inscribe {| path: ".stela.sb", content: sandbox_policy {| |} |}
@@ -599,12 +2549,12 @@ fn check_action
       case 0 =>
         0
     end
-    let in_src = prepare_build_source {| opts: opts |}
-    let out_src = check_source_path {| source: opts.source, mode: opts.mode |}
-    let compile_cmd = build_compile_cmd {| opts: opts, in_src: in_src, out_src: out_src |}
+    let in_src = prepare_build_source {| opts: opts2 |}
+    let out_src = check_source_path {| source: opts2.source, mode: opts2.mode |}
+    let compile_cmd = build_compile_cmd {| opts: opts2, in_src: in_src, out_src: out_src |}
     let compile_cmd2 = wrap_cmd {| cmd: compile_cmd, use_sandbox: use_sb |}
     let ignored3 = run_cmd_or_die {| cmd: compile_cmd2, label: "check" |}
-    let m1 = concat {| a: "Checked ", b: opts.source |}
+    let m1 = concat {| a: "Checked ", b: opts2.source |}
     let ignored4 = echo_line {| msg: m1 |}
     0
 end
@@ -632,7 +2582,7 @@ end
 
 fn usage
   case {| |} =>
-    let ignored1 = echo_line {| msg: "stela - self-hosted Stele build tool" |}
+    let ignored1 = echo_line {| msg: "stela - self-hosted Stele build + package manager" |}
     let ignored2 = echo_line {| msg: "Usage:" |}
     let ignored3 = echo_line {| msg: "  stela build <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|asm-linux|x86|x86-linux>] [--sandbox|--no-sandbox]" |}
     let ignored4 = echo_line {| msg: "  stela run   <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|asm-linux|x86|x86-linux>] [--sandbox|--no-sandbox]" |}
@@ -640,7 +2590,23 @@ fn usage
     let ignored6 = echo_line {| msg: "  stela test  <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|asm-linux|x86|x86-linux>] [--sandbox|--no-sandbox]" |}
     let ignored7 = echo_line {| msg: "  stela bench <source.stele> [--lib <name> ...] [--compiler <path>] [--mode <c|asm|asm-linux|x86|x86-linux>] [--sandbox|--no-sandbox]" |}
     let ignored8 = echo_line {| msg: "  stela package-lib <source.stele> [--lib <name> ...] [--name <name>]" |}
-    let ignored9 = echo_line {| msg: "  stela clean" |}
+    let ignored9 = echo_line {| msg: "  stela init [--name <name>] [--entry <entry.stele>] [--kind <app|lib>] [--major <n>] [--manifest <path>]" |}
+    let ignored10 = echo_line {| msg: "  stela add <name> <git-url-or-path> [--ref <git-ref>] [--major <n>] [--manifest <path>]" |}
+    let ignored11 = echo_line {| msg: "  stela replace <name> <git-url-or-path> [--ref <git-ref>] [--major <n>] [--manifest <path>]" |}
+    let ignored12 = echo_line {| msg: "  stela install [--manifest <path>]" |}
+    let ignored13 = echo_line {| msg: "  stela lock [--manifest <path>]" |}
+    let ignored14 = echo_line {| msg: "  stela graph [--manifest <path>]" |}
+    let ignored15 = echo_line {| msg: "  stela tidy [--manifest <path>]" |}
+    let ignored16 = echo_line {| msg: "  stela why <module> [--major <n>] [--manifest <path>]" |}
+    let ignored17 = echo_line {| msg: "  stela clean" |}
+    let ignored18 = echo_line {| msg: "" |}
+    let ignored19 = echo_line {| msg: "Manifest format (stela.pkg):" |}
+    let ignored20 = echo_line {| msg: "  name=<package-name>" |}
+    let ignored21 = echo_line {| msg: "  entry=<entry.stele>" |}
+    let ignored22 = echo_line {| msg: "  kind=<app|lib>" |}
+    let ignored23 = echo_line {| msg: "  major=<n>" |}
+    let ignored24 = echo_line {| msg: "  dep=<alias>|<git-url-or-path>|<git-ref>|<major>" |}
+    let ignored25 = echo_line {| msg: "  replace=<alias>|<git-url-or-path>|<git-ref>|<major>" |}
     0
 end
 
@@ -691,19 +2657,72 @@ do main
                               let opts = require_source {| opts: parsed |}
                               package_lib_action {| opts: opts |}
                             case 0 =>
-                              match str_eq {| a: cmd, b: "clean" |}
+                              match str_eq {| a: cmd, b: "init" |}
                                 case 1 =>
-                                  match ac == 2
-                                    case 1 => clean_action {| |}
-                                    case 0 =>
-                                      let ignored1 = usage {| |}
-                                      let ignored2 = terminate {| code: 1 |}
-                                      0
-                                  end
+                                  let opts0 = default_opts {| |}
+                                  let opts = parse_opts_loop {| i: 2, ac: ac, opts: opts0 |}
+                                  init_action {| opts: opts |}
                                 case 0 =>
-                                  let ignored1 = usage {| |}
-                                  let ignored2 = terminate {| code: 1 |}
-                                  0
+                                  match str_eq {| a: cmd, b: "add" |}
+                                    case 1 =>
+                                      add_action {| ac: ac |}
+                                    case 0 =>
+                                      match str_eq {| a: cmd, b: "replace" |}
+                                        case 1 =>
+                                          replace_action {| ac: ac |}
+                                        case 0 =>
+                                          match str_eq {| a: cmd, b: "install" |}
+                                            case 1 =>
+                                              let opts0 = default_opts {| |}
+                                              let opts = parse_opts_loop {| i: 2, ac: ac, opts: opts0 |}
+                                              install_action {| manifest_path: opts.manifest |}
+                                            case 0 =>
+                                              match str_eq {| a: cmd, b: "lock" |}
+                                                case 1 =>
+                                                  let opts0 = default_opts {| |}
+                                                  let opts = parse_opts_loop {| i: 2, ac: ac, opts: opts0 |}
+                                                  install_action {| manifest_path: opts.manifest |}
+                                                case 0 =>
+                                                  match str_eq {| a: cmd, b: "graph" |}
+                                                    case 1 =>
+                                                      let opts0 = default_opts {| |}
+                                                      let opts = parse_opts_loop {| i: 2, ac: ac, opts: opts0 |}
+                                                      graph_action {| manifest_path: opts.manifest |}
+                                                    case 0 =>
+                                                      match str_eq {| a: cmd, b: "tidy" |}
+                                                        case 1 =>
+                                                          let opts0 = default_opts {| |}
+                                                          let opts = parse_opts_loop {| i: 2, ac: ac, opts: opts0 |}
+                                                          tidy_action {| manifest_path: opts.manifest |}
+                                                        case 0 =>
+                                                          match str_eq {| a: cmd, b: "why" |}
+                                                            case 1 =>
+                                                              let opts0 = default_opts {| |}
+                                                              let parsed = parse_opts_loop {| i: 2, ac: ac, opts: opts0 |}
+                                                              let opts = require_source {| opts: parsed |}
+                                                              why_action {| opts: opts |}
+                                                            case 0 =>
+                                                              match str_eq {| a: cmd, b: "clean" |}
+                                                                case 1 =>
+                                                                  match ac == 2
+                                                                    case 1 => clean_action {| |}
+                                                                    case 0 =>
+                                                                      let ignored1 = usage {| |}
+                                                                      let ignored2 = terminate {| code: 1 |}
+                                                                      0
+                                                                  end
+                                                                case 0 =>
+                                                                  let ignored1 = usage {| |}
+                                                                  let ignored2 = terminate {| code: 1 |}
+                                                                  0
+                                                              end
+                                                          end
+                                                      end
+                                                  end
+                                              end
+                                          end
+                                      end
+                                  end
                               end
                           end
                       end

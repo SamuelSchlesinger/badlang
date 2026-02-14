@@ -1,0 +1,3 @@
+fn add
+  case {| a, b |} => a + b
+end

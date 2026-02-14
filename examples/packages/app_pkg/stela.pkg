@@ -1,0 +1,5 @@
+name=app
+entry=app.stele
+kind=app
+major=1
+dep=math|../math_pkg|HEAD|1

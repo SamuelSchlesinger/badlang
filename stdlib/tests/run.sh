@@ -27,8 +27,23 @@ rebuild_stela() {
   cc -O1 -o "$STELA_BIN" "$COMPILER_DIR/stela.c"
 }
 
+compiler_needs_rebuild() {
+  if [[ ! -x "$COMPILER_BIN" ]]; then
+    return 0
+  fi
+
+  local src
+  for src in "$COMPILER_DIR/compiler.stele" "$ROOT_DIR"/app/*.hs "$ROOT_DIR"/src/Stele/*.hs; do
+    if [[ "$src" -nt "$COMPILER_BIN" ]]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 if [[ "$COMPILER_BIN" == "$DEFAULT_COMPILER_BIN" ]]; then
-  if [[ ! -x "$COMPILER_BIN" || "$COMPILER_DIR/compiler.stele" -nt "$COMPILER_BIN" || "$ROOT_DIR/app/Main.hs" -nt "$COMPILER_BIN" || "$ROOT_DIR/src/Stele/EmitAArch64.hs" -nt "$COMPILER_BIN" || "$ROOT_DIR/src/Stele/EmitX86_64.hs" -nt "$COMPILER_BIN" ]]; then
+  if compiler_needs_rebuild; then
     rebuild_compiler
   fi
 elif [[ ! -x "$COMPILER_BIN" ]]; then

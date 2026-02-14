@@ -1,0 +1,4 @@
+name=math
+entry=math.stele
+kind=lib
+major=1
