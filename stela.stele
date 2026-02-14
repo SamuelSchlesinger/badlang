@@ -1185,7 +1185,7 @@ fn load_manifest
   case {| path |} =>
     match file_exists {| path: path |}
       case 1 =>
-        let content = unearth {| path: path |}
+        let content = read {| path: path |}
         let mf0 = manifest_default {| |}
         let mf = parse_manifest_content_loop {| text: content, pos: 0, slen: strlen {| s: content |}, cur: "", mf: mf0, path: path |}
         let checked_name = match mf.has_name
@@ -1445,7 +1445,7 @@ fn capture_trimmed_output
     let c1 = concat {| a: cmd, b: " > " |}
     let cmd2 = concat {| a: c1, b: tmp |}
     let ignored = run_cmd_or_die {| cmd: cmd2, label: label |}
-    trim {| s: unearth {| path: tmp |} |}
+    trim {| s: read {| path: tmp |} |}
 end
 
 fn repo_head
@@ -1769,7 +1769,7 @@ fn write_lockfile
     let header = "format=stela-lock-v1\n"
     let body = render_lines_with_newline_loop {| lines: state.locks, acc: "" |}
     let content = concat {| a: header, b: body |}
-    let ignored = inscribe {| path: lock_path {| |}, content: content |}
+    let ignored = write {| path: lock_path {| |}, content: content |}
     0
 end
 
@@ -1794,7 +1794,7 @@ fn install_action
     let ignored2 = ensure_pkg_dirs {| |}
     let manifest = load_manifest {| path: manifest_path |}
     let old_lock_lines = match file_exists {| path: lock_path {| |} |}
-      case 1 => unearth {| path: lock_path {| |} |}
+      case 1 => read {| path: lock_path {| |} |}
       case 0 => ""
     end
     let root_key = dep_key_fields {| name: manifest.name, major: manifest.major |}
@@ -1856,7 +1856,7 @@ fn init_action
     let mf3 = manifest_set_kind {| mf: mf2, kind: kind |}
     let mf4 = manifest_set_major {| mf: mf3, major: major |}
     let body = manifest_render {| mf: mf4 |}
-    let ignored_write = inscribe {| path: opts.manifest, content: body |}
+    let ignored_write = write {| path: opts.manifest, content: body |}
     let m1 = concat {| a: "Initialized manifest at ", b: opts.manifest |}
     let ignored1 = echo_line {| msg: m1 |}
     let m2 = concat {| a: "Run stela install --manifest ", b: opts.manifest |}
@@ -2066,7 +2066,7 @@ fn add_action
     let deps2 = dep_upsert {| deps: manifest.deps, dep: dep |}
     let mf2 = manifest_set_deps {| mf: manifest, deps: deps2 |}
     let body = manifest_render {| mf: mf2 |}
-    let ignored_write = inscribe {| path: checked.manifest, content: body |}
+    let ignored_write = write {| path: checked.manifest, content: body |}
     let m1 = concat {| a: "Added dependency ", b: dep_key {| dep: dep |} |}
     let ignored1 = echo_line {| msg: m1 |}
     install_action {| manifest_path: checked.manifest |}
@@ -2100,7 +2100,7 @@ fn replace_action
     let replaces2 = dep_upsert {| deps: manifest.replaces, dep: dep |}
     let mf2 = manifest_set_replaces {| mf: manifest, replaces: replaces2 |}
     let body = manifest_render {| mf: mf2 |}
-    let ignored_write = inscribe {| path: checked.manifest, content: body |}
+    let ignored_write = write {| path: checked.manifest, content: body |}
     let m1 = concat {| a: "Set replacement for ", b: dep_key {| dep: dep |} |}
     let ignored1 = echo_line {| msg: m1 |}
     install_action {| manifest_path: checked.manifest |}
@@ -2133,7 +2133,7 @@ fn tidy_action
     let mf1 = manifest_set_deps {| mf: manifest, deps: deps2 |}
     let mf2 = manifest_set_replaces {| mf: mf1, replaces: replaces2 |}
     let body = manifest_render {| mf: mf2 |}
-    let ignored_write = inscribe {| path: manifest_path, content: body |}
+    let ignored_write = write {| path: manifest_path, content: body |}
     let m1 = concat {| a: "Tidied manifest ", b: manifest_path |}
     let ignored1 = echo_line {| msg: m1 |}
     install_action {| manifest_path: manifest_path |}
@@ -2329,7 +2329,7 @@ fn graph_action
     match file_exists {| path: lock_path {| |} |}
       case 1 =>
         let ignored4 = echo_line {| msg: "Resolved lockfile entries:" |}
-        let content = unearth {| path: lock_path {| |} |}
+        let content = read {| path: lock_path {| |} |}
         let ignored5 = echo_lock_lines {| lines: content |}
         0
       case 0 =>
@@ -2488,7 +2488,7 @@ fn build_action
     let use_sb = effective_sandbox {| requested: opts2.sandbox |}
     let ignored_policy = match use_sb
       case 1 =>
-        let ignored = inscribe {| path: ".stela.sb", content: sandbox_policy {| |} |}
+        let ignored = write {| path: ".stela.sb", content: sandbox_policy {| |} |}
         0
       case 0 =>
         0
@@ -2534,7 +2534,7 @@ fn check_action
     let use_sb = effective_sandbox {| requested: opts2.sandbox |}
     let ignored_policy = match use_sb
       case 1 =>
-        let ignored = inscribe {| path: ".stela.sb", content: sandbox_policy {| |} |}
+        let ignored = write {| path: ".stela.sb", content: sandbox_policy {| |} |}
         0
       case 0 =>
         0

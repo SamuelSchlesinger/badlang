@@ -10,7 +10,7 @@ errors when things don't line up.
 |------|-------------|---------|
 | `Int` | 64-bit signed integer | `0`, `42`, `-5` |
 | `String` | Immutable string | `"hello"`, `""` |
-| `Void` | Unit type (no meaningful value) | Return type of `inscribe` |
+| `Void` | Unit type (no meaningful value) | Return type of `write` |
 
 ## Record Types
 

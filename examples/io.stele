@@ -20,10 +20,10 @@ do main
   print "Program name:"
   print argv {| n: 0 |}
 
-  inscribe {| path: "io_test.txt", content: "Written by Stele!" |}
+  write {| path: "io_test.txt", content: "Written by Stele!" |}
   print "Wrote io_test.txt"
 
-  let contents = unearth {| path: "io_test.txt" |}
+  let contents = read {| path: "io_test.txt" |}
   print "Read back:"
   print contents
 end

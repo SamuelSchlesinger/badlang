@@ -213,15 +213,15 @@ cRuntime = unlines
   , "static int g_argc = 0;"
   , "static char** g_argv = NULL;"
   , ""
-  , "static Value* fn_unearth(Value* arg) {"
+  , "static Value* fn_read(Value* arg) {"
   , "    Value* pathVal = record_field(arg, \"path\");"
   , "    if (!pathVal || pathVal->tag != TAG_STR) {"
-  , "        fprintf(stderr, \"stele: unearth requires path: String\\n\");"
+  , "        fprintf(stderr, \"stele: read requires path: String\\n\");"
   , "        exit(1);"
   , "    }"
   , "    FILE* f = fopen(pathVal->str_val, \"r\");"
   , "    if (!f) {"
-  , "        fprintf(stderr, \"stele: unearth cannot open '%s'\\n\", pathVal->str_val);"
+  , "        fprintf(stderr, \"stele: read cannot open '%s'\\n\", pathVal->str_val);"
   , "        exit(1);"
   , "    }"
   , "    fseek(f, 0, SEEK_END);"
@@ -236,17 +236,17 @@ cRuntime = unlines
   , "    return result;"
   , "}"
   , ""
-  , "static Value* fn_inscribe(Value* arg) {"
+  , "static Value* fn_write(Value* arg) {"
   , "    Value* pathVal = record_field(arg, \"path\");"
   , "    Value* contentVal = record_field(arg, \"content\");"
   , "    if (!pathVal || pathVal->tag != TAG_STR ||"
   , "        !contentVal || contentVal->tag != TAG_STR) {"
-  , "        fprintf(stderr, \"stele: inscribe requires path: String, content: String\\n\");"
+  , "        fprintf(stderr, \"stele: write requires path: String, content: String\\n\");"
   , "        exit(1);"
   , "    }"
   , "    FILE* f = fopen(pathVal->str_val, \"w\");"
   , "    if (!f) {"
-  , "        fprintf(stderr, \"stele: inscribe cannot open '%s'\\n\", pathVal->str_val);"
+  , "        fprintf(stderr, \"stele: write cannot open '%s'\\n\", pathVal->str_val);"
   , "        exit(1);"
   , "    }"
   , "    fputs(contentVal->str_val, f);"
@@ -420,7 +420,7 @@ cRuntime = unlines
 -- ---------------------------------------------------------------------------
 
 builtinRiteNames :: [String]
-builtinRiteNames = ["unearth", "inscribe", "argc", "argv", "sh", "terminate",
+builtinRiteNames = ["read", "write", "argc", "argv", "sh", "terminate",
                     "spawn", "await", "sleep_ms",
                     "strlen", "char_at", "substr", "concat",
                     "int_to_str", "char_of_int", "strcmp"]

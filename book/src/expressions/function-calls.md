@@ -45,7 +45,7 @@ as part of a `print`/`write`:
 ```
 do main
   print factorial {| n: 10 |}
-  inscribe {| path: "out.txt", content: "hello" |}
+  write {| path: "out.txt", content: "hello" |}
 end
 ```
 

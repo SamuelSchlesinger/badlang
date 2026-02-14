@@ -78,23 +78,23 @@ end
 
 ## File I/O
 
-### inscribe — Write to a File
+### write — Write to a File
 
-`inscribe` writes a string to a file, creating or overwriting it:
+`write` writes a string to a file, creating or overwriting it:
 
 ```
-inscribe {| path: "output.txt", content: "Written by Stele!" |}
+write {| path: "output.txt", content: "Written by Stele!" |}
 ```
 
 The argument is a record with fields `path` (the file path) and `content`
 (the string to write).
 
-### unearth — Read from a File
+### read — Read from a File
 
-`unearth` reads the entire contents of a file and returns it as a `String`:
+`read` reads the entire contents of a file and returns it as a `String`:
 
 ```
-let contents = unearth {| path: "input.txt" |}
+let contents = read {| path: "input.txt" |}
 print contents
 ```
 
@@ -152,10 +152,10 @@ do main
   print argv {| n: 0 |}
 
   -- File I/O
-  inscribe {| path: "io_test.txt", content: "Written by Stele!" |}
+  write {| path: "io_test.txt", content: "Written by Stele!" |}
   print "Wrote io_test.txt"
 
-  let contents = unearth {| path: "io_test.txt" |}
+  let contents = read {| path: "io_test.txt" |}
   print "Read back:"
   print contents
 end

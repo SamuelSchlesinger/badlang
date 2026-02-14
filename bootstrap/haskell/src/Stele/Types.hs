@@ -701,10 +701,10 @@ registerBuiltinFns env = env
   { envFns = Map.union builtins (envFns env) }
   where
     builtins = Map.fromList
-      -- unearth : {| path: String |} -> String
-      [ ("unearth",  TFun (TRec (RExtend "path" TStr REmpty)) TStr)
-      -- inscribe : {| path: String, content: String |} -> Void
-      , ("inscribe", TFun (TRec (RExtend "path" TStr (RExtend "content" TStr REmpty))) TVoid)
+      -- read : {| path: String |} -> String
+      [ ("read",  TFun (TRec (RExtend "path" TStr REmpty)) TStr)
+      -- write : {| path: String, content: String |} -> Void
+      , ("write", TFun (TRec (RExtend "path" TStr (RExtend "content" TStr REmpty))) TVoid)
       -- argc : {| |} -> Int
       , ("argc",     TFun (TRec REmpty) TInt)
       -- argv : {| n: Int |} -> String
@@ -737,7 +737,7 @@ registerBuiltinFns env = env
 
 builtinFnNames :: [String]
 builtinFnNames =
-  [ "unearth", "inscribe", "argc", "argv", "sh", "terminate"
+  [ "read", "write", "argc", "argv", "sh", "terminate"
   , "spawn", "await", "sleep_ms"
   , "strlen", "char_at", "substr", "concat"
   , "int_to_str", "char_of_int", "strcmp"

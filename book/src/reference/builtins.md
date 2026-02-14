@@ -32,31 +32,31 @@ let n = readint
 
 ## File I/O
 
-### unearth
+### read
 
 Read the contents of a file.
 
-- **Call:** `unearth {| path: "filename.txt" |}`
+- **Call:** `read {| path: "filename.txt" |}`
 - **Argument:** `{| path: String |}`
 - **Returns:** `String`
 - **Behavior:** Reads the entire file contents into a string.
 
 ```
-let contents = unearth {| path: "data.txt" |}
+let contents = read {| path: "data.txt" |}
 print contents
 ```
 
-### inscribe
+### write
 
 Write a string to a file.
 
-- **Call:** `inscribe {| path: "filename.txt", content: "data" |}`
+- **Call:** `write {| path: "filename.txt", content: "data" |}`
 - **Argument:** `{| path: String, content: String |}`
 - **Returns:** `Void`
 - **Behavior:** Creates or overwrites the file with the case content.
 
 ```
-inscribe {| path: "output.txt", content: "Hello from Stele!" |}
+write {| path: "output.txt", content: "Hello from Stele!" |}
 ```
 
 ## Command-Line Arguments
@@ -145,8 +145,8 @@ Sleep the current process for a number of milliseconds.
 |------|----------|---------|-------------|
 | `readln` | (none) | `String` | Read line from stdin |
 | `readint` | (none) | `Int` | Read integer from stdin |
-| `unearth` | `{| path: String |}` | `String` | Read file contents |
-| `inscribe` | `{| path: String, content: String |}` | `Void` | Write to file |
+| `read` | `{| path: String |}` | `String` | Read file contents |
+| `write` | `{| path: String, content: String |}` | `Void` | Write to file |
 | `argc` | `{| |}` | `Int` | Argument count |
 | `argv` | `{| n: Int |}` | `String` | Get argument by index |
 | `sh` | `{| command: String |}` | `Int` | Run shell command |

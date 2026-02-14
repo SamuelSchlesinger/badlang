@@ -152,7 +152,7 @@ evaluated, pattern-bound variables are released, and the result is returned.
 
 ## Built-in Functions
 
-Certain functions (`unearth`, `inscribe`, `concat`, `strlen`, `char_at`,
+Certain functions (`read`, `write`, `concat`, `strlen`, `char_at`,
 `substr`, `strcmp`, `int_to_str`, `char_of_int`, `argc`, `argv`) are
 implemented in `runtime.c` rather than generated. The emitter checks
 `is_builtin_fn` and skips code generation for these — they are available as C
@@ -162,7 +162,7 @@ functions at link time.
 
 The top-level `emit_c` fn assembles the complete C file by concatenating:
 
-1. The contents of `runtime.c` (read via `unearth`)
+1. The contents of `runtime.c` (read via `read`)
 2. Forward declarations for all non-builtin functions
 3. Function definitions
 4. The `main()` function (from the `do main` declaration)

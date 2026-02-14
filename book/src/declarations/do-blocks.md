@@ -105,7 +105,7 @@ useful for calling functions with side effects:
 
 ```
 do main
-  inscribe {| path: "out.txt", content: "data" |}
+  write {| path: "out.txt", content: "data" |}
   print "Done."
 end
 ```
