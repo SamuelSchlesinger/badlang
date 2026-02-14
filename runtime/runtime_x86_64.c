@@ -28,7 +28,13 @@ typedef struct Value {
 
 void rc_release(Value* v);
 
+static void stele_runtime_null(const char* where) {
+    fprintf(stderr, "stele: null value in %s\n", where);
+    exit(1);
+}
+
 void rc_retain(Value* v) {
+    if (!v) return;
     v->refcount++;
 }
 
@@ -101,7 +107,7 @@ void rc_release(Value* v) {
 }
 
 Value* record_field(Value* rec, const char* name) {
-    if (rec->tag != TAG_RECORD) return NULL;
+    if (!rec || rec->tag != TAG_RECORD) return NULL;
     for (int i = 0; i < rec->record.num_fields; i++) {
         if (strcmp(rec->record.fields[i].name, name) == 0)
             return rec->record.fields[i].value;
@@ -112,6 +118,8 @@ Value* record_field(Value* rec, const char* name) {
 void stele_write(Value* v);
 
 int stele_value_eq(Value* a, Value* b) {
+    if (a == b) return 1;
+    if (!a || !b) return 0;
     if (a->tag != b->tag) return 0;
     switch (a->tag) {
         case TAG_INT: return a->int_val == b->int_val;
@@ -134,6 +142,7 @@ int stele_value_neq(Value* a, Value* b) {
 }
 
 void stele_print(Value* v) {
+    if (!v) stele_runtime_null("print");
     switch (v->tag) {
         case TAG_INT:    printf("%lld\n", (long long)v->int_val); break;
         case TAG_STR:    printf("%s\n", v->str_val); break;
@@ -152,6 +161,7 @@ void stele_print(Value* v) {
 }
 
 void stele_write(Value* v) {
+    if (!v) stele_runtime_null("write");
     switch (v->tag) {
         case TAG_INT:    printf("%lld", (long long)v->int_val); break;
         case TAG_STR:    printf("%s", v->str_val); break;
