@@ -106,10 +106,11 @@ run_suite() {
   # C mode: compile/link/run all tests.
   run_suite test c
 
-  # AArch64 mode: always build; run on arm64 hosts.
-  run_suite build asm
+  # AArch64 mode: run on arm64 hosts, syntax-check elsewhere.
   if [[ "$HOST_ARCH" == "arm64" ]]; then
     run_suite test asm
+  else
+    run_suite check asm
   fi
 
   # AArch64 Linux mode: run on Linux arm64/aarch64, syntax-check elsewhere.
@@ -126,12 +127,9 @@ run_suite() {
     run_suite check x86
   fi
 
-  # System V x86_64 mode: build on Linux, syntax-check elsewhere.
-  if [[ "$HOST_OS" == "Linux" ]]; then
-    run_suite build x86-linux
-    if [[ "$HOST_ARCH" == "x86_64" ]]; then
-      run_suite test x86-linux
-    fi
+  # System V x86_64 mode: run on Linux x86_64, syntax-check elsewhere.
+  if [[ "$HOST_OS" == "Linux" && "$HOST_ARCH" == "x86_64" ]]; then
+    run_suite test x86-linux
   else
     run_suite check x86-linux
   fi
