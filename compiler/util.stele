@@ -172,3 +172,34 @@ fn sb_append
   case {| buf, s |} => concat {| a: buf, b: s |}
 end
 
+-- Concatenate 3 strings
+fn cat3
+  case {| a, b, c |} =>
+    let s1 = concat {| a: a, b: b |}
+    concat {| a: s1, b: c |}
+end
+
+-- Concatenate 4 strings
+fn cat4
+  case {| a, b, c, d |} =>
+    let s1 = concat {| a: a, b: b |}
+    let s2 = concat {| a: s1, b: c |}
+    concat {| a: s2, b: d |}
+end
+
+-- Concatenate 5 strings
+fn cat5
+  case {| a, b, c, d, e |} =>
+    let s1 = concat {| a: a, b: b |}
+    let s2 = concat {| a: s1, b: c |}
+    let s3 = concat {| a: s2, b: d |}
+    concat {| a: s3, b: e |}
+end
+
+-- Wrap a string: prefix ++ s ++ suffix
+fn wrap
+  case {| prefix, s, suffix |} =>
+    let s1 = concat {| a: prefix, b: s |}
+    concat {| a: s1, b: suffix |}
+end
+

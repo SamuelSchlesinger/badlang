@@ -63,6 +63,13 @@ jobs:
             ${{ runner.os }}-cabal-
       - run: ./stdlib/tests/run.sh
 
+  runtime-sync:
+    name: runtime sync check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./ci/check-runtime-sync.sh
+
   examples:
     name: examples (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -85,3 +92,26 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cabal-
       - run: ./ci/test-examples.sh
+
+  compiler-tests:
+    name: compiler tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: haskell-actions/setup@v2
+        with:
+          ghc-version: '9.6'
+          cabal-version: 'latest'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cabal/store
+            bootstrap/haskell/dist-newstyle
+          key: ${{ runner.os }}-cabal-${{ hashFiles('bootstrap/haskell/stele.cabal') }}
+          restore-keys: |
+            ${{ runner.os }}-cabal-
+      - run: ./ci/test-compiler.sh

@@ -1,0 +1,9 @@
+-- Test basic integer arithmetic and print
+do main
+  print 1 + 2
+  print 10 - 3
+  print 4 * 5
+  print 17 / 3
+  print 17 % 3
+  print 0 - 42
+end

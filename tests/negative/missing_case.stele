@@ -1,0 +1,4 @@
+-- fn with no case keyword
+fn foo
+  {| x |} => x
+end

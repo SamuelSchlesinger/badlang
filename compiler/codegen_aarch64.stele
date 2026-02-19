@@ -199,10 +199,8 @@ end
 
 fn asm_string
   case {| s |} =>
-    let q = dq {| |}
     let escaped = asm_escape_loop {| s: s, pos: 0, acc: "" |}
-    let s1 = concat {| a: q, b: escaped |}
-    concat {| a: s1, b: q |}
+    wrap {| prefix: dq {| |}, s: escaped, suffix: dq {| |} |}
 end
 
 -- Fixed-size function prologue/epilogue (2064-byte frame)
@@ -1118,11 +1116,7 @@ fn emit_string_table_loop
         let head = list_head {| list: strs |}
         let tail = list_tail {| list: strs |}
         let esc = asm_string {| s: head.value |}
-        let s1 = concat {| a: head.label, b: ":" |}
-        let s2 = concat {| a: s1, b: n |}
-        let s3 = concat {| a: s2, b: "  .asciz " |}
-        let s4 = concat {| a: s3, b: esc |}
-        let line = concat {| a: s4, b: n |}
+        let line = cat5 {| a: head.label, b: ":", c: concat {| a: n, b: "  .asciz " |}, d: esc, e: n |}
         emit_string_table_loop {| strs: tail, acc: concat {| a: acc, b: line |} |}
     end
 end

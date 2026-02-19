@@ -1,0 +1,30 @@
+-- Test pattern matching on integers, strings, records, wildcards
+fn classify
+  case {| n: 0 |} => "zero"
+  case {| n: 1 |} => "one"
+  case {| n |} => "other"
+end
+
+fn greet
+  case {| name: "Alice" |} => "hi alice"
+  case {| name |} => concat {| a: "hello ", b: name |}
+end
+
+fn get_tag
+  case {| item |} =>
+    match item
+      case {| tag: "circle", radius |} => "circle"
+      case {| tag: "rect", w, h |} => "rect"
+      case _ => "unknown"
+    end
+end
+
+do main
+  print classify {| n: 0 |}
+  print classify {| n: 1 |}
+  print classify {| n: 99 |}
+  print greet {| name: "Alice" |}
+  print greet {| name: "Bob" |}
+  print get_tag {| item: {| tag: "circle", radius: 5 |} |}
+  print get_tag {| item: {| tag: "rect", w: 3, h: 4 |} |}
+end

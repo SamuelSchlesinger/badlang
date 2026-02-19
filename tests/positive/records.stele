@@ -1,0 +1,17 @@
+-- Test record creation and field access
+fn make_point
+  case {| x, y |} => {| x: x, y: y |}
+end
+
+fn add_points
+  case {| a, b |} =>
+    {| x: a.x + b.x, y: a.y + b.y |}
+end
+
+do main
+  let p1 = make_point {| x: 3, y: 4 |}
+  let p2 = make_point {| x: 10, y: 20 |}
+  let p3 = add_points {| a: p1, b: p2 |}
+  print p3.x
+  print p3.y
+end

@@ -5,7 +5,7 @@
 fn peek
   case {| tokens |} =>
     match is_nil {| list: tokens |}
-      case 1 => {| type: "eof", value: "" |}
+      case 1 => {| type: "eof", value: "", line: 0, col: 0 |}
       case 0 => list_head {| list: tokens |}
     end
 end
@@ -18,11 +18,23 @@ fn advance
     end
 end
 
+fn parse_error
+  case {| msg, line, col |} =>
+    let loc = cat5 {| a: "parse error at line ", b: int_to_str {| n: line |}, c: ":", d: int_to_str {| n: col |}, e: ": " |}
+    let full = cat3 {| a: loc, b: msg, c: char_of_int {| n: 10 |} |}
+    let _ = write {| path: "/dev/stderr", content: full |}
+    terminate {| code: 1 |}
+end
+
 fn expect
   case {| tokens, type |} =>
     let tok = peek {| tokens: tokens |}
     match str_eq {| a: tok.type, b: type |}
       case 1 => advance {| tokens: tokens |}
+      case 0 =>
+        let msg = cat5 {| a: "expected '", b: type, c: "' but got '", d: tok.type, e: "'" |}
+        let _ = parse_error {| msg: msg, line: tok.line, col: tok.col |}
+        tokens
     end
 end
 
@@ -33,6 +45,9 @@ fn expect_ident
       case 1 =>
         let rest = advance {| tokens: tokens |}
         {| name: tok.value, rest: rest |}
+      case 0 =>
+        let _ = parse_error {| msg: cat3 {| a: "expected identifier but got '", b: tok.type, c: "'" |}, line: tok.line, col: tok.col |}
+        {| name: "", rest: tokens |}
     end
 end
 
@@ -218,7 +233,11 @@ fn parse_let_bindings
     match str_eq {| a: tok.type, b: "let" |}
       case 1 =>
         let rest1 = advance {| tokens: tokens |}
-        let id = expect_ident {| tokens: rest1 |}
+        let next = peek {| tokens: rest1 |}
+        let id = match str_eq {| a: next.type, b: "_" |}
+          case 1 => {| name: "_", rest: advance {| tokens: rest1 |} |}
+          case 0 => expect_ident {| tokens: rest1 |}
+        end
         let rest2 = expect {| tokens: id.rest, type: "=" |}
         let r = parse_expr {| tokens: rest2 |}
         let binding = {| name: id.name, value: r.node |}
@@ -342,6 +361,11 @@ fn parse_primary
         {| node: r.node, rest: rest2 |}
       case "match" => parse_match_expr {| tokens: tokens |}
       case "{|" => parse_record_lit {| tokens: tokens |}
+      case _ =>
+        let s1 = concat {| a: "unexpected token '", b: tok.type |}
+        let s2 = concat {| a: s1, b: "' in expression" |}
+        let _ = parse_error {| msg: s2, line: tok.line, col: tok.col |}
+        {| node: {| tag: "int_lit", value: "0" |}, rest: tokens |}
     end
 end
 
@@ -485,7 +509,11 @@ fn parse_stmt
     match tok.type
       case "let" =>
         let rest1 = advance {| tokens: tokens |}
-        let id = expect_ident {| tokens: rest1 |}
+        let next = peek {| tokens: rest1 |}
+        let id = match str_eq {| a: next.type, b: "_" |}
+          case 1 => {| name: "_", rest: advance {| tokens: rest1 |} |}
+          case 0 => expect_ident {| tokens: rest1 |}
+        end
         let rest2 = expect {| tokens: id.rest, type: "=" |}
         let r = parse_expr {| tokens: rest2 |}
         {| node: {| tag: "stmt_let", name: id.name, value: r.node |}, rest: r.rest |}
@@ -564,6 +592,24 @@ fn parse_struct_decl
     {| node: {| tag: "decl_struct", name: id.name, fields: r.node |}, rest: rest2 |}
 end
 
+fn parse_test_decl
+  case {| tokens |} =>
+    let rest1 = expect {| tokens: tokens, type: "test" |}
+    let tok = peek {| tokens: rest1 |}
+    match str_eq {| a: tok.type, b: "str" |}
+      case 1 =>
+        let name = tok.value
+        let rest2 = advance {| tokens: rest1 |}
+        let empty = nil {| |}
+        let r = parse_stmts {| tokens: rest2, acc: empty |}
+        let rest3 = expect {| tokens: r.rest, type: "end" |}
+        {| node: {| tag: "decl_test", name: name, stmts: r.node |}, rest: rest3 |}
+      case 0 =>
+        let _ = parse_error {| msg: cat3 {| a: "expected test name string but got '", b: tok.type, c: "'" |}, line: tok.line, col: tok.col |}
+        {| node: {| tag: "decl_test", name: "", stmts: nil {| |} |}, rest: tokens |}
+    end
+end
+
 fn parse_decl
   case {| tokens |} =>
     let tok = peek {| tokens: tokens |}
@@ -571,6 +617,12 @@ fn parse_decl
       case "fn" => parse_fn_decl {| tokens: tokens |}
       case "do" => parse_do_decl {| tokens: tokens |}
       case "struct" => parse_struct_decl {| tokens: tokens |}
+      case "test" => parse_test_decl {| tokens: tokens |}
+      case _ =>
+        let s1 = concat {| a: "expected 'fn', 'do', 'struct', or 'test' but got '", b: tok.type |}
+        let s2 = concat {| a: s1, b: "'" |}
+        let _ = parse_error {| msg: s2, line: tok.line, col: tok.col |}
+        {| node: {| tag: "decl_fn", name: "", clauses: nil {| |} |}, rest: tokens |}
     end
 end
 

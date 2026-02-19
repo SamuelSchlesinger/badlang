@@ -1,0 +1,12 @@
+-- Test nested let expressions
+fn compute
+  case {| x |} =>
+    let a = x + 1
+    let b = a * 2
+    let c = b + a
+    c
+end
+
+do main
+  print compute {| x: 10 |}
+end

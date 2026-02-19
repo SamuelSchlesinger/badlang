@@ -1,0 +1,4 @@
+-- Invalid operator usage
+do main
+  print 1 +
+end

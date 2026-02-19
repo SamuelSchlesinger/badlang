@@ -3,7 +3,20 @@
 -- ============================================================
 
 fn make_tok
-  case {| type, value |} => {| type: type, value: value |}
+  case {| type, value, line, col |} => {| type: type, value: value, line: line, col: col |}
+end
+
+fn count_line_col
+  case {| src, pos, cur, line, col |} =>
+    match cur >= pos
+      case 1 => {| line: line, col: col |}
+      case 0 =>
+        let ch = char_at {| s: src, n: cur |}
+        match ch == 10
+          case 1 => count_line_col {| src: src, pos: pos, cur: cur + 1, line: line + 1, col: 1 |}
+          case 0 => count_line_col {| src: src, pos: pos, cur: cur + 1, line: line, col: col + 1 |}
+        end
+    end
 end
 
 fn skip_ws
@@ -135,7 +148,8 @@ fn is_keyword
     (str_eq {| a: word, b: "print" |}) ||
     (str_eq {| a: word, b: "match" |}) ||
     (str_eq {| a: word, b: "readln" |}) ||
-    (str_eq {| a: word, b: "readint" |})
+    (str_eq {| a: word, b: "readint" |}) ||
+    (str_eq {| a: word, b: "test" |})
 end
 
 fn peek_char
@@ -248,25 +262,29 @@ end
 -- ============================================================
 
 fn tokenize_loop
-  case {| src, pos, acc |} =>
+  case {| src, pos, line, col, acc |} =>
     let p = skip_ws_cmt {| src: src, pos: pos |}
+    -- Advance line/col through whitespace/comments (incremental)
+    let lc = count_line_col {| src: src, pos: p, cur: pos, line: line, col: col |}
     let tok_result = lex_next {| src: src, pos: p |}
     match str_eq {| a: tok_result.type, b: "eof" |}
       case 1 =>
-        let eof_tok = make_tok {| type: "eof", value: "" |}
+        let eof_tok = make_tok {| type: "eof", value: "", line: lc.line, col: lc.col |}
         let final_list = cons {| head: eof_tok, tail: acc |}
         list_reverse {| list: final_list |}
       case 0 =>
-        let tok = make_tok {| type: tok_result.type, value: tok_result.value |}
+        let tok = make_tok {| type: tok_result.type, value: tok_result.value, line: lc.line, col: lc.col |}
         let new_acc = cons {| head: tok, tail: acc |}
-        tokenize_loop {| src: src, pos: tok_result.pos, acc: new_acc |}
+        -- Advance line/col through the token itself
+        let lc2 = count_line_col {| src: src, pos: tok_result.pos, cur: p, line: lc.line, col: lc.col |}
+        tokenize_loop {| src: src, pos: tok_result.pos, line: lc2.line, col: lc2.col, acc: new_acc |}
     end
 end
 
 fn tokenize
   case {| src |} =>
     let empty = nil {| |}
-    tokenize_loop {| src: src, pos: 0, acc: empty |}
+    tokenize_loop {| src: src, pos: 0, line: 1, col: 1, acc: empty |}
 end
 
 -- ============================================================

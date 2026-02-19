@@ -1,0 +1,17 @@
+-- Test mutually recursive functions
+fn is_even
+  case {| n: 0 |} => 1
+  case {| n |} => is_odd {| n: n - 1 |}
+end
+
+fn is_odd
+  case {| n: 0 |} => 0
+  case {| n |} => is_even {| n: n - 1 |}
+end
+
+do main
+  print is_even {| n: 10 |}
+  print is_odd {| n: 10 |}
+  print is_even {| n: 7 |}
+  print is_odd {| n: 7 |}
+end
