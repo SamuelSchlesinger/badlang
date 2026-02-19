@@ -133,7 +133,6 @@ fn is_keyword
     (str_eq {| a: word, b: "let" |}) ||
     (str_eq {| a: word, b: "in" |}) ||
     (str_eq {| a: word, b: "print" |}) ||
-    (str_eq {| a: word, b: "write" |}) ||
     (str_eq {| a: word, b: "match" |}) ||
     (str_eq {| a: word, b: "readln" |}) ||
     (str_eq {| a: word, b: "readint" |})

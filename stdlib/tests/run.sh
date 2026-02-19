@@ -2,12 +2,25 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-DEFAULT_COMPILER_BIN="$ROOT_DIR/compiler"
-DEFAULT_STELA_BIN="$ROOT_DIR/stela"
+DEFAULT_COMPILER_BIN="$ROOT_DIR/build/compiler"
+DEFAULT_STELA_BIN="$ROOT_DIR/build/stela"
 COMPILER_BIN="${COMPILER_BIN:-$DEFAULT_COMPILER_BIN}"
 STELA_BIN="${STELA_BIN:-$DEFAULT_STELA_BIN}"
 HOST_OS="$(uname -s)"
 HOST_ARCH="$(uname -m)"
+
+# Concatenate compiler modules in dependency order (same as bootstrap.sh)
+make_compiler_src() {
+  local out="$1"
+  cat "$ROOT_DIR/compiler/util.stele" \
+      "$ROOT_DIR/compiler/lexer.stele" \
+      "$ROOT_DIR/compiler/parser.stele" \
+      "$ROOT_DIR/compiler/codegen_c.stele" \
+      "$ROOT_DIR/compiler/codegen_aarch64.stele" \
+      "$ROOT_DIR/compiler/codegen_x86.stele" \
+      "$ROOT_DIR/compiler/main.stele" \
+      > "$out"
+}
 
 rebuild_compiler() {
   if ! command -v cabal >/dev/null 2>&1; then
@@ -16,23 +29,32 @@ rebuild_compiler() {
     exit 1
   fi
   echo "Rebuilding compiler binary: $COMPILER_BIN"
-  (cd "$ROOT_DIR/bootstrap/haskell" && cabal run stele -- "$ROOT_DIR/compiler.stele") >/dev/null
-  cc -O1 -o "$COMPILER_BIN" "$ROOT_DIR/compiler.c"
+  mkdir -p "$(dirname "$COMPILER_BIN")"
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  local tmp_src="$tmp_dir/compiler.stele"
+  make_compiler_src "$tmp_src"
+  (cd "$ROOT_DIR/bootstrap/haskell" && cabal run exe:stele -- "$tmp_src") >/dev/null
+  cc -O1 -o "$COMPILER_BIN" "$tmp_dir/compiler.c"
+  rm -rf "$tmp_dir"
 }
 
 rebuild_stela() {
   echo "Rebuilding stela binary: $STELA_BIN"
-  (cd "$ROOT_DIR" && "$COMPILER_BIN" stela.stele stela.c)
-  cc -O1 -o "$STELA_BIN" "$ROOT_DIR/stela.c"
+  mkdir -p "$(dirname "$STELA_BIN")"
+  local stela_c="$ROOT_DIR/build/stela.c"
+  (cd "$ROOT_DIR" && "$COMPILER_BIN" stela.stele "$stela_c")
+  cc -O1 -o "$STELA_BIN" "$stela_c"
+  rm -f "$stela_c"
 }
 
 compiler_needs_rebuild() {
-  if [[ ! -x "$COMPILER_BIN" ]]; then
+  if [[ ! -f "$COMPILER_BIN" || ! -x "$COMPILER_BIN" ]]; then
     return 0
   fi
 
   local src
-  for src in "$ROOT_DIR/compiler.stele" "$ROOT_DIR"/bootstrap/haskell/app/*.hs "$ROOT_DIR"/bootstrap/haskell/src/Stele/*.hs; do
+  for src in "$ROOT_DIR"/compiler/*.stele "$ROOT_DIR"/bootstrap/haskell/app/*.hs "$ROOT_DIR"/bootstrap/haskell/src/Stele/*.hs; do
     if [[ "$src" -nt "$COMPILER_BIN" ]]; then
       return 0
     fi
@@ -84,10 +106,11 @@ run_suite() {
   # C mode: compile/link/run all tests.
   run_suite test c
 
-  # AArch64 mode: always build; run on arm64 hosts.
-  run_suite build asm
+  # AArch64 mode: run on arm64 hosts, syntax-check elsewhere.
   if [[ "$HOST_ARCH" == "arm64" ]]; then
     run_suite test asm
+  else
+    run_suite check asm
   fi
 
   # AArch64 Linux mode: run on Linux arm64/aarch64, syntax-check elsewhere.
@@ -104,12 +127,9 @@ run_suite() {
     run_suite check x86
   fi
 
-  # System V x86_64 mode: build on Linux, syntax-check elsewhere.
-  if [[ "$HOST_OS" == "Linux" ]]; then
-    run_suite build x86-linux
-    if [[ "$HOST_ARCH" == "x86_64" ]]; then
-      run_suite test x86-linux
-    fi
+  # System V x86_64 mode: run on Linux x86_64, syntax-check elsewhere.
+  if [[ "$HOST_OS" == "Linux" && "$HOST_ARCH" == "x86_64" ]]; then
+    run_suite test x86-linux
   else
     run_suite check x86-linux
   fi

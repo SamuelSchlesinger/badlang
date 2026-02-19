@@ -871,15 +871,22 @@ fn emit_stmt
         {| code: code, counter: r.counter |}
       case "stmt_stele_write" =>
         let r = emit_expr {| node: stmt.value, counter: counter |}
-        let s1 = concat {| a: r.code, b: "stele_write(" |}
-        let s2 = concat {| a: s1, b: r.var |}
-        let s3 = concat {| a: s2, b: ");" |}
-        let s4 = concat {| a: s3, b: n |}
-        let s5 = concat {| a: s4, b: "rc_release(" |}
-        let s6 = concat {| a: s5, b: r.var |}
-        let s7 = concat {| a: s6, b: ");" |}
-        let code = concat {| a: s7, b: n |}
-        {| code: code, counter: r.counter |}
+        let fv = fresh_var {| prefix: "_t", counter: r.counter |}
+        let s1 = concat {| a: r.code, b: "Value* " |}
+        let s2 = concat {| a: s1, b: fv.name |}
+        let s3 = concat {| a: s2, b: " = fn_write(" |}
+        let s4 = concat {| a: s3, b: r.var |}
+        let s5 = concat {| a: s4, b: ");" |}
+        let s6 = concat {| a: s5, b: n |}
+        let s7 = concat {| a: s6, b: "rc_release(" |}
+        let s8 = concat {| a: s7, b: r.var |}
+        let s9 = concat {| a: s8, b: ");" |}
+        let s10 = concat {| a: s9, b: n |}
+        let s11 = concat {| a: s10, b: "rc_release(" |}
+        let s12 = concat {| a: s11, b: fv.name |}
+        let s13 = concat {| a: s12, b: ");" |}
+        let code = concat {| a: s13, b: n |}
+        {| code: code, counter: fv.counter |}
       case "stmt_expr" =>
         let r = emit_expr {| node: stmt.value, counter: counter |}
         let s1 = concat {| a: r.code, b: "rc_release(" |}

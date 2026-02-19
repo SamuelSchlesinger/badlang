@@ -239,18 +239,18 @@ cRuntime = unlines
   , "static Value* fn_write(Value* arg) {"
   , "    Value* pathVal = record_field(arg, \"path\");"
   , "    Value* contentVal = record_field(arg, \"content\");"
-  , "    if (!pathVal || pathVal->tag != TAG_STR ||"
-  , "        !contentVal || contentVal->tag != TAG_STR) {"
-  , "        fprintf(stderr, \"stele: write requires path: String, content: String\\n\");"
-  , "        exit(1);"
+  , "    if (pathVal && pathVal->tag == TAG_STR &&"
+  , "        contentVal && contentVal->tag == TAG_STR) {"
+  , "        FILE* f = fopen(pathVal->str_val, \"w\");"
+  , "        if (!f) {"
+  , "            fprintf(stderr, \"stele: write cannot open '%s'\\n\", pathVal->str_val);"
+  , "            exit(1);"
+  , "        }"
+  , "        fputs(contentVal->str_val, f);"
+  , "        fclose(f);"
+  , "        return make_void();"
   , "    }"
-  , "    FILE* f = fopen(pathVal->str_val, \"w\");"
-  , "    if (!f) {"
-  , "        fprintf(stderr, \"stele: write cannot open '%s'\\n\", pathVal->str_val);"
-  , "        exit(1);"
-  , "    }"
-  , "    fputs(contentVal->str_val, f);"
-  , "    fclose(f);"
+  , "    stele_write(arg);"
   , "    return make_void();"
   , "}"
   , ""
@@ -470,10 +470,12 @@ emitMainDecl decls =
 
 -- | Pre-declare all variables used in a function body.
 -- This avoids redefinition errors when goto jumps across declarations.
+-- The function parameter is excluded since it's already declared.
 emitVarDecls :: IRFuncBody -> String
-emitVarDecls (IRFuncBody _ blocks) =
+emitVarDecls (IRFuncBody param blocks) =
   let (ptrVars, intVars) = collectVarDecls blocks
-  in concatMap (\v -> "Value* " ++ v ++ ";\n") (Set.toList ptrVars) ++
+      ptrVars' = Set.delete param ptrVars
+  in concatMap (\v -> "Value* " ++ v ++ ";\n") (Set.toList ptrVars') ++
      concatMap (\v -> "int " ++ v ++ ";\n") (Set.toList intVars)
 
 -- | Collect all variable names that need declaration, split by type.

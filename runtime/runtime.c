@@ -235,18 +235,18 @@ Value* fn_read(Value* arg) {
 Value* fn_write(Value* arg) {
     Value* pathVal = record_field(arg, "path");
     Value* contentVal = record_field(arg, "content");
-    if (!pathVal || pathVal->tag != TAG_STR ||
-        !contentVal || contentVal->tag != TAG_STR) {
-        fprintf(stderr, "stele: write requires path: String, content: String\n");
-        exit(1);
+    if (pathVal && pathVal->tag == TAG_STR &&
+        contentVal && contentVal->tag == TAG_STR) {
+        FILE* f = fopen(pathVal->str_val, "w");
+        if (!f) {
+            fprintf(stderr, "stele: write cannot open '%s'\n", pathVal->str_val);
+            exit(1);
+        }
+        fputs(contentVal->str_val, f);
+        fclose(f);
+        return make_void();
     }
-    FILE* f = fopen(pathVal->str_val, "w");
-    if (!f) {
-        fprintf(stderr, "stele: write cannot open '%s'\n", pathVal->str_val);
-        exit(1);
-    }
-    fputs(contentVal->str_val, f);
-    fclose(f);
+    stele_write(arg);
     return make_void();
 }
 
