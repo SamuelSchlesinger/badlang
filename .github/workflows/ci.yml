@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [dev]
+
+jobs:
+  bootstrap:
+    name: bootstrap (${{ matrix.os }}, ${{ matrix.mode }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            mode: c
+          - os: macos-14
+            mode: asm
+          - os: macos-14
+            mode: x86
+          - os: ubuntu-latest
+            mode: c
+          - os: ubuntu-latest
+            mode: x86-linux
+    steps:
+      - uses: actions/checkout@v4
+      - uses: haskell-actions/setup@v2
+        with:
+          ghc-version: '9.6'
+          cabal-version: 'latest'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cabal/store
+            bootstrap/haskell/dist-newstyle
+          key: ${{ runner.os }}-cabal-${{ hashFiles('bootstrap/haskell/stele.cabal') }}
+          restore-keys: |
+            ${{ runner.os }}-cabal-
+      - run: ./bootstrap.sh 3 ${{ matrix.mode }}
+
+  stdlib-tests:
+    name: stdlib (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: haskell-actions/setup@v2
+        with:
+          ghc-version: '9.6'
+          cabal-version: 'latest'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cabal/store
+            bootstrap/haskell/dist-newstyle
+          key: ${{ runner.os }}-cabal-${{ hashFiles('bootstrap/haskell/stele.cabal') }}
+          restore-keys: |
+            ${{ runner.os }}-cabal-
+      - run: ./stdlib/tests/run.sh
+
+  examples:
+    name: examples (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: haskell-actions/setup@v2
+        with:
+          ghc-version: '9.6'
+          cabal-version: 'latest'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cabal/store
+            bootstrap/haskell/dist-newstyle
+          key: ${{ runner.os }}-cabal-${{ hashFiles('bootstrap/haskell/stele.cabal') }}
+          restore-keys: |
+            ${{ runner.os }}-cabal-
+      - run: ./ci/test-examples.sh
