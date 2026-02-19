@@ -118,8 +118,17 @@ lowerFn name clauses = do
                    , currentInstrs = []
                    , currentBlockId = "entry" })
 
-  -- Lower pattern match clauses
-  lowerClauses "arg" clauses ("fn '" ++ name ++ "'") TReturn
+  let hasTailCall = any (\(CaseClause _ body) -> isSelfTailCall name body) clauses
+  if hasTailCall
+    then do
+      -- TCO path: retain arg, jump to tco_entry, dispatch with TCO-aware clauses
+      tcoLbl <- freshBlock "tco_entry_"
+      emit (IRetain "arg")
+      finishBlock (TJump tcoLbl) tcoLbl
+      lowerClausesTCO "arg" name clauses ("fn '" ++ name ++ "'") tcoLbl
+    else
+      -- Normal path
+      lowerClauses "arg" clauses ("fn '" ++ name ++ "'") TReturn
 
   blocks <- collectBlocks
   return (IRFuncBody "arg" blocks)
@@ -164,6 +173,105 @@ lowerClause scrut pat body clauseLbl nextLbl mkTerm = do
   -- Release pattern bindings in reverse order
   mapM_ (\v -> emit (IRelease v)) (reverse bindings)
   finishBlockFinal (mkTerm result)
+
+-- | TCO-aware clause lowering. Structurally identical to 'lowerClauses'
+-- but delegates to 'lowerClauseTCO' which handles tail-call vs non-tail clauses.
+lowerClausesTCO :: Var -> String -> [CaseClause] -> String -> BlockId -> Lower ()
+lowerClausesTCO scrut fnName clauses failMsg tcoEntryLbl = do
+  failLbl <- freshBlock "match_fail_"
+  clauseLabels <- mapM (\(i, _) -> freshBlock ("clause_" ++ show i ++ "_test_")) (zip [(0::Int)..] clauses)
+  let nextLabels = drop 1 clauseLabels ++ [failLbl]
+
+  -- Jump to first clause
+  let firstLbl = case clauseLabels of
+        (l:_) -> l
+        []    -> failLbl
+  finishBlock (TJump firstLbl) firstLbl
+
+  -- Emit each clause
+  mapM_ (\(clauseLbl, nextLbl, CaseClause pat body) ->
+    lowerClauseTCO scrut fnName pat body clauseLbl nextLbl tcoEntryLbl
+    ) (zip3 clauseLabels nextLabels clauses)
+
+  -- Match fail block
+  modify' (\s -> s { currentBlockId = failLbl })
+  finishBlockFinal (TMatchFail failMsg)
+
+-- | Lower a single clause with TCO awareness.
+-- Delegates body lowering to 'lowerTailBody' which recursively handles
+-- tail calls inside LetIn chains and Match arms.
+lowerClauseTCO :: Var -> String -> Pattern -> Expr -> BlockId -> BlockId
+               -> BlockId -> Lower ()
+lowerClauseTCO scrut fnName pat body clauseLbl nextLbl tcoEntryLbl = do
+  modify' (\s -> s { currentBlockId = clauseLbl, currentInstrs = [] })
+  bodyLbl <- freshBlock "clause_body_"
+  lowerPatternTest scrut pat bodyLbl nextLbl
+  modify' (\s -> s { currentBlockId = bodyLbl, currentInstrs = [] })
+  bindings <- lowerPatternBindings scrut pat
+  lowerTailBody fnName body bindings tcoEntryLbl
+
+-- | Lower an expression in tail position, recursively handling LetIn chains
+-- and Match arms. Accumulates bindings that must be released before any
+-- tail jump or return.
+lowerTailBody :: String -> Expr -> [Var] -> BlockId -> Lower ()
+lowerTailBody fnName (Call callee argExpr) outerBindings tcoEntryLbl
+  | callee == fnName = do
+      -- TAIL CALL: evaluate new arg, release all bindings + old arg, loop
+      varg <- lowerExpr argExpr
+      mapM_ (\v -> emit (IRelease v)) (reverse outerBindings)
+      emit (IRelease "arg")
+      emit (ICopy "arg" varg)
+      finishBlock (TJump tcoEntryLbl) tcoEntryLbl
+lowerTailBody fnName expr@(LetIn _ _ _) outerBindings tcoEntryLbl = do
+  let (bindings, finalBody) = collectLetChain expr
+  -- Lower each binding, accumulating names
+  boundNames <- mapM (\(n, v) -> do
+    vr <- lowerExpr v
+    let mangledName = cName n
+    emit (ICopy mangledName vr)
+    return mangledName
+    ) bindings
+  -- Recurse into final body with extended bindings
+  lowerTailBody fnName finalBody (outerBindings ++ boundNames) tcoEntryLbl
+lowerTailBody fnName (Match scrutinee clauses) outerBindings tcoEntryLbl = do
+  -- Lower scrutinee
+  scrResult <- lowerExpr scrutinee
+  scr <- freshVar "_scr"
+  emit (ICopy scr scrResult)
+  -- Dispatch each arm via lowerTailMatchClause
+  let allBindings = outerBindings ++ [scr]
+  failLbl <- freshBlock "match_fail_"
+  clauseLabels <- mapM (\(i, _) -> freshBlock ("tmclause_" ++ show i ++ "_test_"))
+                       (zip [(0::Int)..] clauses)
+  let nextLabels = drop 1 clauseLabels ++ [failLbl]
+  let firstLbl = case clauseLabels of
+        (l:_) -> l
+        []    -> failLbl
+  finishBlock (TJump firstLbl) firstLbl
+  mapM_ (\(clauseLbl, nextLbl, CaseClause pat armBody) ->
+    lowerTailMatchClause fnName scr pat armBody clauseLbl nextLbl allBindings tcoEntryLbl
+    ) (zip3 clauseLabels nextLabels clauses)
+  -- Match fail block
+  modify' (\s -> s { currentBlockId = failLbl })
+  finishBlockFinal (TMatchFail "match")
+lowerTailBody _ expr outerBindings _ = do
+  -- FALLBACK (base case): evaluate body, release all bindings + old arg, return
+  result <- lowerExpr expr
+  mapM_ (\v -> emit (IRelease v)) (reverse outerBindings)
+  emit (IRelease "arg")
+  finishBlockFinal (TReturn result)
+
+-- | Lower a single match arm in tail position. Pattern test + bindings are
+-- handled normally, then body is delegated to 'lowerTailBody'.
+lowerTailMatchClause :: String -> Var -> Pattern -> Expr
+                     -> BlockId -> BlockId -> [Var] -> BlockId -> Lower ()
+lowerTailMatchClause fnName scrut pat armBody clauseLbl nextLbl outerBindings tcoEntryLbl = do
+  modify' (\s -> s { currentBlockId = clauseLbl, currentInstrs = [] })
+  bodyLbl <- freshBlock "tmclause_body_"
+  lowerPatternTest scrut pat bodyLbl nextLbl
+  modify' (\s -> s { currentBlockId = bodyLbl, currentInstrs = [] })
+  patBindings <- lowerPatternBindings scrut pat
+  lowerTailBody fnName armBody (outerBindings ++ patBindings) tcoEntryLbl
 
 -- ---------------------------------------------------------------------------
 -- Pattern matching: test generation
@@ -540,6 +648,16 @@ collectLetChain (LetIn n v b) =
   in ((n, v) : rest, fb)
 collectLetChain other = ([], other)
 
+-- | Check whether an expression contains a self-recursive tail call.
+-- Looks through LetIn chains (tail position is the final body) and
+-- Match arms (TCO-eligible if any arm contains a tail call).
+isSelfTailCall :: String -> Expr -> Bool
+isSelfTailCall fnName (Call callee _) = callee == fnName
+isSelfTailCall fnName (LetIn _ _ body) = isSelfTailCall fnName body
+isSelfTailCall fnName (Match _ clauses) =
+  any (\(CaseClause _ body) -> isSelfTailCall fnName body) clauses
+isSelfTailCall _ _ = False
+
 -- ---------------------------------------------------------------------------
 -- Do lowering
 -- ---------------------------------------------------------------------------
@@ -586,8 +704,10 @@ lowerStmt (PrintStmt expr) = do
   return []
 lowerStmt (WriteStmt expr) = do
   v <- lowerExpr expr
-  emit (IWrite v)
+  t <- freshVar "_t"
+  emit (ICall t "write" v)
   emit (IRelease v)
+  emit (IRelease t)
   return []
 lowerStmt (ExprStmt expr) = do
   v <- lowerExpr expr

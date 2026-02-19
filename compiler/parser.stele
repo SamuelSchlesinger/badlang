@@ -493,10 +493,6 @@ fn parse_stmt
         let rest1 = advance {| tokens: tokens |}
         let r = parse_expr {| tokens: rest1 |}
         {| node: {| tag: "stmt_stele_print", value: r.node |}, rest: r.rest |}
-      case "write" =>
-        let rest1 = advance {| tokens: tokens |}
-        let r = parse_expr {| tokens: rest1 |}
-        {| node: {| tag: "stmt_stele_write", value: r.node |}, rest: r.rest |}
       case _ =>
         let r = parse_expr {| tokens: tokens |}
         {| node: {| tag: "stmt_expr", value: r.node |}, rest: r.rest |}

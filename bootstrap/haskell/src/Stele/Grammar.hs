@@ -57,7 +57,7 @@ import           Data.Char (isUpper)
 keywords :: [String]
 keywords = [ "struct", "fn", "do", "case", "end"
            , "let", "in", "print", "match"
-           , "readln", "readint", "write", "oneof" ]
+           , "readln", "readint", "oneof" ]
 
 -- | A keyword terminal that ensures it's not followed by an identifier char.
 kw :: String -> PExpr
@@ -150,7 +150,7 @@ steleGrammar = Map.fromList
       , kw "end"
       ])
 
-  , ("stmt", rule "let_stmt" </> rule "print_stmt" </> rule "write_stmt" </> rule "expr_stmt")
+  , ("stmt", rule "let_stmt" </> rule "print_stmt" </> rule "expr_stmt")
 
   , ("let_stmt", seq_
       [ kw "let", ws1
@@ -161,11 +161,6 @@ steleGrammar = Map.fromList
 
   , ("print_stmt", seq_
       [ kw "print", ws1
-      , label "value" (rule "expr")
-      ])
-
-  , ("write_stmt", seq_
-      [ kw "write", ws1
       , label "value" (rule "expr")
       ])
 
@@ -382,7 +377,7 @@ treeToDecl (PTNode "do_decl" children) = do
   stmts <- mapM treeToStmt stmts'
   return (DoDecl name stmts)
   where
-    isStmtNode (PTNode n _) = n `elem` ["let_stmt", "print_stmt", "write_stmt", "expr_stmt", "stmt"]
+    isStmtNode (PTNode n _) = n `elem` ["let_stmt", "print_stmt", "expr_stmt", "stmt"]
     isStmtNode _ = False
 treeToDecl t = Left $ "Expected declaration, got: " ++ take 100 (show t)
 
@@ -458,9 +453,6 @@ treeToStmt (PTNode "let_stmt" children) = do
 treeToStmt (PTNode "print_stmt" children) = do
   value <- treeToExpr =<< find1 "value" children
   return (PrintStmt value)
-treeToStmt (PTNode "write_stmt" children) = do
-  value <- treeToExpr =<< find1 "value" children
-  return (WriteStmt value)
 treeToStmt (PTNode "expr_stmt" children) = do
   value <- treeToExpr =<< find1 "value" children
   return (ExprStmt value)
