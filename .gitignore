@@ -26,6 +26,7 @@ examples/io
 # Build artifacts
 .stela/
 /stela
+/build/
 target/
 
 # Runtime artifacts
