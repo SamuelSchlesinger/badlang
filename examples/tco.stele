@@ -1,0 +1,38 @@
+-- TCO regression tests: each function recurses deep enough to
+-- guarantee a stack overflow if tail-call optimization is absent.
+
+-- Pattern 1: direct self-tail-call
+fn countdown
+  case {| n: 0 |} => 0
+  case {| n |} => countdown {| n: n - 1 |}
+end
+
+-- Pattern 2: tail call through let bindings
+fn countdown_let
+  case {| n: 0 |} => 0
+  case {| n |} =>
+    let next = n - 1
+    countdown_let {| n: next |}
+end
+
+-- Pattern 3: tail call through match arms
+fn countdown_match
+  case {| n |} =>
+    match n == 0
+      case 1 => 0
+      case 0 => countdown_match {| n: n - 1 |}
+    end
+end
+
+-- Pattern 4: multiple clauses with tail calls (accumulator style)
+fn sum_to
+  case {| n: 0, acc |} => acc
+  case {| n, acc |} => sum_to {| n: n - 1, acc: acc + n |}
+end
+
+do main
+  print countdown {| n: 5000000 |}
+  print countdown_let {| n: 5000000 |}
+  print countdown_match {| n: 5000000 |}
+  print sum_to {| n: 100000, acc: 0 |}
+end
