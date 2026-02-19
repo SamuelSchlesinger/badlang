@@ -105,6 +105,9 @@ lowerDecl (FnDecl name clauses) = do
 lowerDecl (DoDecl "main" stmts) = do
   body <- lowerDo stmts
   return [IRMain body]
+lowerDecl (TestDecl name stmts) = do
+  body <- lowerDo stmts
+  return [IRTest name body]
 lowerDecl (DoDecl _ _) = return []
 
 -- ---------------------------------------------------------------------------

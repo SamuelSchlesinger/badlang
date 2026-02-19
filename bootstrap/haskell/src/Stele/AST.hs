@@ -52,6 +52,7 @@ data Decl
   | FnDecl     !String [CaseClause]       -- ^ @fn f case ... => ... end@
   | DoDecl     !String [Stmt]             -- ^ @do main ... end@
   | OneofDecl  !String [(String, [Field])] -- ^ @oneof Shape Circle { radius : Int } ... end@
+  | TestDecl   !String [Stmt]             -- ^ @test "name" ... end@
   deriving (Show, Eq)
 
 -- | A field in a struct declaration.

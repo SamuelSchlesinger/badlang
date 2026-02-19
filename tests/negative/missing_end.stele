@@ -1,0 +1,3 @@
+-- Missing end keyword for fn
+fn foo
+  case {| x |} => x

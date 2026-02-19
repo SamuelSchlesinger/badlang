@@ -1,0 +1,8 @@
+-- Minimal program: just an identity function and a print
+fn id
+  case {| x |} => x
+end
+
+do main
+  print id {| x: 42 |}
+end

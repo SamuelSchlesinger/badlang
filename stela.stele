@@ -2393,12 +2393,18 @@ fn run_cmd_or_die
 end
 
 fn build_compile_cmd
-  case {| opts, in_src, out_src |} =>
+  case {| opts, in_src, out_src, run_after |} =>
     match str_eq {| a: opts.mode, b: "c" |}
       case 1 =>
-        join3 {| a: opts.compiler, b: in_src, c: out_src |}
+        match run_after == 2
+          case 1 => join4 {| a: opts.compiler, b: in_src, c: out_src, d: "test" |}
+          case 0 => join3 {| a: opts.compiler, b: in_src, c: out_src |}
+        end
       case 0 =>
-        join4 {| a: opts.compiler, b: in_src, c: out_src, d: opts.mode |}
+        match run_after == 2
+          case 1 => join5 {| a: opts.compiler, b: in_src, c: out_src, d: opts.mode, e: "test" |}
+          case 0 => join4 {| a: opts.compiler, b: in_src, c: out_src, d: opts.mode |}
+        end
     end
 end
 
@@ -2496,7 +2502,7 @@ fn build_action
     let in_src = prepare_build_source {| opts: opts2 |}
     let out_src = output_source_path {| source: opts2.source, mode: opts2.mode |}
     let out_bin = output_binary_path {| source: opts2.source |}
-    let compile_cmd = build_compile_cmd {| opts: opts2, in_src: in_src, out_src: out_src |}
+    let compile_cmd = build_compile_cmd {| opts: opts2, in_src: in_src, out_src: out_src, run_after: run_after |}
     let compile_cmd2 = wrap_cmd {| cmd: compile_cmd, use_sandbox: use_sb |}
     let ignored3 = run_cmd_or_die {| cmd: compile_cmd2, label: "compile" |}
     let link_cmd = build_link_cmd {| opts: opts2, out_src: out_src, out_bin: out_bin |}
@@ -2541,7 +2547,7 @@ fn check_action
     end
     let in_src = prepare_build_source {| opts: opts2 |}
     let out_src = check_source_path {| source: opts2.source, mode: opts2.mode |}
-    let compile_cmd = build_compile_cmd {| opts: opts2, in_src: in_src, out_src: out_src |}
+    let compile_cmd = build_compile_cmd {| opts: opts2, in_src: in_src, out_src: out_src, run_after: 0 |}
     let compile_cmd2 = wrap_cmd {| cmd: compile_cmd, use_sandbox: use_sb |}
     let ignored3 = run_cmd_or_die {| cmd: compile_cmd2, label: "check" |}
     let m1 = concat {| a: "Checked ", b: opts2.source |}

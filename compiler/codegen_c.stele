@@ -63,10 +63,8 @@ end
 -- Wrap a string in escaped C double quotes: "..."
 fn c_string
   case {| s |} =>
-    let q = dq {| |}
     let escaped = c_escape_str_loop {| s: s, pos: 0, acc: "" |}
-    let s1 = concat {| a: q, b: escaped |}
-    concat {| a: s1, b: q |}
+    wrap {| prefix: dq {| |}, s: escaped, suffix: dq {| |} |}
 end
 
 -- Mangle a Stele identifier for C (stele_ prefix, except "arg")
@@ -108,96 +106,34 @@ end
 fn emit_binop_c
   case {| op, a, b |} =>
     match op
-      case "+" =>
-        let s1 = concat {| a: "make_int(", b: a |}
-        let s2 = concat {| a: s1, b: "->int_val + " |}
-        let s3 = concat {| a: s2, b: b |}
-        concat {| a: s3, b: "->int_val)" |}
-      case "-" =>
-        let s1 = concat {| a: "make_int(", b: a |}
-        let s2 = concat {| a: s1, b: "->int_val - " |}
-        let s3 = concat {| a: s2, b: b |}
-        concat {| a: s3, b: "->int_val)" |}
-      case "*" =>
-        let s1 = concat {| a: "make_int(", b: a |}
-        let s2 = concat {| a: s1, b: "->int_val * " |}
-        let s3 = concat {| a: s2, b: b |}
-        concat {| a: s3, b: "->int_val)" |}
-      case "/" =>
-        let s1 = concat {| a: "make_int(", b: a |}
-        let s2 = concat {| a: s1, b: "->int_val / " |}
-        let s3 = concat {| a: s2, b: b |}
-        concat {| a: s3, b: "->int_val)" |}
-      case "%" =>
-        let s1 = concat {| a: "make_int(", b: a |}
-        let s2 = concat {| a: s1, b: "->int_val % " |}
-        let s3 = concat {| a: s2, b: b |}
-        concat {| a: s3, b: "->int_val)" |}
-      case "==" =>
-        let s1 = concat {| a: "make_int(stele_value_eq(", b: a |}
-        let s2 = concat {| a: s1, b: ", " |}
-        let s3 = concat {| a: s2, b: b |}
-        concat {| a: s3, b: "))" |}
-      case "!=" =>
-        let s1 = concat {| a: "make_int(stele_value_neq(", b: a |}
-        let s2 = concat {| a: s1, b: ", " |}
-        let s3 = concat {| a: s2, b: b |}
-        concat {| a: s3, b: "))" |}
-      case "<" =>
-        let s1 = concat {| a: "make_int(", b: a |}
-        let s2 = concat {| a: s1, b: "->int_val < " |}
-        let s3 = concat {| a: s2, b: b |}
-        concat {| a: s3, b: "->int_val)" |}
-      case ">" =>
-        let s1 = concat {| a: "make_int(", b: a |}
-        let s2 = concat {| a: s1, b: "->int_val > " |}
-        let s3 = concat {| a: s2, b: b |}
-        concat {| a: s3, b: "->int_val)" |}
-      case "<=" =>
-        let s1 = concat {| a: "make_int(", b: a |}
-        let s2 = concat {| a: s1, b: "->int_val <= " |}
-        let s3 = concat {| a: s2, b: b |}
-        concat {| a: s3, b: "->int_val)" |}
-      case ">=" =>
-        let s1 = concat {| a: "make_int(", b: a |}
-        let s2 = concat {| a: s1, b: "->int_val >= " |}
-        let s3 = concat {| a: s2, b: b |}
-        concat {| a: s3, b: "->int_val)" |}
-      case "&&" =>
-        let s1 = concat {| a: "make_int(", b: a |}
-        let s2 = concat {| a: s1, b: "->int_val && " |}
-        let s3 = concat {| a: s2, b: b |}
-        concat {| a: s3, b: "->int_val)" |}
-      case "||" =>
-        let s1 = concat {| a: "make_int(", b: a |}
-        let s2 = concat {| a: s1, b: "->int_val || " |}
-        let s3 = concat {| a: s2, b: b |}
-        concat {| a: s3, b: "->int_val)" |}
+      case "+" => cat5 {| a: "checked_add(", b: a, c: ", ", d: b, e: ")" |}
+      case "-" => cat5 {| a: "checked_sub(", b: a, c: ", ", d: b, e: ")" |}
+      case "*" => cat5 {| a: "checked_mul(", b: a, c: ", ", d: b, e: ")" |}
+      case "/" => cat5 {| a: "make_int(", b: a, c: "->int_val / ", d: b, e: "->int_val)" |}
+      case "%" => cat5 {| a: "make_int(", b: a, c: "->int_val % ", d: b, e: "->int_val)" |}
+      case "==" => cat5 {| a: "make_int(stele_value_eq(", b: a, c: ", ", d: b, e: "))" |}
+      case "!=" => cat5 {| a: "make_int(stele_value_neq(", b: a, c: ", ", d: b, e: "))" |}
+      case "<" => cat5 {| a: "make_int(", b: a, c: "->int_val < ", d: b, e: "->int_val)" |}
+      case ">" => cat5 {| a: "make_int(", b: a, c: "->int_val > ", d: b, e: "->int_val)" |}
+      case "<=" => cat5 {| a: "make_int(", b: a, c: "->int_val <= ", d: b, e: "->int_val)" |}
+      case ">=" => cat5 {| a: "make_int(", b: a, c: "->int_val >= ", d: b, e: "->int_val)" |}
+      case "&&" => cat5 {| a: "make_int(", b: a, c: "->int_val && ", d: b, e: "->int_val)" |}
+      case "||" => cat5 {| a: "make_int(", b: a, c: "->int_val || ", d: b, e: "->int_val)" |}
     end
 end
 
 fn emit_int_lit
   case {| node, counter |} =>
     let f = fresh_var {| prefix: "_t", counter: counter |}
-    let n = nl {| |}
-    let s1 = concat {| a: "Value* ", b: f.name |}
-    let s2 = concat {| a: s1, b: " = make_int(" |}
-    let s3 = concat {| a: s2, b: node.value |}
-    let s4 = concat {| a: s3, b: ");" |}
-    let code = concat {| a: s4, b: n |}
+    let code = cat5 {| a: "Value* ", b: f.name, c: " = make_int(", d: node.value, e: concat {| a: ");", b: nl {| |} |} |}
     {| code: code, var: f.name, counter: f.counter |}
 end
 
 fn emit_str_lit
   case {| node, counter |} =>
     let f = fresh_var {| prefix: "_t", counter: counter |}
-    let n = nl {| |}
     let cs = c_string {| s: node.value |}
-    let s1 = concat {| a: "Value* ", b: f.name |}
-    let s2 = concat {| a: s1, b: " = make_str(" |}
-    let s3 = concat {| a: s2, b: cs |}
-    let s4 = concat {| a: s3, b: ");" |}
-    let code = concat {| a: s4, b: n |}
+    let code = cat5 {| a: "Value* ", b: f.name, c: " = make_str(", d: cs, e: concat {| a: ");", b: nl {| |} |} |}
     {| code: code, var: f.name, counter: f.counter |}
 end
 
@@ -342,20 +278,14 @@ end
 fn emit_readln
   case {| counter |} =>
     let f = fresh_var {| prefix: "_t", counter: counter |}
-    let n = nl {| |}
-    let s1 = concat {| a: "Value* ", b: f.name |}
-    let s2 = concat {| a: s1, b: " = runtime_readln();" |}
-    let code = concat {| a: s2, b: n |}
+    let code = cat4 {| a: "Value* ", b: f.name, c: " = runtime_readln();", d: nl {| |} |}
     {| code: code, var: f.name, counter: f.counter |}
 end
 
 fn emit_readint
   case {| counter |} =>
     let f = fresh_var {| prefix: "_t", counter: counter |}
-    let n = nl {| |}
-    let s1 = concat {| a: "Value* ", b: f.name |}
-    let s2 = concat {| a: s1, b: " = runtime_readint();" |}
-    let code = concat {| a: s2, b: n |}
+    let code = cat4 {| a: "Value* ", b: f.name, c: " = runtime_readint();", d: nl {| |} |}
     {| code: code, var: f.name, counter: f.counter |}
 end
 
@@ -592,36 +522,26 @@ end
 -- Generate retain code for a list of bound names
 fn gen_retain_code
   case {| names |} =>
-    let n = nl {| |}
     match is_nil {| list: names |}
       case 1 => ""
       case 0 =>
         let head = list_head {| list: names |}
         let tail = list_tail {| list: names |}
-        let cn = c_name {| name: head |}
-        let s1 = concat {| a: "rc_retain(", b: cn |}
-        let s2 = concat {| a: s1, b: ");" |}
-        let s3 = concat {| a: s2, b: n |}
-        let rest = gen_retain_code {| names: tail |}
-        concat {| a: s3, b: rest |}
+        let line = cat4 {| a: "rc_retain(", b: c_name {| name: head |}, c: ");", d: nl {| |} |}
+        concat {| a: line, b: gen_retain_code {| names: tail |} |}
     end
 end
 
 -- Generate release code for a list of bound names
 fn gen_release_code
   case {| names |} =>
-    let n = nl {| |}
     match is_nil {| list: names |}
       case 1 => ""
       case 0 =>
         let head = list_head {| list: names |}
         let tail = list_tail {| list: names |}
-        let cn = c_name {| name: head |}
-        let s1 = concat {| a: "rc_release(", b: cn |}
-        let s2 = concat {| a: s1, b: ");" |}
-        let s3 = concat {| a: s2, b: n |}
-        let rest = gen_release_code {| names: tail |}
-        concat {| a: s3, b: rest |}
+        let line = cat4 {| a: "rc_release(", b: c_name {| name: head |}, c: ");", d: nl {| |} |}
+        concat {| a: line, b: gen_release_code {| names: tail |} |}
     end
 end
 
@@ -811,13 +731,10 @@ end
 -- Emit a forward declaration for a fn
 fn emit_forward_decl
   case {| name |} =>
-    let n = nl {| |}
     match is_builtin_fn {| name: name |}
       case 1 => ""
       case 0 =>
-        let s1 = concat {| a: "static Value* fn_", b: name |}
-        let s2 = concat {| a: s1, b: "(Value* arg);" |}
-        concat {| a: s2, b: n |}
+        cat4 {| a: "static Value* fn_", b: name, c: "(Value* arg);", d: nl {| |} |}
     end
 end
 
@@ -982,6 +899,127 @@ fn emit_main_fn
 end
 
 -- ============================================================
+-- Code Generation: Test Mode
+-- ============================================================
+
+-- Check if test mode is active (argv[3] == "test" or argv[4] == "test")
+fn is_test_mode
+  case {| |} =>
+    let ac = argc {| |}
+    match ac >= 4
+      case 1 =>
+        let a3 = argv {| n: 3 |}
+        match str_eq {| a: a3, b: "test" |}
+          case 1 => 1
+          case 0 =>
+            match ac >= 5
+              case 1 =>
+                let a4 = argv {| n: 4 |}
+                str_eq {| a: a4, b: "test" |}
+              case 0 => 0
+            end
+        end
+      case 0 => 0
+    end
+end
+
+-- Collect all test declarations from the decl list
+fn collect_tests
+  case {| decls, acc |} =>
+    match is_nil {| list: decls |}
+      case 1 => list_reverse {| list: acc |}
+      case 0 =>
+        let head = list_head {| list: decls |}
+        let tail = list_tail {| list: decls |}
+        let new_acc = match str_eq {| a: head.tag, b: "decl_test" |}
+          case 1 => cons {| head: head, tail: acc |}
+          case 0 => acc
+        end
+        collect_tests {| decls: tail, acc: new_acc |}
+    end
+end
+
+-- Emit the body of a single test
+fn emit_test_body
+  case {| decl, counter |} =>
+    let n = nl {| |}
+    let rs = emit_stmts_loop {| stmts: decl.stmts, counter: counter, acc: "" |}
+    let empty = nil {| |}
+    let let_names = collect_let_names {| stmts: decl.stmts, acc: empty |}
+    let rel = gen_release_code {| names: let_names |}
+    -- Emit: fprintf(stderr, "test: <name> ... ");
+    let s1 = concat {| a: "fprintf(stderr, \"test: ", b: decl.name |}
+    let s2 = concat {| a: s1, b: " ... \");" |}
+    let s3 = concat {| a: s2, b: n |}
+    -- Emit the test body in a block
+    let s4 = concat {| a: s3, b: "{" |}
+    let s5 = concat {| a: s4, b: n |}
+    let s6 = concat {| a: s5, b: rs.code |}
+    let s7 = concat {| a: s6, b: rel |}
+    let s8 = concat {| a: s7, b: "}" |}
+    let s9 = concat {| a: s8, b: n |}
+    -- Emit: fprintf(stderr, "ok\n");
+    let s10 = concat {| a: s9, b: "fprintf(stderr, \"ok\\n\");" |}
+    let s11 = concat {| a: s10, b: n |}
+    let s12 = concat {| a: s11, b: "_test_pass++;" |}
+    let code = concat {| a: s12, b: n |}
+    {| code: code, counter: rs.counter |}
+end
+
+-- Emit test bodies loop
+fn emit_test_bodies_loop
+  case {| tests, counter, acc |} =>
+    match is_nil {| list: tests |}
+      case 1 => {| code: acc, counter: counter |}
+      case 0 =>
+        let head = list_head {| list: tests |}
+        let tail = list_tail {| list: tests |}
+        let r = emit_test_body {| decl: head, counter: counter |}
+        let new_acc = concat {| a: acc, b: r.code |}
+        emit_test_bodies_loop {| tests: tail, counter: r.counter, acc: new_acc |}
+    end
+end
+
+-- Count tests
+fn count_tests
+  case {| tests, acc |} =>
+    match is_nil {| list: tests |}
+      case 1 => acc
+      case 0 =>
+        let tail = list_tail {| list: tests |}
+        count_tests {| tests: tail, acc: acc + 1 |}
+    end
+end
+
+-- Emit the test runner main function
+fn emit_test_main
+  case {| decls, counter |} =>
+    let n = nl {| |}
+    let empty = nil {| |}
+    let tests = collect_tests {| decls: decls, acc: empty |}
+    let num_tests = count_tests {| tests: tests, acc: 0 |}
+    let test_bodies = emit_test_bodies_loop {| tests: tests, counter: counter, acc: "" |}
+    let s1 = concat {| a: "int main(int argc, char** argv) {", b: n |}
+    let s2 = concat {| a: s1, b: "g_argc = argc;" |}
+    let s3 = concat {| a: s2, b: n |}
+    let s4 = concat {| a: s3, b: "g_argv = argv;" |}
+    let s5 = concat {| a: s4, b: n |}
+    let s6 = concat {| a: s5, b: "int _test_pass = 0;" |}
+    let s7 = concat {| a: s6, b: n |}
+    let s8 = concat {| a: s7, b: "int _test_total = " |}
+    let s9 = concat {| a: s8, b: int_to_str {| n: num_tests |} |}
+    let s10 = concat {| a: s9, b: ";" |}
+    let s11 = concat {| a: s10, b: n |}
+    let s12 = concat {| a: s11, b: test_bodies.code |}
+    let s13 = concat {| a: s12, b: "fprintf(stderr, \"\\n%d/%d tests passed\\n\", _test_pass, _test_total);" |}
+    let s14 = concat {| a: s13, b: n |}
+    let s15 = concat {| a: s14, b: "return (_test_pass == _test_total) ? 0 : 1;" |}
+    let s16 = concat {| a: s15, b: n |}
+    let s17 = concat {| a: s16, b: "}" |}
+    concat {| a: s17, b: n |}
+end
+
+-- ============================================================
 -- Code Generation: Top-Level Pipeline
 -- ============================================================
 
@@ -1016,8 +1054,11 @@ fn emit_c
     let fwd_decls = emit_forward_decls_loop {| decls: decls, acc: "" |}
     -- Rite definitions
     let fn_defs = emit_decls_loop {| decls: decls, counter: 0, acc: "" |}
-    -- Main function
-    let main_fn = emit_main_fn {| decls: decls, counter: fn_defs.counter |}
+    -- Main function (or test runner if in test mode)
+    let main_fn = match is_test_mode {| |}
+      case 1 => emit_test_main {| decls: decls, counter: fn_defs.counter |}
+      case 0 => emit_main_fn {| decls: decls, counter: fn_defs.counter |}
+    end
     -- Assemble
     let s1 = concat {| a: runtime, b: n |}
     let s2 = concat {| a: s1, b: "/* -- forward declarations -- */" |}

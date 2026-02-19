@@ -9,7 +9,7 @@ import Data.List (elemIndices)
 import Stele.Grammar (parseProgram)
 import Stele.Types (typeCheck)
 import Stele.Lower (lowerProgram)
-import Stele.EmitC (emitCFromIR)
+import Stele.EmitC (emitCFromIR, emitCFromIRTest)
 import Stele.EmitAArch64 (emitAArch64With, AArch64Target(..))
 import Stele.EmitX86_64 (emitX86_64, X86Target(..))
 import Stele.Runtime (runtimeSource)
@@ -41,6 +41,8 @@ main = do
     ["--native", "--run", file]                  -> withDetectedTarget (compileNativeAndRun file)
     ["--native", "--target", tgt, file]          -> withTarget tgt (compileNative file)
     ["--native", file]                           -> withDetectedTarget (compileNative file)
+    ["--test", "--run", file]                     -> compileTestAndRun file
+    ["--test", file]                             -> compileTest file
     ["--run", file]                              -> compileAndRun file
     [file]                                       -> compile file
     _                                            -> do
@@ -156,12 +158,51 @@ compileNativeAndRun path tgt = do
           hPutStrLn stderr $ "Native compilation failed (exit " ++ show n ++ ")"
           exitFailure
 
+compileTest :: FilePath -> IO ()
+compileTest path = do
+  src <- readFile path
+  case pipelineCTest src of
+    Left err -> do
+      hPutStrLn stderr err
+      exitFailure
+    Right cCode -> do
+      let outPath = replaceExtension path ".c"
+      writeFile outPath cCode
+      putStrLn $ "Compiled test runner to " ++ outPath
+
+compileTestAndRun :: FilePath -> IO ()
+compileTestAndRun path = do
+  src <- readFile path
+  case pipelineCTest src of
+    Left err -> do
+      hPutStrLn stderr err
+      exitFailure
+    Right cCode -> do
+      let cPath   = replaceExtension path ".c"
+          binPath = replaceExtension path ""
+      writeFile cPath cCode
+      exitCode <- rawSystem "cc" ["-o", binPath, cPath]
+      case exitCode of
+        ExitSuccess -> do
+          rc <- rawSystem binPath []
+          exitWith rc
+        ExitFailure n -> do
+          hPutStrLn stderr $ "C compilation failed (exit " ++ show n ++ ")"
+          exitFailure
+
 pipelineC :: String -> Either String String
 pipelineC src = do
   ast     <- parseProgram src
   checked <- typeCheck ast
   let ir = lowerProgram checked
   return (emitCFromIR ir)
+
+pipelineCTest :: String -> Either String String
+pipelineCTest src = do
+  ast     <- parseProgram src
+  checked <- typeCheck ast
+  let ir = lowerProgram checked
+  return (emitCFromIRTest ir)
 
 pipelineNative :: NativeTarget -> String -> Either String (String, String)
 pipelineNative tgt src = do

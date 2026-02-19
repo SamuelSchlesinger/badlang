@@ -57,7 +57,7 @@ import           Data.Char (isUpper)
 keywords :: [String]
 keywords = [ "struct", "fn", "do", "case", "end"
            , "let", "in", "print", "match"
-           , "readln", "readint", "oneof" ]
+           , "readln", "readint", "oneof", "test" ]
 
 -- | A keyword terminal that ensures it's not followed by an identifier char.
 kw :: String -> PExpr
@@ -74,7 +74,7 @@ steleGrammar = Map.fromList
   -- ── Program ──────────────────────────────────────────────────────────
   [ ("program", ws <.> many (label "decl" (rule "decl") <.> ws))
 
-  , ("decl", rule "struct_decl" </> rule "oneof_decl" </> rule "fn_decl" </> rule "do_decl")
+  , ("decl", rule "struct_decl" </> rule "oneof_decl" </> rule "fn_decl" </> rule "do_decl" </> rule "test_decl")
 
   -- ── Struct (record type) ───────────────────────────────────────────
   , ("struct_decl", seq_
@@ -146,6 +146,14 @@ steleGrammar = Map.fromList
   , ("do_decl", seq_
       [ kw "do", ws1
       , label "name" (rule "ident"), ws
+      , label "body" (many1 (rule "stmt" <.> ws))
+      , kw "end"
+      ])
+
+  -- ── Test (embedded test block) ──────────────────────────────────
+  , ("test_decl", seq_
+      [ kw "test", ws1
+      , label "name" (rule "str_lit"), ws
       , label "body" (many1 (rule "stmt" <.> ws))
       , kw "end"
       ])
@@ -379,6 +387,25 @@ treeToDecl (PTNode "do_decl" children) = do
   where
     isStmtNode (PTNode n _) = n `elem` ["let_stmt", "print_stmt", "expr_stmt", "stmt"]
     isStmtNode _ = False
+treeToDecl (PTNode "test_decl" children) = do
+  nameNode <- find1 "name" children
+  name <- extractStrLit nameNode
+  let stmtNodes = findAll "body" children >>= getChildren
+      stmts'    = filter isStmtNode stmtNodes
+  stmts <- mapM treeToStmt stmts'
+  return (TestDecl name stmts)
+  where
+    isStmtNode (PTNode n _) = n `elem` ["let_stmt", "print_stmt", "expr_stmt", "stmt"]
+    isStmtNode _ = False
+    extractStrLit (PTNode "str_lit" cs) = do
+      valNode <- find1 "value" cs
+      txt <- getText valNode
+      return (processEscapes txt)
+    extractStrLit (PTNode "name" cs) =
+      case findTyped "str_lit" cs of
+        [sl] -> extractStrLit sl
+        _    -> getText (PTNode "name" cs)
+    extractStrLit t = getText t
 treeToDecl t = Left $ "Expected declaration, got: " ++ take 100 (show t)
 
 treeToVariantDef :: ParseTree -> Either String (String, [Field])

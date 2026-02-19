@@ -33,13 +33,25 @@ static void stele_runtime_null(const char* where) {
     exit(1);
 }
 
+static void* stele_malloc(size_t size) {
+    void* p = malloc(size);
+    if (!p) { fprintf(stderr, "stele: out of memory (%zu bytes)\n", size); abort(); }
+    return p;
+}
+
+static char* stele_strdup(const char* s) {
+    char* p = strdup(s);
+    if (!p) { fprintf(stderr, "stele: out of memory (strdup)\n"); abort(); }
+    return p;
+}
+
 void rc_retain(Value* v) {
     if (!v) return;
     v->refcount++;
 }
 
 Value* make_int(int64_t n) {
-    Value* v = (Value*)malloc(sizeof(Value));
+    Value* v = (Value*)stele_malloc(sizeof(Value));
     v->tag = TAG_INT;
     v->refcount = 1;
     v->int_val = n;
@@ -47,26 +59,26 @@ Value* make_int(int64_t n) {
 }
 
 Value* make_str(const char* s) {
-    Value* v = (Value*)malloc(sizeof(Value));
+    Value* v = (Value*)stele_malloc(sizeof(Value));
     v->tag = TAG_STR;
     v->refcount = 1;
-    v->str_val = strdup(s);
+    v->str_val = stele_strdup(s);
     return v;
 }
 
 Value* make_void(void) {
-    Value* v = (Value*)malloc(sizeof(Value));
+    Value* v = (Value*)stele_malloc(sizeof(Value));
     v->tag = TAG_VOID;
     v->refcount = 1;
     return v;
 }
 
 Value* make_record(int n, ...) {
-    Value* v = (Value*)malloc(sizeof(Value));
+    Value* v = (Value*)stele_malloc(sizeof(Value));
     v->tag = TAG_RECORD;
     v->refcount = 1;
     v->record.num_fields = n;
-    v->record.fields = (Field*)malloc(sizeof(Field) * n);
+    v->record.fields = (Field*)stele_malloc(sizeof(Field) * n);
     __builtin_va_list ap;
     __builtin_va_start(ap, n);
     for (int i = 0; i < n; i++) {
@@ -76,13 +88,12 @@ Value* make_record(int n, ...) {
     __builtin_va_end(ap);
     return v;
 }
-
 Value* make_record_with_fields(int n, const char** names, Value** values) {
-    Value* v = (Value*)malloc(sizeof(Value));
+    Value* v = (Value*)stele_malloc(sizeof(Value));
     v->tag = TAG_RECORD;
     v->refcount = 1;
     v->record.num_fields = n;
-    v->record.fields = (Field*)malloc(sizeof(Field) * n);
+    v->record.fields = (Field*)stele_malloc(sizeof(Field) * n);
     for (int i = 0; i < n; i++) {
         v->record.fields[i].name = names[i];
         v->record.fields[i].value = values[i];
@@ -91,19 +102,33 @@ Value* make_record_with_fields(int n, const char** names, Value** values) {
 }
 
 void rc_release(Value* v) {
+    Value* stack[64];
+    int sp = 0;
     if (!v) return;
-    v->refcount--;
-    if (v->refcount > 0) return;
-    switch (v->tag) {
-        case TAG_STR: free(v->str_val); break;
-        case TAG_RECORD:
-            for (int i = 0; i < v->record.num_fields; i++)
-                rc_release(v->record.fields[i].value);
-            free(v->record.fields);
-            break;
-        default: break;
+    stack[sp++] = v;
+    while (sp > 0) {
+        Value* cur = stack[--sp];
+        if (!cur) continue;
+        cur->refcount--;
+        if (cur->refcount > 0) continue;
+        switch (cur->tag) {
+            case TAG_STR: free(cur->str_val); break;
+            case TAG_RECORD:
+                for (int i = 0; i < cur->record.num_fields; i++) {
+                    Value* child = cur->record.fields[i].value;
+                    if (!child) continue;
+                    if (sp < 64) {
+                        stack[sp++] = child;
+                    } else {
+                        rc_release(child);
+                    }
+                }
+                free(cur->record.fields);
+                break;
+            default: break;
+        }
+        free(cur);
     }
-    free(v);
 }
 
 Value* record_field(Value* rec, const char* name) {
@@ -180,13 +205,17 @@ void stele_write(Value* v) {
 }
 
 Value* runtime_readln(void) {
-    char buf[4096];
-    if (fgets(buf, sizeof(buf), stdin) == NULL) {
+    char* line = NULL;
+    size_t cap = 0;
+    ssize_t n = getline(&line, &cap, stdin);
+    if (n < 0) {
+        free(line);
         return make_str("");
     }
-    size_t len = strlen(buf);
-    if (len > 0 && buf[len-1] == '\n') buf[len-1] = '\0';
-    return make_str(buf);
+    if (n > 0 && line[n-1] == '\n') line[n-1] = '\0';
+    Value* result = make_str(line);
+    free(line);
+    return result;
 }
 
 Value* runtime_readint(void) {
@@ -203,8 +232,7 @@ void stele_match_fail(const char* msg) {
     fprintf(stderr, "Pattern match failure in %s\n", msg);
     exit(1);
 }
-
-/* ── file IO and argv built-in fns ───────────────────────────── */
+/* ── file IO and argv built-in functions ─────────────────────────── */
 
 int g_argc = 0;
 char** g_argv = NULL;
@@ -223,7 +251,7 @@ Value* fn_read(Value* arg) {
     fseek(f, 0, SEEK_END);
     long sz = ftell(f);
     fseek(f, 0, SEEK_SET);
-    char* buf = (char*)malloc(sz + 1);
+    char* buf = (char*)stele_malloc(sz + 1);
     fread(buf, 1, sz, f);
     buf[sz] = '\0';
     fclose(f);
@@ -339,16 +367,28 @@ Value* fn_sleep_ms(Value* arg) {
     return make_void();
 }
 
-/* ── string built-in fns ──────────────────────────────────── */
+/* ── string built-in functions ─────────────────────────────────── */
 
 Value* fn_strlen(Value* arg) {
     Value* sVal = record_field(arg, "s");
+    if (!sVal || sVal->tag != TAG_STR) {
+        fprintf(stderr, "stele runtime bug: strlen requires s: String\n");
+        exit(1);
+    }
     return make_int((int64_t)strlen(sVal->str_val));
 }
 
 Value* fn_char_at(Value* arg) {
     Value* sVal = record_field(arg, "s");
     Value* nVal = record_field(arg, "n");
+    if (!sVal || sVal->tag != TAG_STR) {
+        fprintf(stderr, "stele runtime bug: char_at requires s: String\n");
+        exit(1);
+    }
+    if (!nVal || nVal->tag != TAG_INT) {
+        fprintf(stderr, "stele runtime bug: char_at requires n: Int\n");
+        exit(1);
+    }
     int64_t idx = nVal->int_val;
     int64_t len = (int64_t)strlen(sVal->str_val);
     if (idx < 0 || idx >= len) return make_int(-1);
@@ -359,13 +399,25 @@ Value* fn_substr(Value* arg) {
     Value* sVal = record_field(arg, "s");
     Value* startVal = record_field(arg, "start");
     Value* lenVal = record_field(arg, "len");
+    if (!sVal || sVal->tag != TAG_STR) {
+        fprintf(stderr, "stele runtime bug: substr requires s: String\n");
+        exit(1);
+    }
+    if (!startVal || startVal->tag != TAG_INT) {
+        fprintf(stderr, "stele runtime bug: substr requires start: Int\n");
+        exit(1);
+    }
+    if (!lenVal || lenVal->tag != TAG_INT) {
+        fprintf(stderr, "stele runtime bug: substr requires len: Int\n");
+        exit(1);
+    }
     int64_t slen = (int64_t)strlen(sVal->str_val);
     int64_t start = startVal->int_val;
     int64_t rlen = lenVal->int_val;
     if (start < 0) start = 0;
     if (start >= slen || rlen <= 0) return make_str("");
     if (start + rlen > slen) rlen = slen - start;
-    char* buf = (char*)malloc(rlen + 1);
+    char* buf = (char*)stele_malloc(rlen + 1);
     memcpy(buf, sVal->str_val + start, rlen);
     buf[rlen] = '\0';
     Value* result = make_str(buf);
@@ -376,9 +428,17 @@ Value* fn_substr(Value* arg) {
 Value* fn_concat(Value* arg) {
     Value* aVal = record_field(arg, "a");
     Value* bVal = record_field(arg, "b");
+    if (!aVal || aVal->tag != TAG_STR) {
+        fprintf(stderr, "stele runtime bug: concat requires a: String\n");
+        exit(1);
+    }
+    if (!bVal || bVal->tag != TAG_STR) {
+        fprintf(stderr, "stele runtime bug: concat requires b: String\n");
+        exit(1);
+    }
     size_t la = strlen(aVal->str_val);
     size_t lb = strlen(bVal->str_val);
-    char* buf = (char*)malloc(la + lb + 1);
+    char* buf = (char*)stele_malloc(la + lb + 1);
     memcpy(buf, aVal->str_val, la);
     memcpy(buf + la, bVal->str_val, lb);
     buf[la + lb] = '\0';
@@ -389,6 +449,10 @@ Value* fn_concat(Value* arg) {
 
 Value* fn_int_to_str(Value* arg) {
     Value* nVal = record_field(arg, "n");
+    if (!nVal || nVal->tag != TAG_INT) {
+        fprintf(stderr, "stele runtime bug: int_to_str requires n: Int\n");
+        exit(1);
+    }
     char buf[32];
     snprintf(buf, sizeof(buf), "%lld", (long long)nVal->int_val);
     return make_str(buf);
@@ -396,6 +460,10 @@ Value* fn_int_to_str(Value* arg) {
 
 Value* fn_char_of_int(Value* arg) {
     Value* nVal = record_field(arg, "n");
+    if (!nVal || nVal->tag != TAG_INT) {
+        fprintf(stderr, "stele runtime bug: char_of_int requires n: Int\n");
+        exit(1);
+    }
     char buf[2] = { (char)nVal->int_val, '\0' };
     return make_str(buf);
 }
@@ -403,8 +471,45 @@ Value* fn_char_of_int(Value* arg) {
 Value* fn_strcmp(Value* arg) {
     Value* aVal = record_field(arg, "a");
     Value* bVal = record_field(arg, "b");
+    if (!aVal || aVal->tag != TAG_STR) {
+        fprintf(stderr, "stele runtime bug: strcmp requires a: String\n");
+        exit(1);
+    }
+    if (!bVal || bVal->tag != TAG_STR) {
+        fprintf(stderr, "stele runtime bug: strcmp requires b: String\n");
+        exit(1);
+    }
     int r = strcmp(aVal->str_val, bVal->str_val);
     return make_int((int64_t)(r < 0 ? -1 : (r > 0 ? 1 : 0)));
+}
+
+/* ── checked arithmetic ──────────────────────────────────────── */
+
+Value* checked_add(Value* a, Value* b) {
+    int64_t x = a->int_val, y = b->int_val, r;
+    if (__builtin_add_overflow(x, y, &r)) {
+        fprintf(stderr, "stele runtime error: integer overflow in addition\n");
+        abort();
+    }
+    return make_int(r);
+}
+
+Value* checked_sub(Value* a, Value* b) {
+    int64_t x = a->int_val, y = b->int_val, r;
+    if (__builtin_sub_overflow(x, y, &r)) {
+        fprintf(stderr, "stele runtime error: integer overflow in subtraction\n");
+        abort();
+    }
+    return make_int(r);
+}
+
+Value* checked_mul(Value* a, Value* b) {
+    int64_t x = a->int_val, y = b->int_val, r;
+    if (__builtin_mul_overflow(x, y, &r)) {
+        fprintf(stderr, "stele runtime error: integer overflow in multiplication\n");
+        abort();
+    }
+    return make_int(r);
 }
 
 /* ── end runtime ────────────────────────────────────────────── */

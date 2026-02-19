@@ -803,6 +803,7 @@ addDecl env (FnDecl name _clauses) = do
         env' = env { envFns = Map.insert name funTy (envFns env) }
     return (Right env')
 addDecl env (DoDecl _ _) = return (Right env)
+addDecl env (TestDecl _ _) = return (Right env)
 
 -- | Resolve a surface type annotation to an internal type.
 resolveTypeAnnInEnv :: Env -> TypeAnn -> Either TypeError Type
@@ -879,6 +880,11 @@ checkDecl env (DoDecl name stmts) = do
   result <- inferStmts env stmts
   case result of
     Left err -> return (Left $ "In do '" ++ name ++ "': " ++ err)
+    Right _  -> return (Right ())
+checkDecl env (TestDecl name stmts) = do
+  result <- inferStmts env stmts
+  case result of
+    Left err -> return (Left $ "In test '" ++ name ++ "': " ++ err)
     Right _  -> return (Right ())
 
 -- ---------------------------------------------------------------------------

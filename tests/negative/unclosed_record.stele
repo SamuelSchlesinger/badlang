@@ -1,0 +1,4 @@
+-- Missing closing |} for record literal
+do main
+  let x = {| a: 1, b: 2
+end

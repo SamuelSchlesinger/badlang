@@ -49,6 +49,7 @@ newtype IRProgram = IRProgram [IRDecl]
 data IRDecl
   = IRFunc !String IRFuncBody    -- ^ A fn compiled to IR
   | IRMain IRFuncBody            -- ^ The do main
+  | IRTest !String IRFuncBody    -- ^ A test declaration
 
 -- | A function body: a parameter name and a list of basic blocks
 -- (entry block first).

@@ -1,0 +1,12 @@
+fn double
+  case {| n |} => n * 2
+end
+
+test "double works"
+  let result = double {| n: 21 |}
+  print result
+end
+
+do main
+  print double {| n: 5 |}
+end

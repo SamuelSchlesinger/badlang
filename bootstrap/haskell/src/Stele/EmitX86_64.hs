@@ -202,6 +202,7 @@ emitDecl (IRFunc name body) = do
   tgt <- getTarget
   emitFunc (symPrefix tgt ++ "fn_" ++ name) body
 emitDecl (IRMain body) = emitMainFunc body
+emitDecl (IRTest _ _) = return ()
 
 -- ---------------------------------------------------------------------------
 -- Function emission

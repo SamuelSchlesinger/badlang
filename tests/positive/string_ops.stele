@@ -1,0 +1,19 @@
+-- Test string operations
+fn test_strings
+  case {| |} =>
+    let s = concat {| a: "hello", b: " world" |}
+    let len = strlen {| s: s |}
+    let ch = char_at {| s: s, n: 0 |}
+    let sub = substr {| s: s, start: 6, len: 5 |}
+    let cmp = strcmp {| a: "abc", b: "abc" |}
+    {| s: s, len: len, ch: ch, sub: sub, cmp: cmp |}
+end
+
+do main
+  let r = test_strings {| |}
+  print r.s
+  print r.len
+  print r.ch
+  print r.sub
+  print r.cmp
+end
