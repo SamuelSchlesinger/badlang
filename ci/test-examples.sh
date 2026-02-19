@@ -83,6 +83,8 @@ compile_and_run "subtyping" "$(printf '25\n5\n14\n0\n1\n2\n3\n200')"
 
 compile_and_run "test_strings" "$(printf '11\n104\n111\nhello\nfoobar\n42\nA\n0\n-1\n1\n1\n0')"
 
+compile_and_run "tco" "$(printf '0\n0\n0\n5000050000')"
+
 # ── Summary ─────────────────────────────────────────────────────
 
 echo ""
