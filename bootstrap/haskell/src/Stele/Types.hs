@@ -335,8 +335,10 @@ infer env (Var name) =
               return (Left $ "Variant '" ++ name ++ "' requires fields; use " ++ name ++ " {| ... |}")
         Nothing ->
           case Map.lookup name (envFns env) of
-            Just _ ->
-              return (Left $ "Cannot use fn '" ++ name ++ "' as a value; call it with an argument")
+            Just fnTy -> do
+              -- Allow using fn names as values (they become closures)
+              fnTy' <- instantiateType (envLevel env) fnTy
+              return (Right fnTy')
             Nothing ->
               return (Left $ "Unbound variable: " ++ name)
 
@@ -416,28 +418,54 @@ infer env (NamedRecord typeName fields) = do
                   Right () -> return (Right (TRec (RExtend "__tag" TStr expectedRow)))
       Nothing -> return (Left $ "Unknown type: " ++ typeName)
 
-infer env (Call fnName arg) = do
-  case Map.lookup fnName (envFns env) of
-    Nothing -> return (Left $ "Unknown fn: " ++ fnName)
-    Just fnTyTemplate -> do
+infer env (Closure clauses) = do
+  argTy <- freshTVar (envLevel env)
+  retTy <- freshTVar (envLevel env)
+  result <- inferClauses env argTy clauses
+  case result of
+    Left err -> return (Left $ "In closure: " ++ err)
+    Right ty -> do
+      _ <- unify ty retTy
+      return (Right (TFun argTy retTy))
+
+infer env (Call fnName arg) =
+  -- Check if it's a local variable (closure call) first
+  case Map.lookup fnName (envVars env) of
+    Just varTy -> do
       argResult <- infer env arg
       case argResult of
         Left err -> return (Left err)
         Right argTy -> do
-          fnTy <- instantiateType (envLevel env) fnTyTemplate
-          if fnName `elem` builtinFnNames
-            then do
-              retTy <- freshTVar (envLevel env)
-              e <- unify fnTy (TFun argTy retTy)
-              case e of
-                Left err -> return (Left $ "In call to '" ++ fnName ++ "': " ++ err)
-                Right () -> return (Right retTy)
-            else
-              case fnTy of
-                TFun _ retTy -> return (Right retTy)
-                _ -> do
+          retTy <- freshTVar (envLevel env)
+          varTy' <- resolveType varTy
+          case varTy' of
+            TFun _ rt -> return (Right rt)
+            TVar _ -> do
+              _ <- unify varTy' (TFun argTy retTy)
+              return (Right retTy)
+            _ -> return (Left $ "Cannot call non-function variable '" ++ fnName ++ "'")
+    Nothing ->
+      case Map.lookup fnName (envFns env) of
+        Nothing -> return (Left $ "Unknown fn: " ++ fnName)
+        Just fnTyTemplate -> do
+          argResult <- infer env arg
+          case argResult of
+            Left err -> return (Left err)
+            Right argTy -> do
+              fnTy <- instantiateType (envLevel env) fnTyTemplate
+              if fnName `elem` builtinFnNames
+                then do
                   retTy <- freshTVar (envLevel env)
-                  return (Right retTy)
+                  e <- unify fnTy (TFun argTy retTy)
+                  case e of
+                    Left err -> return (Left $ "In call to '" ++ fnName ++ "': " ++ err)
+                    Right () -> return (Right retTy)
+                else
+                  case fnTy of
+                    TFun _ retTy -> return (Right retTy)
+                    _ -> do
+                      retTy <- freshTVar (envLevel env)
+                      return (Right retTy)
 
 infer env (LetIn name value body) = do
   valTy <- infer env value

@@ -88,6 +88,7 @@ data Expr
   | Call        !String !Expr                     -- ^ @call f {| n: 5 |}@
   | LetIn       !String !Expr !Expr               -- ^ @let x = e1 in e2@ (desugared from let sequences)
   | Match       !Expr [CaseClause]                -- ^ @match expr case ... end@
+  | Closure     [CaseClause]                      -- ^ @fn case ... end@ — anonymous function
   | ReadLn                                        -- ^ @readln@ — read line from stdin
   | ReadInt                                       -- ^ @readint@ — read integer from stdin
   deriving (Show, Eq)

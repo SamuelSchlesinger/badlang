@@ -7,7 +7,7 @@
 
 /* ── stele runtime (reference counted) ────────────────────── */
 
-typedef enum { TAG_INT, TAG_STR, TAG_RECORD, TAG_VOID } Tag;
+typedef enum { TAG_INT, TAG_STR, TAG_RECORD, TAG_VOID, TAG_CLOSURE } Tag;
 
 typedef struct Field {
     const char* name;
@@ -21,6 +21,7 @@ typedef struct Value {
         int64_t int_val;
         char* str_val;
         struct { int num_fields; Field* fields; } record;
+        struct { struct Value* (*fn_ptr)(struct Value*); struct Value* env; } closure;
     };
 } Value;
 
@@ -86,6 +87,44 @@ static Value* make_record(int n, ...) {
     __builtin_va_end(ap);
     return v;
 }
+static Value* make_closure(Value* (*fn_ptr)(Value*), Value* env) {
+    Value* v = (Value*)stele_malloc(sizeof(Value));
+    v->tag = TAG_CLOSURE;
+    v->refcount = 1;
+    v->closure.fn_ptr = fn_ptr;
+    v->closure.env = env;
+    if (env) rc_retain(env);
+    return v;
+}
+
+static Value* stele_call_closure(Value* clos, Value* arg) {
+    if (!clos || clos->tag != TAG_CLOSURE) {
+        fprintf(stderr, "stele: attempt to call non-closure value\n");
+        exit(1);
+    }
+    /* Merge env fields into arg */
+    Value* env = clos->closure.env;
+    if (env && env->tag == TAG_RECORD && arg && arg->tag == TAG_RECORD) {
+        int total = arg->record.num_fields + env->record.num_fields;
+        Value* merged = (Value*)stele_malloc(sizeof(Value));
+        merged->tag = TAG_RECORD;
+        merged->refcount = 1;
+        merged->record.num_fields = total;
+        merged->record.fields = (Field*)stele_malloc(sizeof(Field) * total);
+        for (int i = 0; i < arg->record.num_fields; i++) {
+            merged->record.fields[i] = arg->record.fields[i];
+            rc_retain(arg->record.fields[i].value);
+        }
+        for (int i = 0; i < env->record.num_fields; i++) {
+            merged->record.fields[arg->record.num_fields + i] = env->record.fields[i];
+            rc_retain(env->record.fields[i].value);
+        }
+        Value* result = clos->closure.fn_ptr(merged);
+        rc_release(merged);
+        return result;
+    }
+    return clos->closure.fn_ptr(arg);
+}
 
 static void rc_release(Value* v) {
     Value* stack[64];
@@ -110,6 +149,15 @@ static void rc_release(Value* v) {
                     }
                 }
                 free(cur->record.fields);
+                break;
+            case TAG_CLOSURE:
+                if (cur->closure.env) {
+                    if (sp < 64) {
+                        stack[sp++] = cur->closure.env;
+                    } else {
+                        rc_release(cur->closure.env);
+                    }
+                }
                 break;
             default: break;
         }
@@ -136,6 +184,7 @@ static int stele_value_eq(Value* a, Value* b) {
         case TAG_INT: return a->int_val == b->int_val;
         case TAG_STR: return strcmp(a->str_val, b->str_val) == 0;
         case TAG_VOID: return 1;
+        case TAG_CLOSURE: return a == b;
         case TAG_RECORD:
             if (a->record.num_fields != b->record.num_fields) return 0;
             for (int i = 0; i < a->record.num_fields; i++) {
@@ -155,9 +204,10 @@ static int stele_value_neq(Value* a, Value* b) {
 static void stele_print(Value* v) {
     if (!v) stele_runtime_null("print");
     switch (v->tag) {
-        case TAG_INT:    printf("%lld\n", (long long)v->int_val); break;
-        case TAG_STR:    printf("%s\n", v->str_val); break;
-        case TAG_VOID:   printf("void\n"); break;
+        case TAG_INT:     printf("%lld\n", (long long)v->int_val); break;
+        case TAG_STR:     printf("%s\n", v->str_val); break;
+        case TAG_VOID:    printf("void\n"); break;
+        case TAG_CLOSURE: printf("<closure>\n"); break;
         case TAG_RECORD: {
             printf("{| ");
             for (int i = 0; i < v->record.num_fields; i++) {
@@ -174,9 +224,10 @@ static void stele_print(Value* v) {
 static void stele_write(Value* v) {
     if (!v) stele_runtime_null("write");
     switch (v->tag) {
-        case TAG_INT:    printf("%lld", (long long)v->int_val); break;
-        case TAG_STR:    printf("%s", v->str_val); break;
-        case TAG_VOID:   printf("void"); break;
+        case TAG_INT:     printf("%lld", (long long)v->int_val); break;
+        case TAG_STR:     printf("%s", v->str_val); break;
+        case TAG_VOID:    printf("void"); break;
+        case TAG_CLOSURE: printf("<closure>"); break;
         case TAG_RECORD: {
             printf("{| ");
             for (int i = 0; i < v->record.num_fields; i++) {

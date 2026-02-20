@@ -54,6 +54,7 @@ build_self_hosted() {
     cat "$ROOT_DIR/compiler/util.stele" \
         "$ROOT_DIR/compiler/lexer.stele" \
         "$ROOT_DIR/compiler/parser.stele" \
+        "$ROOT_DIR/compiler/lambda_lift.stele" \
         "$ROOT_DIR/compiler/codegen_c.stele" \
         "$ROOT_DIR/compiler/codegen_aarch64.stele" \
         "$ROOT_DIR/compiler/codegen_x86.stele" \
@@ -138,6 +139,7 @@ run_positive_test_hs_native() {
     local actual
     if ! actual=$("$STELE_HS" --native --target "$target" --run "$src" 2>&1); then
         echo "FAIL (native compile+run failed)"
+        echo "    Output: $(echo "$actual" | head -5)"
         FAIL=$((FAIL + 1))
         rm -f "${src%.stele}.s" "${src%.stele}_rt.c" "${src%.stele}"
         return

@@ -162,6 +162,8 @@ countVars (IRFuncBody _ blocks) =
     instrVars (IRecord v _)      = [v]
     instrVars (IFieldGet v _ _)  = [v]
     instrVars (ICall v _ _)      = [v]
+    instrVars (IClosure v _ _)   = [v]
+    instrVars (ICallClosure v _ _) = [v]
     instrVars (IRetain _)        = []
     instrVars (IRelease _)       = []
     instrVars (ITagCheck v _ _)  = [v]
@@ -328,6 +330,7 @@ emitInstrAsm (IBinOp v Eq l r) = do
   loadVar l "%rdi"
   loadVar r "%rsi"
   line $ "  callq " ++ symPrefix tgt ++ "stele_value_eq"
+  line "  movl %eax, %edi"  -- zero-extend 32-bit int return to 64-bit arg
   line $ "  callq " ++ symPrefix tgt ++ "make_int"
   storeVar v "%rax"
 
@@ -336,6 +339,7 @@ emitInstrAsm (IBinOp v Neq l r) = do
   loadVar l "%rdi"
   loadVar r "%rsi"
   line $ "  callq " ++ symPrefix tgt ++ "stele_value_neq"
+  line "  movl %eax, %edi"  -- zero-extend 32-bit int return to 64-bit arg
   line $ "  callq " ++ symPrefix tgt ++ "make_int"
   storeVar v "%rax"
 
@@ -406,6 +410,55 @@ emitInstrAsm (ICall v riteName arg) = do
   tgt <- getTarget
   loadVar arg "%rdi"
   line $ "  callq " ++ symPrefix tgt ++ "fn_" ++ riteName
+  storeVar v "%rax"
+
+emitInstrAsm (IClosure v lambdaName envFields) = do
+  tgt <- getTarget
+  if null envFields
+    then do
+      -- No captures: make_closure(fn_ptr, NULL)
+      line $ "  leaq " ++ symPrefix tgt ++ "fn_" ++ lambdaName ++ "(%rip), %rdi"
+      line "  xorq %rsi, %rsi"
+      line $ "  callq " ++ symPrefix tgt ++ "make_closure"
+      storeVar v "%rax"
+    else do
+      -- Retain captured values so env record owns them
+      mapM_ (\(_, fvar) -> do
+        loadVar fvar "%rdi"
+        line $ "  callq " ++ symPrefix tgt ++ "rc_retain"
+        ) envFields
+      -- Build env record
+      let n = length envFields
+          namesSize = n * 8
+          valsSize = n * 8
+          totalSize = align16 (namesSize + valsSize)
+      when (totalSize > 0) $
+        line $ "  subq $" ++ show totalSize ++ ", %rsp"
+      mapM_ (\(i, (fname, fvar)) -> do
+        lbl <- addString fname
+        line $ "  leaq " ++ lbl ++ "(%rip), %r8"
+        line $ "  movq %r8, " ++ show (i * 8) ++ "(%rsp)"
+        loadVar fvar "%r9"
+        line $ "  movq %r9, " ++ show (namesSize + i * 8) ++ "(%rsp)"
+        ) (zip [0..] envFields)
+      loadImm64 "%rdi" (fromIntegral n)
+      line "  movq %rsp, %rsi"
+      line $ "  leaq " ++ show namesSize ++ "(%rsp), %rdx"
+      line $ "  callq " ++ symPrefix tgt ++ "make_record_with_fields"
+      when (totalSize > 0) $
+        line $ "  addq $" ++ show totalSize ++ ", %rsp"
+      -- %rax = env record, save to %rbx (callee-saved)
+      line "  movq %rax, %rbx"
+      line $ "  leaq " ++ symPrefix tgt ++ "fn_" ++ lambdaName ++ "(%rip), %rdi"
+      line "  movq %rbx, %rsi"
+      line $ "  callq " ++ symPrefix tgt ++ "make_closure"
+      storeVar v "%rax"
+
+emitInstrAsm (ICallClosure v clos arg) = do
+  tgt <- getTarget
+  loadVar clos "%rdi"
+  loadVar arg "%rsi"
+  line $ "  callq " ++ symPrefix tgt ++ "stele_call_closure"
   storeVar v "%rax"
 
 emitInstrAsm (IRetain v) = do

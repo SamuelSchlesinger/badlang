@@ -25,6 +25,9 @@ data LowerState = LowerState
   , currentInstrs   :: [Instr]     -- current block (reversed order)
   , currentBlockId  :: BlockId
   , nullaryVariants :: Set.Set String  -- names of nullary oneof variants
+  , lambdaFuncs     :: [IRDecl]    -- generated lambda functions (reversed)
+  , knownFns        :: Set.Set String  -- top-level fn names + builtins
+  , localVars       :: Set.Set String  -- variables in scope (for free var analysis)
   }
 
 type Lower = State LowerState
@@ -82,6 +85,15 @@ cName name  = "stele_" ++ name
 -- ---------------------------------------------------------------------------
 
 -- | Lower a complete Stele program to IR.
+-- | Built-in function names (from the runtime).
+builtinFnNames :: Set.Set String
+builtinFnNames = Set.fromList
+  [ "read", "write", "argc", "argv", "sh", "terminate"
+  , "spawn", "await", "sleep_ms"
+  , "strlen", "char_at", "substr", "concat"
+  , "int_to_str", "char_of_int", "strcmp"
+  ]
+
 lowerProgram :: Program -> IRProgram
 lowerProgram (Program decls) = evalState go initState
   where
@@ -91,10 +103,14 @@ lowerProgram (Program decls) = evalState go initState
               , (vname, fields) <- variants
               , null fields
               ]
-    initState = LowerState 0 [] [] "entry" nullaries
+    -- Collect top-level function names
+    topFns = Set.fromList [name | FnDecl name _ <- decls]
+    allFns = Set.union topFns builtinFnNames
+    initState = LowerState 0 [] [] "entry" nullaries [] allFns Set.empty
     go = do
       irDecls <- concat <$> mapM lowerDecl decls
-      return (IRProgram irDecls)
+      s <- get
+      return (IRProgram (reverse (lambdaFuncs s) ++ irDecls))
 
 lowerDecl :: Decl -> Lower [IRDecl]
 lowerDecl (StructDecl _ _) = return []
@@ -172,8 +188,13 @@ lowerClause scrut pat body clauseLbl nextLbl mkTerm = do
   -- Body block
   modify' (\s -> s { currentBlockId = bodyLbl, currentInstrs = [] })
   bindings <- lowerPatternBindings scrut pat
+  -- Add pattern-bound names to localVars so closures in the body can capture them
+  let patNames = patternBoundNames pat
+  savedLocals <- localVars <$> get
+  modify' (\st -> st { localVars = Set.union patNames (localVars st) })
   result <- lowerExpr body
-  -- Release pattern bindings in reverse order
+  -- Restore localVars and release pattern bindings in reverse order
+  modify' (\st -> st { localVars = savedLocals })
   mapM_ (\v -> emit (IRelease v)) (reverse bindings)
   finishBlockFinal (mkTerm result)
 
@@ -211,6 +232,9 @@ lowerClauseTCO scrut fnName pat body clauseLbl nextLbl tcoEntryLbl = do
   lowerPatternTest scrut pat bodyLbl nextLbl
   modify' (\s -> s { currentBlockId = bodyLbl, currentInstrs = [] })
   bindings <- lowerPatternBindings scrut pat
+  -- Add pattern-bound names to localVars so closures in the body can capture them
+  let patNames = patternBoundNames pat
+  modify' (\st -> st { localVars = Set.union patNames (localVars st) })
   lowerTailBody fnName body bindings tcoEntryLbl
 
 -- | Lower an expression in tail position, recursively handling LetIn chains
@@ -274,6 +298,8 @@ lowerTailMatchClause fnName scrut pat armBody clauseLbl nextLbl outerBindings tc
   lowerPatternTest scrut pat bodyLbl nextLbl
   modify' (\s -> s { currentBlockId = bodyLbl, currentInstrs = [] })
   patBindings <- lowerPatternBindings scrut pat
+  let patNames = patternBoundNames pat
+  modify' (\st -> st { localVars = Set.union patNames (localVars st) })
   lowerTailBody fnName armBody (outerBindings ++ patBindings) tcoEntryLbl
 
 -- ---------------------------------------------------------------------------
@@ -550,11 +576,26 @@ lowerExpr (NamedRecord typeName fields) = do
   return t
 
 lowerExpr (Call fnName arg) = do
-  varg <- lowerExpr arg
-  t <- freshVar "_t"
-  emit (ICall t fnName varg)
-  emit (IRelease varg)
-  return t
+  s <- get
+  if Set.member fnName (knownFns s)
+    then do
+      -- Direct function call
+      varg <- lowerExpr arg
+      t <- freshVar "_t"
+      emit (ICall t fnName varg)
+      emit (IRelease varg)
+      return t
+    else do
+      -- Closure call: load the variable, call via stele_call_closure
+      closVar <- freshVar "_t"
+      emit (ICopy closVar (cName fnName))
+      emit (IRetain closVar)
+      varg <- lowerExpr arg
+      t <- freshVar "_t"
+      emit (ICallClosure t closVar varg)
+      emit (IRelease closVar)
+      emit (IRelease varg)
+      return t
 
 lowerExpr ReadLn = do
   t <- freshVar "_t"
@@ -569,11 +610,12 @@ lowerExpr ReadInt = do
 lowerExpr (LetIn name value body) = do
   -- Flatten let-in chains
   let (bindings, finalBody) = collectLetChain (LetIn name value body)
-  -- Lower each binding
+  -- Lower each binding, tracking locals
   boundNames <- mapM (\(n, v) -> do
     vr <- lowerExpr v
     let mangledName = cName n
     emit (ICopy mangledName vr)
+    modify' (\st -> st { localVars = Set.insert n (localVars st) })
     return mangledName
     ) bindings
   -- Lower body
@@ -581,6 +623,47 @@ lowerExpr (LetIn name value body) = do
   -- Release bindings in reverse order
   mapM_ (\v -> emit (IRelease v)) (reverse boundNames)
   return result
+
+lowerExpr (Closure clauses) = do
+  -- Free variable analysis
+  let patBound cl = patternBoundNames (casePattern cl)
+      bodyFree cl = Set.difference (exprFreeVars (caseBody cl)) (patBound cl)
+      allFree = Set.unions (map bodyFree clauses)
+  s <- get
+  let captured = Set.toList (Set.intersection allFree (localVars s))
+  -- Generate a fresh lambda name and register it as a known function
+  lambdaName <- freshVar "_lambda"
+  modify' (\st -> st { knownFns = Set.insert lambdaName (knownFns st) })
+  -- Save state and generate lambda body as a top-level function
+  let savedBlocks = emittedBlocks s
+      savedInstrs = currentInstrs s
+      savedBlockId = currentBlockId s
+      savedLocals = localVars s
+  modify' (\st -> st { emittedBlocks = [], currentInstrs = [], currentBlockId = "entry"
+                      , localVars = Set.empty })
+  -- Extract captured variables from arg (env is merged into arg at call time).
+  -- No retain needed: arg stays alive for the entire function call, so
+  -- field pointers remain valid.  Body references do their own retain/release.
+  mapM_ (\v -> do
+    let mangledName = cName v
+    emit (IFieldGet mangledName "arg" v)
+    modify' (\st -> st { localVars = Set.insert v (localVars st) })
+    ) captured
+  -- Lower the lambda body like a fn
+  lowerClauses "arg" clauses ("closure '" ++ lambdaName ++ "'") TReturn
+  blocks <- collectBlocks
+  let lambdaBody = IRFuncBody "arg" blocks
+  -- Restore state and register the lambda
+  modify' (\st -> st { emittedBlocks = savedBlocks
+                      , currentInstrs = savedInstrs
+                      , currentBlockId = savedBlockId
+                      , localVars = savedLocals
+                      , lambdaFuncs = IRFunc lambdaName lambdaBody : lambdaFuncs st })
+  -- Emit closure creation: make_closure(fn_lambda_N, env_record)
+  t <- freshVar "_t"
+  let envFields = map (\v -> (v, cName v)) captured
+  emit (IClosure t lambdaName envFields)
+  return t
 
 lowerExpr (Match scrutinee clauses) = do
   scrResult <- lowerExpr scrutinee
@@ -630,7 +713,11 @@ lowerMatchClause scrut mch doneLbl pat body clauseLbl nextLbl = do
   -- Body block
   modify' (\s -> s { currentBlockId = bodyLbl, currentInstrs = [] })
   bindings <- lowerPatternBindings scrut pat
+  let patNames = patternBoundNames pat
+  savedLocals <- localVars <$> get
+  modify' (\st -> st { localVars = Set.union patNames (localVars st) })
   result <- lowerExpr body
+  modify' (\st -> st { localVars = savedLocals })
   mapM_ (\v -> emit (IRelease v)) (reverse bindings)
   emit (ICopy mch result)
   finishBlock (TJump doneLbl) doneLbl
@@ -699,6 +786,7 @@ lowerStmt (LetStmt name expr) = do
   v <- lowerExpr expr
   let mangledName = cName name
   emit (ICopy mangledName v)
+  modify' (\st -> st { localVars = Set.insert name (localVars st) })
   return [mangledName]
 lowerStmt (PrintStmt expr) = do
   v <- lowerExpr expr
@@ -716,3 +804,52 @@ lowerStmt (ExprStmt expr) = do
   v <- lowerExpr expr
   emit (IRelease v)
   return []
+
+-- ---------------------------------------------------------------------------
+-- Free variable analysis
+-- ---------------------------------------------------------------------------
+
+-- | Collect free variable references from an expression.
+exprFreeVars :: Expr -> Set.Set String
+exprFreeVars (IntLit _) = Set.empty
+exprFreeVars (StrLit _) = Set.empty
+exprFreeVars (Var name) = Set.singleton name
+exprFreeVars (BinOp _ e1 e2) = Set.union (exprFreeVars e1) (exprFreeVars e2)
+exprFreeVars (UnOp _ e) = exprFreeVars e
+exprFreeVars (FieldAccess e _) = exprFreeVars e
+exprFreeVars (Record fields) = Set.unions [exprFreeVars e | (_, e) <- fields]
+exprFreeVars (NamedRecord _ fields) = Set.unions [exprFreeVars e | (_, e) <- fields]
+exprFreeVars (Call fn arg) = Set.insert fn (exprFreeVars arg)
+exprFreeVars (LetIn name val body) =
+  Set.union (exprFreeVars val) (Set.delete name (exprFreeVars body))
+exprFreeVars (Match scrut clauses) =
+  Set.union (exprFreeVars scrut) (Set.unions (map clauseFreeVars clauses))
+exprFreeVars (Closure clauses) = Set.unions (map clauseFreeVars clauses)
+exprFreeVars ReadLn = Set.empty
+exprFreeVars ReadInt = Set.empty
+
+-- | Free variables in a case clause (body minus pattern bindings).
+clauseFreeVars :: CaseClause -> Set.Set String
+clauseFreeVars (CaseClause pat body) =
+  Set.difference (exprFreeVars body) (patternBoundNames pat)
+
+-- | Names bound by a pattern.
+patternBoundNames :: Pattern -> Set.Set String
+patternBoundNames (PVar name) = Set.singleton name
+patternBoundNames (PLit _) = Set.empty
+patternBoundNames PWild = Set.empty
+patternBoundNames (PRec fields) = Set.unions
+  [patFieldBoundNames pf | pf <- fields]
+patternBoundNames (PVariant _ inner) = patternBoundNames inner
+
+-- | Names bound by a pattern field.
+patFieldBoundNames :: PatField -> Set.Set String
+patFieldBoundNames (PatField name mPat) =
+  case mPat of
+    Nothing -> Set.singleton name
+    Just (PVar n) -> if isTypeLike n then Set.singleton name else Set.singleton n
+    Just PWild -> Set.empty
+    Just _ -> Set.singleton name
+  where
+    isTypeLike n = n `elem` ["Int", "String", "Void"] ||
+                   (not (null n) && isUpper (head n))

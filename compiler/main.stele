@@ -5,7 +5,8 @@
 do main
   let src = read {| path: argv {| n: 1 |} |}
   let tokens = tokenize {| src: src |}
-  let decls = parse_program {| tokens: tokens |}
+  let parsed_decls = parse_program {| tokens: tokens |}
+  let decls = lift_lambdas {| decls: parsed_decls |}
   let mode = get_mode {| |}
   let output = match mode
     case 1 => emit_asm {| decls: decls |}
