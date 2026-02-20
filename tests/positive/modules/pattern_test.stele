@@ -1,0 +1,16 @@
+import Math
+
+do main
+  let c = Math.Circle {| radius: 10 |}
+  let r = Math.Rect {| w: 3, h: 4 |}
+  let a1 = match c
+    case Math.Circle {| radius |} => radius * radius
+    case Math.Rect {| w, h |} => w * h
+  end
+  print a1
+  let a2 = match r
+    case Math.Circle {| radius |} => radius * radius
+    case Math.Rect {| w, h |} => w * h
+  end
+  print a2
+end

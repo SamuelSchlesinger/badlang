@@ -57,7 +57,8 @@ import           Data.Char (isUpper)
 keywords :: [String]
 keywords = [ "struct", "fn", "do", "case", "end"
            , "let", "in", "print", "match"
-           , "readln", "readint", "oneof", "test" ]
+           , "readln", "readint", "oneof", "test"
+           , "import", "open" ]
 
 -- | A keyword terminal that ensures it's not followed by an identifier char.
 kw :: String -> PExpr
@@ -74,7 +75,18 @@ steleGrammar = Map.fromList
   -- ── Program ──────────────────────────────────────────────────────────
   [ ("program", ws <.> many (label "decl" (rule "decl") <.> ws))
 
-  , ("decl", rule "struct_decl" </> rule "oneof_decl" </> rule "fn_decl" </> rule "do_decl" </> rule "test_decl")
+  , ("decl", rule "import_decl" </> rule "open_decl" </> rule "struct_decl" </> rule "oneof_decl" </> rule "fn_decl" </> rule "do_decl" </> rule "test_decl")
+
+  -- ── Import / Open ──────────────────────────────────────────────────
+  , ("import_decl", seq_
+      [ kw "import", ws1
+      , label "module_name" (rule "upper_ident")
+      ])
+
+  , ("open_decl", seq_
+      [ kw "open", ws1
+      , label "module_name" (rule "upper_ident")
+      ])
 
   -- ── Struct (record type) ───────────────────────────────────────────
   , ("struct_decl", seq_
@@ -227,10 +239,47 @@ steleGrammar = Map.fromList
       </> rule "readln_expr"
       </> rule "readint_expr"
       </> rule "record_lit"
+      </> rule "qual_named_record_expr"
+      </> rule "qual_call_record_expr"
+      </> rule "qual_call_paren_expr"
+      </> rule "qual_var_expr"
       </> rule "named_record_expr"
       </> rule "fn_call_record_expr"
       </> rule "fn_call_paren_expr"
       </> rule "var_expr")
+
+  -- Qualified call with record: Math.factorial {| ... |}
+  , ("qual_call_record_expr", seq_
+      [ label "module_name" (rule "upper_ident")
+      , lit "."
+      , label "fn" (rule "ident"), ws
+      , label "arg" (rule "record_lit")
+      ])
+
+  -- Qualified call with parens: Math.factorial(expr)
+  , ("qual_call_paren_expr", seq_
+      [ label "module_name" (rule "upper_ident")
+      , lit "."
+      , label "fn" (rule "ident")
+      , lit "(", ws
+      , label "arg" (rule "expr")
+      , ws, lit ")"
+      ])
+
+  -- Qualified named record: Math.Point {| ... |}
+  , ("qual_named_record_expr", seq_
+      [ label "module_name" (rule "upper_ident")
+      , lit "."
+      , label "type_name" (rule "upper_ident"), ws
+      , label "fields" (rule "record_lit")
+      ])
+
+  -- Qualified variable: Math.pi
+  , ("qual_var_expr", seq_
+      [ label "module_name" (rule "upper_ident")
+      , lit "."
+      , label "name" (rule "ident")
+      ])
 
   -- Closure expression: fn case ... end (anonymous function)
   , ("closure_expr", seq_
@@ -304,11 +353,20 @@ steleGrammar = Map.fromList
 
   -- ── Patterns ─────────────────────────────────────────────────────────
   , ("pattern",
-      rule "variant_pat"
+      rule "qual_variant_pat"
+      </> rule "variant_pat"
       </> rule "record_pat"
       </> rule "lit_pat"
       </> rule "wild_pat"
       </> rule "var_pat")
+
+  -- Qualified variant pattern: Math.Circle {| ... |}
+  , ("qual_variant_pat", seq_
+      [ label "qmodule" (rule "upper_ident")
+      , lit "."
+      , label "vname" (rule "upper_ident"), ws
+      , label "vpat" (rule "record_pat")
+      ])
 
   -- Variant pattern: UpperCase identifier followed by a record pattern
   , ("variant_pat", seq_
@@ -414,6 +472,12 @@ treeToDecl (PTNode "test_decl" children) = do
         [sl] -> extractStrLit sl
         _    -> getText (PTNode "name" cs)
     extractStrLit t = getText t
+treeToDecl (PTNode "import_decl" children) = do
+  name <- getText =<< find1 "module_name" children
+  return (ImportDecl name)
+treeToDecl (PTNode "open_decl" children) = do
+  name <- getText =<< find1 "module_name" children
+  return (OpenDecl name)
 treeToDecl t = Left $ "Expected declaration, got: " ++ take 100 (show t)
 
 treeToVariantDef :: ParseTree -> Either String (String, [Field])
@@ -547,6 +611,27 @@ treeToExpr (PTNode "named_record_expr" children) = do
   fieldsNode <- find1 "fields" children
   fields <- treeToRecordFields fieldsNode
   return (NamedRecord typeName fields)
+treeToExpr (PTNode "qual_call_record_expr" children) = do
+  modName <- getText =<< find1 "module_name" children
+  fnName  <- getText =<< find1 "fn" children
+  argNode <- find1 "arg" children
+  arg     <- treeToExpr argNode
+  return (QualCall modName fnName arg)
+treeToExpr (PTNode "qual_call_paren_expr" children) = do
+  modName <- getText =<< find1 "module_name" children
+  fnName  <- getText =<< find1 "fn" children
+  arg     <- treeToExpr =<< find1 "arg" children
+  return (QualCall modName fnName arg)
+treeToExpr (PTNode "qual_named_record_expr" children) = do
+  modName  <- getText =<< find1 "module_name" children
+  typeName <- getText =<< find1 "type_name" children
+  fieldsNode <- find1 "fields" children
+  fields <- treeToRecordFields fieldsNode
+  return (QualRecord modName typeName fields)
+treeToExpr (PTNode "qual_var_expr" children) = do
+  modName <- getText =<< find1 "module_name" children
+  name    <- getText =<< find1 "name" children
+  return (QualVar modName name)
 treeToExpr (PTNode "match_expr" children) = do
   scrutinee <- treeToExpr =<< find1 "scrutinee" children
   clauses <- mapM treeToCaseClause (findTyped "case_clause" (findAll "clauses" children >>= getChildren))
@@ -714,6 +799,11 @@ treeToPattern (PTNode "fpat" [child]) = treeToPattern child
 treeToPattern (PTNode "fpat" children) = treeToPattern (Prelude.head children)
 treeToPattern (PTNode "vpat" [child]) = treeToPattern child
 treeToPattern (PTNode "vpat" children) = treeToPattern (Prelude.head children)
+treeToPattern (PTNode "qual_variant_pat" children) = do
+  modName  <- getText =<< find1 "qmodule" children
+  vname    <- getText =<< find1 "vname" children
+  innerPat <- treeToPattern =<< find1 "vpat" children
+  return (PQualVariant modName vname innerPat)
 treeToPattern (PTNode "variant_pat" children) = do
   vname <- getText =<< find1 "vname" children
   innerPat <- treeToPattern =<< find1 "vpat" children

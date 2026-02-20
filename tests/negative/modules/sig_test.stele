@@ -1,0 +1,6 @@
+import Restricted
+
+do main
+  let x = Restricted.helper {| n: 5 |}
+  print x
+end

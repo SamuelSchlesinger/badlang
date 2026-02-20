@@ -1,3 +1,5 @@
+open Util
+
 -- ============================================================
 -- Lexer Helpers
 -- ============================================================
@@ -149,7 +151,9 @@ fn is_keyword
     (str_eq {| a: word, b: "match" |}) ||
     (str_eq {| a: word, b: "readln" |}) ||
     (str_eq {| a: word, b: "readint" |}) ||
-    (str_eq {| a: word, b: "test" |})
+    (str_eq {| a: word, b: "test" |}) ||
+    (str_eq {| a: word, b: "import" |}) ||
+    (str_eq {| a: word, b: "open" |})
 end
 
 fn peek_char

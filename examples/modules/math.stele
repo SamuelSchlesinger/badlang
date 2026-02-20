@@ -1,0 +1,42 @@
+-- Math utilities: basic arithmetic helpers
+
+fn abs
+  case {| n |} =>
+    match n >= 0
+      case 1 => n
+      case 0 => 0 - n
+    end
+end
+
+fn max
+  case {| a, b |} =>
+    match a >= b
+      case 1 => a
+      case 0 => b
+    end
+end
+
+fn min
+  case {| a, b |} =>
+    match a >= b
+      case 1 => b
+      case 0 => a
+    end
+end
+
+fn pow
+  case {| base, exp: 0 |} => 1
+  case {| base, exp |} => base * (pow {| base: base, exp: exp - 1 |})
+end
+
+fn factorial
+  case {| n: 0 |} => 1
+  case {| n |} => n * (factorial {| n: n - 1 |})
+end
+
+fn gcd
+  case {| a, b: 0 |} => a
+  case {| a, b |} =>
+    let r = a - (a / b) * b
+    gcd {| a: b, b: r |}
+end

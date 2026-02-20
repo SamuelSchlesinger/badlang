@@ -2,11 +2,21 @@
 -- Main: Compiler Pipeline
 -- ============================================================
 
+open Lexer
+open Parser
+open Resolve
+open Lambda_lift
+open Codegen_c
+open Codegen_aarch64
+open Codegen_x86
+
 do main
   let src = read {| path: argv {| n: 1 |} |}
   let tokens = tokenize {| src: src |}
   let parsed_decls = parse_program {| tokens: tokens |}
-  let decls = lift_lambdas {| decls: parsed_decls |}
+  let base_path = extract_base_path {| filepath: argv {| n: 1 |} |}
+  let resolved_decls = resolve_modules {| decls: parsed_decls, base_path: base_path |}
+  let decls = lift_lambdas {| decls: resolved_decls |}
   let mode = get_mode {| |}
   let output = match mode
     case 1 => emit_asm {| decls: decls |}

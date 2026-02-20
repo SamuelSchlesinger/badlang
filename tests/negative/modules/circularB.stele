@@ -1,0 +1,5 @@
+import CircularA
+
+fn b_func
+  case {| n |} => n + 2
+end

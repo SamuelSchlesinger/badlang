@@ -1,0 +1,60 @@
+-- List utilities: cons lists with map, fold, and filter
+
+fn nil
+  case {| |} => {| tag: "nil" |}
+end
+
+fn cons
+  case {| head, tail |} => {| tag: "cons", head: head, tail: tail |}
+end
+
+fn is_nil
+  case {| list |} =>
+    match list.tag
+      case "nil" => 1
+      case "cons" => 0
+    end
+end
+
+fn fold
+  case {| list, acc, f |} =>
+    match is_nil {| list: list |}
+      case 1 => acc
+      case 0 =>
+        let new_acc = f {| acc: acc, elem: list.head |}
+        fold {| list: list.tail, acc: new_acc, f: f |}
+    end
+end
+
+fn map
+  case {| list, f |} =>
+    match is_nil {| list: list |}
+      case 1 => nil {| |}
+      case 0 =>
+        let new_head = f {| x: list.head |}
+        cons {| head: new_head, tail: map {| list: list.tail, f: f |} |}
+    end
+end
+
+fn filter
+  case {| list, pred |} =>
+    match is_nil {| list: list |}
+      case 1 => nil {| |}
+      case 0 =>
+        let rest = filter {| list: list.tail, pred: pred |}
+        match pred {| x: list.head |}
+          case 1 => cons {| head: list.head, tail: rest |}
+          case 0 => rest
+        end
+    end
+end
+
+fn length
+  case {| list |} =>
+    fold {| list: list, acc: 0, f: fn case {| acc |} => acc + 1 end |}
+end
+
+fn sum
+  case {| list |} =>
+    fold {| list: list, acc: 0, f: fn case {| acc, elem |} => acc + elem end |}
+end

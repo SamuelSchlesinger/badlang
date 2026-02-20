@@ -218,6 +218,8 @@ unify' (TFun a1 r1) (TFun a2 r2) = do
     Left err -> return (Left err)
     Right () -> unify r1 r2
 unify' (TRec r1) (TRec r2) = unifyRow r1 r2
+unify' (TVar ref1) (TVar ref2)
+  | ref1 == ref2 = return (Right ())
 unify' (TVar ref) t = bindTVar ref t
 unify' t (TVar ref) = bindTVar ref t
 unify' t1 t2 = return (Left $ "Cannot unify " ++ showType t1 ++ " with " ++ showType t2)
@@ -482,6 +484,12 @@ infer env (Match scrutinee clauses) = do
     Left err -> return (Left err)
     Right scrType -> inferClauses env scrType clauses
 
+-- Qualified expressions should be resolved before type checking, but
+-- handle them as their desugared forms as a fallback.
+infer env (QualCall modN fn arg) = infer env (Call (modN ++ "__" ++ fn) arg)
+infer env (QualVar modN name) = infer env (Var (modN ++ "__" ++ name))
+infer env (QualRecord modN typN fields) = infer env (NamedRecord (modN ++ "__" ++ typN) fields)
+
 inferBinOp :: BinOp -> Type -> Type -> IO (Either TypeError Type)
 inferBinOp op ty1 ty2
   | op `elem` [Add, Sub, Mul, Div, Mod] = do
@@ -583,6 +591,8 @@ inferPattern env (PVariant vname innerPat) ty =
         Right () -> do
           freshVariantTy <- freshTVar (envLevel env)
           inferPattern env innerPat freshVariantTy
+inferPattern env (PQualVariant modN vname innerPat) ty =
+  inferPattern env (PVariant (modN ++ "__" ++ vname) innerPat) ty
 inferPattern _ (PLit _) _ = return (Left "Unsupported pattern literal")
 
 -- | Infer row type from pattern fields, collecting bindings.
@@ -832,6 +842,8 @@ addDecl env (FnDecl name _clauses) = do
     return (Right env')
 addDecl env (DoDecl _ _) = return (Right env)
 addDecl env (TestDecl _ _) = return (Right env)
+addDecl env (ImportDecl _) = return (Right env)
+addDecl env (OpenDecl _) = return (Right env)
 
 -- | Resolve a surface type annotation to an internal type.
 resolveTypeAnnInEnv :: Env -> TypeAnn -> Either TypeError Type
@@ -914,6 +926,8 @@ checkDecl env (TestDecl name stmts) = do
   case result of
     Left err -> return (Left $ "In test '" ++ name ++ "': " ++ err)
     Right _  -> return (Right ())
+checkDecl _ (ImportDecl _) = return (Right ())
+checkDecl _ (OpenDecl _) = return (Right ())
 
 -- ---------------------------------------------------------------------------
 -- Type display (for error messages)

@@ -1,0 +1,5 @@
+import Base
+
+fn left_op
+  case {| n |} => Base.double {| n: n |} + 1
+end

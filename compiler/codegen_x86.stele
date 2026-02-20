@@ -1,3 +1,7 @@
+open Util
+open Parser
+open Codegen_c
+
 -- ============================================================
 -- x86-64 Code Generation: Platform Helpers
 -- ============================================================
@@ -496,10 +500,24 @@ fn emit_let_bindings_loop_x86
         let rv = emit_expr_x86 {| node: head.value, state: state, mode: mode |}
         let vs = lookup_slot {| name: rv.var, slots: rv.state.slots |}
         let cn = c_name {| name: head.name |}
+        let already = list_contains_str {| list: names_acc, s: head.name |}
+        -- If variable already bound, release old value before reassigning
+        let release_old = match already
+          case 1 =>
+            let old_slot = lookup_slot {| name: cn, slots: rv.state.slots |}
+            let pfx = sym_prefix_x86 {| mode: mode |}
+            let load_old = emit_load_slot_x86 {| slot: old_slot, reg: "%rdi" |}
+            concat {| a: load_old, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "rc_release" |} |} |} |}
+          case 0 => ""
+        end
         let new_slots = cons {| head: {| name: cn, slot: vs |}, tail: rv.state.slots |}
         let ns = {| counter: rv.state.counter, slot_counter: rv.state.slot_counter, slots: new_slots, strs: rv.state.strs |}
-        let new_names = cons {| head: head.name, tail: names_acc |}
-        emit_let_bindings_loop_x86 {| bindings: tail, state: ns, code_acc: concat {| a: code_acc, b: rv.code |}, names_acc: new_names, mode: mode |}
+        let new_names = match already
+          case 1 => names_acc
+          case 0 => cons {| head: head.name, tail: names_acc |}
+        end
+        let new_code = cat3 {| a: code_acc, b: rv.code, c: release_old |}
+        emit_let_bindings_loop_x86 {| bindings: tail, state: ns, code_acc: new_code, names_acc: new_names, mode: mode |}
     end
 end
 
@@ -942,15 +960,28 @@ end
 -- ============================================================
 
 fn emit_stmt_x86
-  case {| stmt, state, mode |} =>
+  case {| stmt, state, mode, declared |} =>
     let pfx = sym_prefix_x86 {| mode: mode |}
     match stmt.tag
       case "stmt_let" =>
         let r = emit_expr_x86 {| node: stmt.value, state: state, mode: mode |}
         let cn = c_name {| name: stmt.name |}
         let vs = lookup_slot {| name: r.var, slots: r.state.slots |}
+        let already = list_contains_str {| list: declared, s: stmt.name |}
+        -- If variable already declared, release old value before reassigning
+        let release_old = match already
+          case 1 =>
+            let old_slot = lookup_slot {| name: cn, slots: r.state.slots |}
+            let load_old = emit_load_slot_x86 {| slot: old_slot, reg: "%rdi" |}
+            concat {| a: load_old, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "rc_release" |} |} |} |}
+          case 0 => ""
+        end
         let ns = cons {| head: {| name: cn, slot: vs |}, tail: r.state.slots |}
-        {| code: r.code, state: {| counter: r.state.counter, slot_counter: r.state.slot_counter, slots: ns, strs: r.state.strs |} |}
+        let new_declared = match already
+          case 1 => declared
+          case 0 => cons {| head: stmt.name, tail: declared |}
+        end
+        {| code: concat {| a: r.code, b: release_old |}, state: {| counter: r.state.counter, slot_counter: r.state.slot_counter, slots: ns, strs: r.state.strs |}, declared: new_declared |}
       case "stmt_stele_print" =>
         let r = emit_expr_x86 {| node: stmt.value, state: state, mode: mode |}
         let vs = lookup_slot {| name: r.var, slots: r.state.slots |}
@@ -959,7 +990,7 @@ fn emit_stmt_x86
         let s1 = concat {| a: r.code, b: load |}
         let s2 = concat {| a: s1, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "stele_print" |} |} |} |}
         let s3 = concat {| a: s2, b: rload |}
-        {| code: concat {| a: s3, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "rc_release" |} |} |} |}, state: r.state |}
+        {| code: concat {| a: s3, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "rc_release" |} |} |} |}, state: r.state, declared: declared |}
       case "stmt_stele_write" =>
         let r = emit_expr_x86 {| node: stmt.value, state: state, mode: mode |}
         let vs = lookup_slot {| name: r.var, slots: r.state.slots |}
@@ -968,25 +999,25 @@ fn emit_stmt_x86
         let s1 = concat {| a: r.code, b: load |}
         let s2 = concat {| a: s1, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "stele_write" |} |} |} |}
         let s3 = concat {| a: s2, b: rload |}
-        {| code: concat {| a: s3, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "rc_release" |} |} |} |}, state: r.state |}
+        {| code: concat {| a: s3, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "rc_release" |} |} |} |}, state: r.state, declared: declared |}
       case "stmt_expr" =>
         let r = emit_expr_x86 {| node: stmt.value, state: state, mode: mode |}
         let vs = lookup_slot {| name: r.var, slots: r.state.slots |}
         let load = emit_load_slot_x86 {| slot: vs, reg: "%rdi" |}
         let s1 = concat {| a: r.code, b: load |}
-        {| code: concat {| a: s1, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "rc_release" |} |} |} |}, state: r.state |}
+        {| code: concat {| a: s1, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "rc_release" |} |} |} |}, state: r.state, declared: declared |}
     end
 end
 
 fn emit_stmts_loop_x86
-  case {| stmts, state, acc, mode |} =>
+  case {| stmts, state, acc, mode, declared |} =>
     match is_nil {| list: stmts |}
       case 1 => {| code: acc, state: state |}
       case 0 =>
         let head = list_head {| list: stmts |}
         let tail = list_tail {| list: stmts |}
-        let r = emit_stmt_x86 {| stmt: head, state: state, mode: mode |}
-        emit_stmts_loop_x86 {| stmts: tail, state: r.state, acc: concat {| a: acc, b: r.code |}, mode: mode |}
+        let r = emit_stmt_x86 {| stmt: head, state: state, mode: mode, declared: declared |}
+        emit_stmts_loop_x86 {| stmts: tail, state: r.state, acc: concat {| a: acc, b: r.code |}, mode: mode, declared: r.declared |}
     end
 end
 
@@ -1020,7 +1051,7 @@ fn emit_main_fn_x86
       case "some" =>
         let init = nil {| |}
         let fst = {| counter: state.counter, slot_counter: 0, slots: init, strs: state.strs |}
-        let rs = emit_stmts_loop_x86 {| stmts: rit.stmts, state: fst, acc: "", mode: mode |}
+        let rs = emit_stmts_loop_x86 {| stmts: rit.stmts, state: fst, acc: "", mode: mode, declared: nil {| |} |}
         let empty = nil {| |}
         let let_names = collect_let_names {| stmts: rit.stmts, acc: empty |}
         let rel = gen_release_code_x86 {| names: let_names, slots: rs.state.slots, mode: mode |}

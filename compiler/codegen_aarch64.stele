@@ -1,35 +1,14 @@
+open Util
+open Parser
+open Codegen_c
+
 -- ============================================================
 -- AArch64 Code Generation: Helpers
 -- ============================================================
 
--- Allocate a stack slot for a named variable
-fn alloc_slot
-  case {| name, state |} =>
-    let slot = state.slot_counter
-    let new_slots = cons {| head: {| name: name, slot: slot |}, tail: state.slots |}
-    {| slot: slot, state: {| counter: state.counter, slot_counter: slot + 1, slots: new_slots, strs: state.strs |} |}
-end
-
--- Look up a named variable's slot number
-fn lookup_slot
-  case {| name, slots |} =>
-    match slots
-      case {| tag: "cons", head, tail |} =>
-        match str_eq {| a: head.name, b: name |}
-          case 1 => head.slot
-          case 0 => lookup_slot {| name: name, slots: tail |}
-        end
-    end
-end
-
 -- Stack offset for a slot: -(16 + (slot+1)*8)
 fn slot_offset
   case {| slot |} => 0 - (16 + (slot + 1) * 8)
-end
-
--- Append newline to a string (assembly line terminator)
-fn asm_ln
-  case {| s |} => concat {| a: s, b: nl {| |} |}
 end
 
 -- Generate load from stack slot into register
@@ -138,69 +117,6 @@ fn emit_mov_imm
             end
         end
     end
-end
-
--- Search string table for existing entry
-fn find_str_asm
-  case {| s, strs |} =>
-    match is_nil {| list: strs |}
-      case 1 => {| tag: "none" |}
-      case 0 =>
-        let head = list_head {| list: strs |}
-        let tail = list_tail {| list: strs |}
-        match str_eq {| a: head.value, b: s |}
-          case 1 => {| tag: "some", label: head.label |}
-          case 0 => find_str_asm {| s: s, strs: tail |}
-        end
-    end
-end
-
--- Add string to table (with dedup), return label
-fn add_str_asm
-  case {| s, state |} =>
-    let found = find_str_asm {| s: s, strs: state.strs |}
-    match found.tag
-      case "some" => {| label: found.label, state: state |}
-      case "none" =>
-        let idx = list_len {| list: state.strs |}
-        let label = concat {| a: "Lstr", b: int_to_str {| n: idx |} |}
-        let entry = {| label: label, value: s |}
-        let new_strs = cons {| head: entry, tail: state.strs |}
-        {| label: label, state: {| counter: state.counter, slot_counter: state.slot_counter, slots: state.slots, strs: new_strs |} |}
-    end
-end
-
--- Escape a character for .asciz
-fn asm_escape_char
-  case {| c |} =>
-    match c
-      case 34 => concat {| a: bsl {| |}, b: dq {| |} |}
-      case 92 =>
-        let b = bsl {| |}
-        concat {| a: b, b: b |}
-      case 10 => concat {| a: bsl {| |}, b: "n" |}
-      case 9 => concat {| a: bsl {| |}, b: "t" |}
-      case 13 => concat {| a: bsl {| |}, b: "r" |}
-      case _ => char_of_int {| n: c |}
-    end
-end
-
-fn asm_escape_loop
-  case {| s, pos, acc |} =>
-    let slen = strlen {| s: s |}
-    match pos >= slen
-      case 1 => acc
-      case 0 =>
-        let ch = char_at {| s: s, n: pos |}
-        let esc = asm_escape_char {| c: ch |}
-        asm_escape_loop {| s: s, pos: pos + 1, acc: concat {| a: acc, b: esc |} |}
-    end
-end
-
-fn asm_string
-  case {| s |} =>
-    let escaped = asm_escape_loop {| s: s, pos: 0, acc: "" |}
-    wrap {| prefix: dq {| |}, s: escaped, suffix: dq {| |} |}
 end
 
 -- Fixed-size function prologue/epilogue (2064-byte frame)
@@ -692,10 +608,23 @@ fn emit_let_bindings_loop_asm
         let rv = emit_expr_asm {| node: head.value, state: state |}
         let vs = lookup_slot {| name: rv.var, slots: rv.state.slots |}
         let cn = c_name {| name: head.name |}
+        let already = list_contains_str {| list: names_acc, s: head.name |}
+        -- If variable already bound, release old value before reassigning
+        let release_old = match already
+          case 1 =>
+            let old_slot = lookup_slot {| name: cn, slots: rv.state.slots |}
+            let load_old = emit_load_slot {| slot: old_slot, reg: "x0" |}
+            concat {| a: load_old, b: asm_bl {| name: "rc_release" |} |}
+          case 0 => ""
+        end
         let new_slots = cons {| head: {| name: cn, slot: vs |}, tail: rv.state.slots |}
         let ns = {| counter: rv.state.counter, slot_counter: rv.state.slot_counter, slots: new_slots, strs: rv.state.strs |}
-        let new_names = cons {| head: head.name, tail: names_acc |}
-        emit_let_bindings_loop_asm {| bindings: tail, state: ns, code_acc: concat {| a: code_acc, b: rv.code |}, names_acc: new_names |}
+        let new_names = match already
+          case 1 => names_acc
+          case 0 => cons {| head: head.name, tail: names_acc |}
+        end
+        let new_code = cat3 {| a: code_acc, b: rv.code, c: release_old |}
+        emit_let_bindings_loop_asm {| bindings: tail, state: ns, code_acc: new_code, names_acc: new_names |}
     end
 end
 
@@ -1111,14 +1040,27 @@ end
 -- ============================================================
 
 fn emit_stmt_asm
-  case {| stmt, state |} =>
+  case {| stmt, state, declared |} =>
     match stmt.tag
       case "stmt_let" =>
         let r = emit_expr_asm {| node: stmt.value, state: state |}
         let cn = c_name {| name: stmt.name |}
         let vs = lookup_slot {| name: r.var, slots: r.state.slots |}
+        let already = list_contains_str {| list: declared, s: stmt.name |}
+        -- If variable already declared, release old value before reassigning
+        let release_old = match already
+          case 1 =>
+            let old_slot = lookup_slot {| name: cn, slots: r.state.slots |}
+            let load_old = emit_load_slot {| slot: old_slot, reg: "x0" |}
+            concat {| a: load_old, b: asm_bl {| name: "rc_release" |} |}
+          case 0 => ""
+        end
         let ns = cons {| head: {| name: cn, slot: vs |}, tail: r.state.slots |}
-        {| code: r.code, state: {| counter: r.state.counter, slot_counter: r.state.slot_counter, slots: ns, strs: r.state.strs |} |}
+        let new_declared = match already
+          case 1 => declared
+          case 0 => cons {| head: stmt.name, tail: declared |}
+        end
+        {| code: concat {| a: r.code, b: release_old |}, state: {| counter: r.state.counter, slot_counter: r.state.slot_counter, slots: ns, strs: r.state.strs |}, declared: new_declared |}
       case "stmt_stele_print" =>
         let r = emit_expr_asm {| node: stmt.value, state: state |}
         let vs = lookup_slot {| name: r.var, slots: r.state.slots |}
@@ -1127,7 +1069,7 @@ fn emit_stmt_asm
         let s1 = concat {| a: r.code, b: load |}
         let s2 = concat {| a: s1, b: asm_bl {| name: "stele_print" |} |}
         let s3 = concat {| a: s2, b: rload |}
-        {| code: concat {| a: s3, b: asm_bl {| name: "rc_release" |} |}, state: r.state |}
+        {| code: concat {| a: s3, b: asm_bl {| name: "rc_release" |} |}, state: r.state, declared: declared |}
       case "stmt_stele_write" =>
         let r = emit_expr_asm {| node: stmt.value, state: state |}
         let vs = lookup_slot {| name: r.var, slots: r.state.slots |}
@@ -1136,25 +1078,25 @@ fn emit_stmt_asm
         let s1 = concat {| a: r.code, b: load |}
         let s2 = concat {| a: s1, b: asm_bl {| name: "stele_write" |} |}
         let s3 = concat {| a: s2, b: rload |}
-        {| code: concat {| a: s3, b: asm_bl {| name: "rc_release" |} |}, state: r.state |}
+        {| code: concat {| a: s3, b: asm_bl {| name: "rc_release" |} |}, state: r.state, declared: declared |}
       case "stmt_expr" =>
         let r = emit_expr_asm {| node: stmt.value, state: state |}
         let vs = lookup_slot {| name: r.var, slots: r.state.slots |}
         let load = emit_load_slot {| slot: vs, reg: "x0" |}
         let s1 = concat {| a: r.code, b: load |}
-        {| code: concat {| a: s1, b: asm_bl {| name: "rc_release" |} |}, state: r.state |}
+        {| code: concat {| a: s1, b: asm_bl {| name: "rc_release" |} |}, state: r.state, declared: declared |}
     end
 end
 
 fn emit_stmts_loop_asm
-  case {| stmts, state, acc |} =>
+  case {| stmts, state, acc, declared |} =>
     match is_nil {| list: stmts |}
       case 1 => {| code: acc, state: state |}
       case 0 =>
         let head = list_head {| list: stmts |}
         let tail = list_tail {| list: stmts |}
-        let r = emit_stmt_asm {| stmt: head, state: state |}
-        emit_stmts_loop_asm {| stmts: tail, state: r.state, acc: concat {| a: acc, b: r.code |} |}
+        let r = emit_stmt_asm {| stmt: head, state: state, declared: declared |}
+        emit_stmts_loop_asm {| stmts: tail, state: r.state, acc: concat {| a: acc, b: r.code |}, declared: r.declared |}
     end
 end
 
@@ -1183,7 +1125,7 @@ fn emit_main_fn_asm
       case "some" =>
         let init = nil {| |}
         let fst = {| counter: state.counter, slot_counter: 0, slots: init, strs: state.strs |}
-        let rs = emit_stmts_loop_asm {| stmts: rit.stmts, state: fst, acc: "" |}
+        let rs = emit_stmts_loop_asm {| stmts: rit.stmts, state: fst, acc: "", declared: nil {| |} |}
         let empty = nil {| |}
         let let_names = collect_let_names {| stmts: rit.stmts, acc: empty |}
         let rel = gen_release_code_asm {| names: let_names, slots: rs.state.slots |}
@@ -1218,20 +1160,6 @@ fn emit_decls_loop_asm
           case 0 => {| code: "", state: state |}
         end
         emit_decls_loop_asm {| decls: tail, state: r.state, acc: concat {| a: acc, b: r.code |} |}
-    end
-end
-
-fn emit_string_table_loop
-  case {| strs, acc |} =>
-    let n = nl {| |}
-    match is_nil {| list: strs |}
-      case 1 => acc
-      case 0 =>
-        let head = list_head {| list: strs |}
-        let tail = list_tail {| list: strs |}
-        let esc = asm_string {| s: head.value |}
-        let line = cat5 {| a: head.label, b: ":", c: concat {| a: n, b: "  .asciz " |}, d: esc, e: n |}
-        emit_string_table_loop {| strs: tail, acc: concat {| a: acc, b: line |} |}
     end
 end
 

@@ -31,17 +31,8 @@ NATIVE_RUNTIME="$SCRIPT_DIR/runtime/runtime.c"
 STDLIB_DIR="$SCRIPT_DIR/stdlib"
 WORK_DIR=$(mktemp -d)
 
-# Concatenate compiler modules in dependency order
-COMPILER_SRC="$WORK_DIR/compiler_combined.stele"
-cat "$SCRIPT_DIR/compiler/util.stele" \
-    "$SCRIPT_DIR/compiler/lexer.stele" \
-    "$SCRIPT_DIR/compiler/parser.stele" \
-    "$SCRIPT_DIR/compiler/lambda_lift.stele" \
-    "$SCRIPT_DIR/compiler/codegen_c.stele" \
-    "$SCRIPT_DIR/compiler/codegen_aarch64.stele" \
-    "$SCRIPT_DIR/compiler/codegen_x86.stele" \
-    "$SCRIPT_DIR/compiler/main.stele" \
-    > "$COMPILER_SRC"
+# Use module-based compilation (no concatenation needed)
+COMPILER_SRC="$SCRIPT_DIR/compiler/main.stele"
 
 trap 'rm -rf "$WORK_DIR"' EXIT
 
@@ -127,7 +118,7 @@ echo ""
 echo "[gen0] Compiling compiler.stele with Haskell compiler..."
 if command -v cabal >/dev/null 2>&1; then
     (cd "$SCRIPT_DIR/bootstrap/haskell" && cabal run stele -- "$COMPILER_SRC") >/dev/null 2>&1
-    cp "$WORK_DIR/compiler_combined.c" "$WORK_DIR/gen0.c"
+    cp "$SCRIPT_DIR/compiler/main.c" "$WORK_DIR/gen0.c"
 else
     if [[ -f "$SCRIPT_DIR/compiler.c" ]]; then
         echo "[gen0] cabal not found; reusing existing $SCRIPT_DIR/compiler.c"

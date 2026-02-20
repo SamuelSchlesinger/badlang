@@ -49,21 +49,11 @@ fi
 # ── Build the self-hosted compiler (gen0) ─────────────────────────
 
 build_self_hosted() {
-    local compiler_src
-    compiler_src="$(mktemp /tmp/stele_compiler_XXXXXX.stele)"
-    cat "$ROOT_DIR/compiler/util.stele" \
-        "$ROOT_DIR/compiler/lexer.stele" \
-        "$ROOT_DIR/compiler/parser.stele" \
-        "$ROOT_DIR/compiler/lambda_lift.stele" \
-        "$ROOT_DIR/compiler/codegen_c.stele" \
-        "$ROOT_DIR/compiler/codegen_aarch64.stele" \
-        "$ROOT_DIR/compiler/codegen_x86.stele" \
-        "$ROOT_DIR/compiler/main.stele" > "$compiler_src"
+    local compiler_src="$ROOT_DIR/compiler/main.stele"
+    local c_out="$ROOT_DIR/compiler/main.c"
 
-    local c_out="${compiler_src%.stele}.c"
     if ! "$STELE_HS" "$compiler_src" >/dev/null 2>&1; then
         echo "WARNING: Failed to compile self-hosted compiler, skipping those tests"
-        rm -f "$compiler_src" "$c_out"
         return 1
     fi
 
@@ -71,10 +61,8 @@ build_self_hosted() {
     mkdir -p "$ROOT_DIR/.build"
     if ! cc "${CC_FLAGS[@]}" -o "$bin_out" "$c_out" 2>/dev/null; then
         echo "WARNING: Failed to build self-hosted compiler binary, skipping those tests"
-        rm -f "$compiler_src" "$c_out"
         return 1
     fi
-    rm -f "$compiler_src" "$c_out"
     echo "$bin_out"
 }
 

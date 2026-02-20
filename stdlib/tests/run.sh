@@ -9,20 +9,6 @@ STELA_BIN="${STELA_BIN:-$DEFAULT_STELA_BIN}"
 HOST_OS="$(uname -s)"
 HOST_ARCH="$(uname -m)"
 
-# Concatenate compiler modules in dependency order (same as bootstrap.sh)
-make_compiler_src() {
-  local out="$1"
-  cat "$ROOT_DIR/compiler/util.stele" \
-      "$ROOT_DIR/compiler/lexer.stele" \
-      "$ROOT_DIR/compiler/parser.stele" \
-      "$ROOT_DIR/compiler/lambda_lift.stele" \
-      "$ROOT_DIR/compiler/codegen_c.stele" \
-      "$ROOT_DIR/compiler/codegen_aarch64.stele" \
-      "$ROOT_DIR/compiler/codegen_x86.stele" \
-      "$ROOT_DIR/compiler/main.stele" \
-      > "$out"
-}
-
 rebuild_compiler() {
   if ! command -v cabal >/dev/null 2>&1; then
     echo "Missing compiler binary: $COMPILER_BIN"
@@ -31,13 +17,9 @@ rebuild_compiler() {
   fi
   echo "Rebuilding compiler binary: $COMPILER_BIN"
   mkdir -p "$(dirname "$COMPILER_BIN")"
-  local tmp_dir
-  tmp_dir="$(mktemp -d)"
-  local tmp_src="$tmp_dir/compiler.stele"
-  make_compiler_src "$tmp_src"
-  (cd "$ROOT_DIR/bootstrap/haskell" && cabal run exe:stele -- "$tmp_src") >/dev/null
-  cc -O1 -o "$COMPILER_BIN" "$tmp_dir/compiler.c"
-  rm -rf "$tmp_dir"
+  local compiler_src="$ROOT_DIR/compiler/main.stele"
+  (cd "$ROOT_DIR/bootstrap/haskell" && cabal run exe:stele -- "$compiler_src") >/dev/null
+  cc -O1 -o "$COMPILER_BIN" "$ROOT_DIR/compiler/main.c"
 }
 
 rebuild_stela() {

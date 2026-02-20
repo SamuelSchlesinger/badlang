@@ -1,0 +1,864 @@
+-- ============================================================
+-- Module Resolution
+-- ============================================================
+-- Resolves import/open declarations by loading module files,
+-- mangling their names with Module__ prefix, and rewriting
+-- references (qualified and opened) to their mangled forms.
+
+open Util
+open Lexer
+open Parser
+
+-- ============================================================
+-- Error Handling
+-- ============================================================
+
+fn resolve_error
+  case {| msg |} =>
+    let full = cat3 {| a: "resolve error: ", b: msg, c: char_of_int {| n: 10 |} |}
+    let _ = write {| path: "/dev/stderr", content: full |}
+    terminate {| code: 1 |}
+end
+
+-- ============================================================
+-- Builtins
+-- ============================================================
+
+fn make_builtins
+  case {| |} =>
+    let e = nil {| |}
+    let b = cons {| head: "read", tail: e |}
+    let b = cons {| head: "write", tail: b |}
+    let b = cons {| head: "argc", tail: b |}
+    let b = cons {| head: "argv", tail: b |}
+    let b = cons {| head: "sh", tail: b |}
+    let b = cons {| head: "terminate", tail: b |}
+    let b = cons {| head: "spawn", tail: b |}
+    let b = cons {| head: "await", tail: b |}
+    let b = cons {| head: "sleep_ms", tail: b |}
+    let b = cons {| head: "strlen", tail: b |}
+    let b = cons {| head: "char_at", tail: b |}
+    let b = cons {| head: "substr", tail: b |}
+    let b = cons {| head: "concat", tail: b |}
+    let b = cons {| head: "int_to_str", tail: b |}
+    let b = cons {| head: "char_of_int", tail: b |}
+    let b = cons {| head: "strcmp", tail: b |}
+    b
+end
+
+fn is_builtin
+  case {| builtins, name |} =>
+    list_contains_str {| list: builtins, s: name |}
+end
+
+-- ============================================================
+-- Name Mangling
+-- ============================================================
+
+fn mangle
+  case {| mod_name, name |} =>
+    cat3 {| a: mod_name, b: "__", c: name |}
+end
+
+-- ============================================================
+-- Filename Derivation
+-- ============================================================
+
+fn lowercase_first_char
+  case {| s |} =>
+    let slen = strlen {| s: s |}
+    match slen == 0
+      case 1 => s
+      case 0 =>
+        let first = char_at {| s: s, n: 0 |}
+        let is_upper = (first >= 65) && (first <= 90)
+        match is_upper
+          case 1 =>
+            let lower = char_of_int {| n: first + 32 |}
+            let rest = substr {| s: s, start: 1, len: slen - 1 |}
+            concat {| a: lower, b: rest |}
+          case 0 => s
+        end
+    end
+end
+
+fn module_to_filename
+  case {| mod_name |} =>
+    let base = lowercase_first_char {| s: mod_name |}
+    concat {| a: base, b: ".stele" |}
+end
+
+-- Extract directory part from a filepath
+-- e.g. "compiler/main.stele" => "compiler/"
+-- e.g. "main.stele" => ""
+fn extract_base_path
+  case {| filepath |} =>
+    extract_base_path_loop {| filepath: filepath, pos: strlen {| s: filepath |} - 1 |}
+end
+
+fn extract_base_path_loop
+  case {| filepath, pos |} =>
+    match pos < 0
+      case 1 => ""
+      case 0 =>
+        let ch = char_at {| s: filepath, n: pos |}
+        match ch == 47
+          case 1 => substr {| s: filepath, start: 0, len: pos + 1 |}
+          case 0 => extract_base_path_loop {| filepath: filepath, pos: pos - 1 |}
+        end
+    end
+end
+
+-- ============================================================
+-- Declaration Helpers
+-- ============================================================
+
+fn decl_name
+  case {| decl |} =>
+    match str_eq {| a: decl.tag, b: "decl_import" |}
+      case 1 => ""
+      case 0 =>
+        match str_eq {| a: decl.tag, b: "decl_open" |}
+          case 1 => ""
+          case 0 => decl.name
+        end
+    end
+end
+
+fn all_decl_names
+  case {| decls |} =>
+    all_decl_names_loop {| decls: decls, acc: nil {| |} |}
+end
+
+fn all_decl_names_loop
+  case {| decls, acc |} =>
+    match is_nil {| list: decls |}
+      case 1 => acc
+      case 0 =>
+        let head = list_head {| list: decls |}
+        let tail = list_tail {| list: decls |}
+        let name = decl_name {| decl: head |}
+        let new_acc = match str_eq {| a: name, b: "" |}
+          case 1 => acc
+          case 0 => cons {| head: name, tail: acc |}
+        end
+        all_decl_names_loop {| decls: tail, acc: new_acc |}
+    end
+end
+
+-- ============================================================
+-- Declaration Partitioning
+-- ============================================================
+
+fn partition_decls
+  case {| decls |} =>
+    partition_decls_loop {| decls: decls, imports: nil {| |}, opens: nil {| |}, locals: nil {| |} |}
+end
+
+fn partition_decls_loop
+  case {| decls, imports, opens, locals |} =>
+    match is_nil {| list: decls |}
+      case 1 =>
+        {| imports: list_reverse {| list: imports |}, opens: list_reverse {| list: opens |}, locals: list_reverse {| list: locals |} |}
+      case 0 =>
+        let head = list_head {| list: decls |}
+        let tail = list_tail {| list: decls |}
+        match head.tag
+          case "decl_import" =>
+            partition_decls_loop {| decls: tail, imports: cons {| head: head.name, tail: imports |}, opens: opens, locals: locals |}
+          case "decl_open" =>
+            partition_decls_loop {| decls: tail, imports: imports, opens: cons {| head: head.name, tail: opens |}, locals: locals |}
+          case _ =>
+            partition_decls_loop {| decls: tail, imports: imports, opens: opens, locals: cons {| head: head, tail: locals |} |}
+        end
+    end
+end
+
+-- ============================================================
+-- Module Loading
+-- ============================================================
+
+-- State: {| loaded: list of {| name, decls, exports |}, loading: list of names |}
+
+fn make_resolve_state
+  case {| |} =>
+    {| loaded: nil {| |}, loading: nil {| |} |}
+end
+
+fn find_loaded
+  case {| name, loaded |} =>
+    match is_nil {| list: loaded |}
+      case 1 => {| tag: "none" |}
+      case 0 =>
+        let head = list_head {| list: loaded |}
+        let tail = list_tail {| list: loaded |}
+        match str_eq {| a: head.name, b: name |}
+          case 1 => {| tag: "some", module: head |}
+          case 0 => find_loaded {| name: name, loaded: tail |}
+        end
+    end
+end
+
+fn is_loading
+  case {| name, loading |} =>
+    list_contains_str {| list: loading, s: name |}
+end
+
+fn load_module
+  case {| mod_name, base_path, state, builtins |} =>
+    -- Check if already loaded
+    let found = find_loaded {| name: mod_name, loaded: state.loaded |}
+    match found.tag
+      case "some" => state
+      case "none" =>
+        -- Check for circular import
+        match is_loading {| name: mod_name, loading: state.loading |}
+          case 1 =>
+            let _ = resolve_error {| msg: cat3 {| a: "circular import detected: module ", b: mod_name, c: "" |} |}
+            state
+          case 0 =>
+            -- Mark as loading
+            let state1 = {| loaded: state.loaded, loading: cons {| head: mod_name, tail: state.loading |} |}
+            -- Read file
+            let filename = module_to_filename {| mod_name: mod_name |}
+            let filepath = concat {| a: base_path, b: filename |}
+            let src = read {| path: filepath |}
+            -- Tokenize and parse
+            let tokens = tokenize {| src: src |}
+            let mod_decls = parse_program {| tokens: tokens |}
+            -- Partition into imports, opens, locals
+            let parts = partition_decls {| decls: mod_decls |}
+            -- Recursively load sub-imports and sub-opens
+            let all_sub = list_append {| a: parts.imports, b: parts.opens |}
+            let all_sub_dedup = list_dedup_str {| list: all_sub |}
+            let mod_dir = extract_base_path {| filepath: filepath |}
+            let state2 = load_modules {| mod_names: all_sub_dedup, base_path: mod_dir, state: state1, builtins: builtins |}
+            -- Collect exported names (all declared names — no signature support yet)
+            let exports = all_decl_names {| decls: parts.locals |}
+            -- Resolve internal references within this module
+            let local_names = exports
+            let resolved_decls = resolve_module_internal {| mod_name: mod_name, decls: parts.locals, local_names: local_names, loaded: state2.loaded, opened_mods: parts.opens, builtins: builtins |}
+            -- Mangle declaration names
+            let mangled = mangle_decls {| decls: resolved_decls, mod_name: mod_name |}
+            -- Add to loaded
+            let lm = {| name: mod_name, decls: mangled, exports: exports |}
+            let state3 = {| loaded: cons {| head: lm, tail: state2.loaded |}, loading: state2.loading |}
+            state3
+        end
+    end
+end
+
+fn load_modules
+  case {| mod_names, base_path, state, builtins |} =>
+    match is_nil {| list: mod_names |}
+      case 1 => state
+      case 0 =>
+        let head = list_head {| list: mod_names |}
+        let tail = list_tail {| list: mod_names |}
+        let state1 = load_module {| mod_name: head, base_path: base_path, state: state, builtins: builtins |}
+        load_modules {| mod_names: tail, base_path: base_path, state: state1, builtins: builtins |}
+    end
+end
+
+-- ============================================================
+-- Declaration Mangling
+-- ============================================================
+
+fn mangle_decl
+  case {| decl, mod_name |} =>
+    match decl.tag
+      case "decl_fn" =>
+        {| tag: "decl_fn", name: mangle {| mod_name: mod_name, name: decl.name |}, clauses: decl.clauses |}
+      case "decl_do" =>
+        {| tag: "decl_do", name: mangle {| mod_name: mod_name, name: decl.name |}, stmts: decl.stmts |}
+      case "decl_struct" =>
+        {| tag: "decl_struct", name: mangle {| mod_name: mod_name, name: decl.name |}, fields: decl.fields |}
+      case "decl_test" =>
+        decl
+      case _ => decl
+    end
+end
+
+fn mangle_decls
+  case {| decls, mod_name |} =>
+    mangle_decls_loop {| decls: decls, mod_name: mod_name, acc: nil {| |} |}
+end
+
+fn mangle_decls_loop
+  case {| decls, mod_name, acc |} =>
+    match is_nil {| list: decls |}
+      case 1 => list_reverse {| list: acc |}
+      case 0 =>
+        let head = list_head {| list: decls |}
+        let tail = list_tail {| list: decls |}
+        let mangled = mangle_decl {| decl: head, mod_name: mod_name |}
+        mangle_decls_loop {| decls: tail, mod_name: mod_name, acc: cons {| head: mangled, tail: acc |} |}
+    end
+end
+
+-- ============================================================
+-- Internal Reference Resolution (within a module)
+-- ============================================================
+-- ctx = {| mod_name, local_names, loaded, opened_mods, builtins |}
+
+fn resolve_module_internal
+  case {| mod_name, decls, local_names, loaded, opened_mods, builtins |} =>
+    let ctx = {| mod_name: mod_name, local_names: local_names, loaded: loaded, opened_mods: opened_mods, builtins: builtins |}
+    resolve_decls_internal {| decls: decls, ctx: ctx |}
+end
+
+fn resolve_decls_internal
+  case {| decls, ctx |} =>
+    resolve_decls_internal_loop {| decls: decls, ctx: ctx, acc: nil {| |} |}
+end
+
+fn resolve_decls_internal_loop
+  case {| decls, ctx, acc |} =>
+    match is_nil {| list: decls |}
+      case 1 => list_reverse {| list: acc |}
+      case 0 =>
+        let head = list_head {| list: decls |}
+        let tail = list_tail {| list: decls |}
+        let resolved = resolve_decl_internal {| decl: head, ctx: ctx |}
+        resolve_decls_internal_loop {| decls: tail, ctx: ctx, acc: cons {| head: resolved, tail: acc |} |}
+    end
+end
+
+fn resolve_decl_internal
+  case {| decl, ctx |} =>
+    match decl.tag
+      case "decl_fn" =>
+        let clauses = resolve_clauses_internal {| clauses: decl.clauses, ctx: ctx |}
+        {| tag: "decl_fn", name: decl.name, clauses: clauses |}
+      case "decl_do" =>
+        let stmts = resolve_stmts_internal {| stmts: decl.stmts, ctx: ctx |}
+        {| tag: "decl_do", name: decl.name, stmts: stmts |}
+      case "decl_test" =>
+        let stmts = resolve_stmts_internal {| stmts: decl.stmts, ctx: ctx |}
+        {| tag: "decl_test", name: decl.name, stmts: stmts |}
+      case _ => decl
+    end
+end
+
+fn resolve_clauses_internal
+  case {| clauses, ctx |} =>
+    resolve_clauses_internal_loop {| clauses: clauses, ctx: ctx, acc: nil {| |} |}
+end
+
+fn resolve_clauses_internal_loop
+  case {| clauses, ctx, acc |} =>
+    match is_nil {| list: clauses |}
+      case 1 => list_reverse {| list: acc |}
+      case 0 =>
+        let head = list_head {| list: clauses |}
+        let tail = list_tail {| list: clauses |}
+        let resolved = resolve_clause_internal {| clause: head, ctx: ctx |}
+        resolve_clauses_internal_loop {| clauses: tail, ctx: ctx, acc: cons {| head: resolved, tail: acc |} |}
+    end
+end
+
+fn resolve_clause_internal
+  case {| clause, ctx |} =>
+    let pat = resolve_pat_internal {| pat: clause.pat, ctx: ctx |}
+    let body = resolve_expr_internal {| expr: clause.body, ctx: ctx |}
+    {| pat: pat, body: body |}
+end
+
+fn resolve_stmts_internal
+  case {| stmts, ctx |} =>
+    resolve_stmts_internal_loop {| stmts: stmts, ctx: ctx, acc: nil {| |} |}
+end
+
+fn resolve_stmts_internal_loop
+  case {| stmts, ctx, acc |} =>
+    match is_nil {| list: stmts |}
+      case 1 => list_reverse {| list: acc |}
+      case 0 =>
+        let head = list_head {| list: stmts |}
+        let tail = list_tail {| list: stmts |}
+        let resolved = resolve_stmt_internal {| stmt: head, ctx: ctx |}
+        resolve_stmts_internal_loop {| stmts: tail, ctx: ctx, acc: cons {| head: resolved, tail: acc |} |}
+    end
+end
+
+fn resolve_stmt_internal
+  case {| stmt, ctx |} =>
+    match stmt.tag
+      case "stmt_let" =>
+        {| tag: "stmt_let", name: stmt.name, value: resolve_expr_internal {| expr: stmt.value, ctx: ctx |} |}
+      case "stmt_stele_print" =>
+        {| tag: "stmt_stele_print", value: resolve_expr_internal {| expr: stmt.value, ctx: ctx |} |}
+      case "stmt_expr" =>
+        {| tag: "stmt_expr", value: resolve_expr_internal {| expr: stmt.value, ctx: ctx |} |}
+      case _ => stmt
+    end
+end
+
+fn resolve_expr_internal
+  case {| expr, ctx |} =>
+    match expr.tag
+      case "int_lit" => expr
+      case "str_lit" => expr
+      case "readln" => expr
+      case "readint" => expr
+      case "var" =>
+        resolve_var_internal {| name: expr.name, ctx: ctx |}
+      case "call" =>
+        let resolved_name = resolve_call_name_internal {| name: expr.name, ctx: ctx |}
+        let arg = resolve_expr_internal {| expr: expr.arg, ctx: ctx |}
+        {| tag: "call", name: resolved_name, arg: arg |}
+      case "named_record" =>
+        let resolved_name = resolve_type_name_internal {| name: expr.name, ctx: ctx |}
+        let fields = resolve_record_fields_internal {| fields: expr.fields, ctx: ctx |}
+        {| tag: "named_record", name: resolved_name, fields: fields |}
+      case "binop" =>
+        let left = resolve_expr_internal {| expr: expr.left, ctx: ctx |}
+        let right = resolve_expr_internal {| expr: expr.right, ctx: ctx |}
+        {| tag: "binop", op: expr.op, left: left, right: right |}
+      case "unop" =>
+        let operand = resolve_expr_internal {| expr: expr.operand, ctx: ctx |}
+        {| tag: "unop", op: expr.op, operand: operand |}
+      case "field_access" =>
+        let obj = resolve_expr_internal {| expr: expr.obj, ctx: ctx |}
+        {| tag: "field_access", obj: obj, field: expr.field |}
+      case "record" =>
+        let fields = resolve_record_fields_internal {| fields: expr.fields, ctx: ctx |}
+        {| tag: "record", fields: fields |}
+      case "let_in" =>
+        let value = resolve_expr_internal {| expr: expr.value, ctx: ctx |}
+        let body = resolve_expr_internal {| expr: expr.body, ctx: ctx |}
+        {| tag: "let_in", name: expr.name, value: value, body: body |}
+      case "match" =>
+        let scrutinee = resolve_expr_internal {| expr: expr.scrutinee, ctx: ctx |}
+        let clauses = resolve_clauses_internal {| clauses: expr.clauses, ctx: ctx |}
+        {| tag: "match", scrutinee: scrutinee, clauses: clauses |}
+      case "closure" =>
+        let clauses = resolve_clauses_internal {| clauses: expr.clauses, ctx: ctx |}
+        {| tag: "closure", clauses: clauses |}
+      case "qual_call" =>
+        -- Module.func {| ... |} => call with mangled name
+        let mangled = mangle {| mod_name: expr.module_name, name: expr.name |}
+        let arg = resolve_expr_internal {| expr: expr.arg, ctx: ctx |}
+        {| tag: "call", name: mangled, arg: arg |}
+      case "qual_var" =>
+        -- Module.var => var with mangled name
+        let mangled = mangle {| mod_name: expr.module_name, name: expr.name |}
+        {| tag: "var", name: mangled |}
+      case "qual_named_record" =>
+        -- Module.Type {| ... |} => named_record with mangled name
+        let mangled = mangle {| mod_name: expr.module_name, name: expr.name |}
+        let fields = resolve_record_fields_internal {| fields: expr.fields, ctx: ctx |}
+        {| tag: "named_record", name: mangled, fields: fields |}
+      case _ => expr
+    end
+end
+
+fn resolve_record_fields_internal
+  case {| fields, ctx |} =>
+    resolve_record_fields_internal_loop {| fields: fields, ctx: ctx, acc: nil {| |} |}
+end
+
+fn resolve_record_fields_internal_loop
+  case {| fields, ctx, acc |} =>
+    match is_nil {| list: fields |}
+      case 1 => list_reverse {| list: acc |}
+      case 0 =>
+        let head = list_head {| list: fields |}
+        let tail = list_tail {| list: fields |}
+        let resolved = {| name: head.name, value: resolve_expr_internal {| expr: head.value, ctx: ctx |} |}
+        resolve_record_fields_internal_loop {| fields: tail, ctx: ctx, acc: cons {| head: resolved, tail: acc |} |}
+    end
+end
+
+fn resolve_pat_internal
+  case {| pat, ctx |} =>
+    match pat.tag
+      case "pat_var" => pat
+      case "pat_int" => pat
+      case "pat_str" => pat
+      case "pat_wild" => pat
+      case "pat_rec" =>
+        let fields = resolve_pat_fields_internal {| fields: pat.fields, ctx: ctx |}
+        {| tag: "pat_rec", fields: fields |}
+      case "pat_variant" =>
+        let resolved_name = resolve_type_name_internal {| name: pat.vname, ctx: ctx |}
+        let inner = resolve_pat_internal {| pat: pat.inner, ctx: ctx |}
+        {| tag: "pat_variant", vname: resolved_name, inner: inner |}
+      case "pat_qual_variant" =>
+        let mangled = mangle {| mod_name: pat.module_name, name: pat.vname |}
+        let inner = resolve_pat_internal {| pat: pat.inner, ctx: ctx |}
+        {| tag: "pat_variant", vname: mangled, inner: inner |}
+      case _ => pat
+    end
+end
+
+fn resolve_pat_fields_internal
+  case {| fields, ctx |} =>
+    resolve_pat_fields_internal_loop {| fields: fields, ctx: ctx, acc: nil {| |} |}
+end
+
+fn resolve_pat_fields_internal_loop
+  case {| fields, ctx, acc |} =>
+    match is_nil {| list: fields |}
+      case 1 => list_reverse {| list: acc |}
+      case 0 =>
+        let head = list_head {| list: fields |}
+        let tail = list_tail {| list: fields |}
+        let resolved = {| name: head.name, pat: resolve_pat_internal {| pat: head.pat, ctx: ctx |} |}
+        resolve_pat_fields_internal_loop {| fields: tail, ctx: ctx, acc: cons {| head: resolved, tail: acc |} |}
+    end
+end
+
+-- ============================================================
+-- Name Resolution Helpers (internal to a module)
+-- ============================================================
+
+fn resolve_var_internal
+  case {| name, ctx |} =>
+    -- Check builtins first
+    match is_builtin {| builtins: ctx.builtins, name: name |}
+      case 1 => {| tag: "var", name: name |}
+      case 0 =>
+        -- Check if it's a local declaration name
+        match list_contains_str {| list: ctx.local_names, s: name |}
+          case 1 => {| tag: "var", name: mangle {| mod_name: ctx.mod_name, name: name |} |}
+          case 0 =>
+            -- Check opened modules
+            let found = find_in_opened {| name: name, opened_mods: ctx.opened_mods, loaded: ctx.loaded |}
+            match found.tag
+              case "some" => {| tag: "var", name: mangle {| mod_name: found.mod_name, name: name |} |}
+              case "none" =>
+                -- Could be let-bound or parameter, leave as-is
+                {| tag: "var", name: name |}
+            end
+        end
+    end
+end
+
+fn resolve_call_name_internal
+  case {| name, ctx |} =>
+    match is_builtin {| builtins: ctx.builtins, name: name |}
+      case 1 => name
+      case 0 =>
+        match list_contains_str {| list: ctx.local_names, s: name |}
+          case 1 => mangle {| mod_name: ctx.mod_name, name: name |}
+          case 0 =>
+            let found = find_in_opened {| name: name, opened_mods: ctx.opened_mods, loaded: ctx.loaded |}
+            match found.tag
+              case "some" => mangle {| mod_name: found.mod_name, name: name |}
+              case "none" => name
+            end
+        end
+    end
+end
+
+fn resolve_type_name_internal
+  case {| name, ctx |} =>
+    match list_contains_str {| list: ctx.local_names, s: name |}
+      case 1 => mangle {| mod_name: ctx.mod_name, name: name |}
+      case 0 =>
+        let found = find_in_opened {| name: name, opened_mods: ctx.opened_mods, loaded: ctx.loaded |}
+        match found.tag
+          case "some" => mangle {| mod_name: found.mod_name, name: name |}
+          case "none" => name
+        end
+    end
+end
+
+fn find_in_opened
+  case {| name, opened_mods, loaded |} =>
+    find_in_opened_loop {| name: name, opened_mods: opened_mods, loaded: loaded |}
+end
+
+fn find_in_opened_loop
+  case {| name, opened_mods, loaded |} =>
+    match is_nil {| list: opened_mods |}
+      case 1 => {| tag: "none" |}
+      case 0 =>
+        let mod_name = list_head {| list: opened_mods |}
+        let tail = list_tail {| list: opened_mods |}
+        let found = find_loaded {| name: mod_name, loaded: loaded |}
+        match found.tag
+          case "some" =>
+            match list_contains_str {| list: found.module.exports, s: name |}
+              case 1 => {| tag: "some", mod_name: mod_name |}
+              case 0 => find_in_opened_loop {| name: name, opened_mods: tail, loaded: loaded |}
+            end
+          case "none" =>
+            find_in_opened_loop {| name: name, opened_mods: tail, loaded: loaded |}
+        end
+    end
+end
+
+-- ============================================================
+-- Local (Main File) Resolution
+-- ============================================================
+-- These do NOT mangle local names, only resolve qualified and opened refs.
+-- local_ctx = {| loaded, opened_mods, builtins |}
+
+fn resolve_decls_local
+  case {| decls, ctx |} =>
+    resolve_decls_local_loop {| decls: decls, ctx: ctx, acc: nil {| |} |}
+end
+
+fn resolve_decls_local_loop
+  case {| decls, ctx, acc |} =>
+    match is_nil {| list: decls |}
+      case 1 => list_reverse {| list: acc |}
+      case 0 =>
+        let head = list_head {| list: decls |}
+        let tail = list_tail {| list: decls |}
+        let resolved = resolve_decl_local {| decl: head, ctx: ctx |}
+        resolve_decls_local_loop {| decls: tail, ctx: ctx, acc: cons {| head: resolved, tail: acc |} |}
+    end
+end
+
+fn resolve_decl_local
+  case {| decl, ctx |} =>
+    match decl.tag
+      case "decl_fn" =>
+        let clauses = resolve_clauses_local {| clauses: decl.clauses, ctx: ctx |}
+        {| tag: "decl_fn", name: decl.name, clauses: clauses |}
+      case "decl_do" =>
+        let stmts = resolve_stmts_local {| stmts: decl.stmts, ctx: ctx |}
+        {| tag: "decl_do", name: decl.name, stmts: stmts |}
+      case "decl_test" =>
+        let stmts = resolve_stmts_local {| stmts: decl.stmts, ctx: ctx |}
+        {| tag: "decl_test", name: decl.name, stmts: stmts |}
+      case _ => decl
+    end
+end
+
+fn resolve_clauses_local
+  case {| clauses, ctx |} =>
+    resolve_clauses_local_loop {| clauses: clauses, ctx: ctx, acc: nil {| |} |}
+end
+
+fn resolve_clauses_local_loop
+  case {| clauses, ctx, acc |} =>
+    match is_nil {| list: clauses |}
+      case 1 => list_reverse {| list: acc |}
+      case 0 =>
+        let head = list_head {| list: clauses |}
+        let tail = list_tail {| list: clauses |}
+        let resolved = resolve_clause_local {| clause: head, ctx: ctx |}
+        resolve_clauses_local_loop {| clauses: tail, ctx: ctx, acc: cons {| head: resolved, tail: acc |} |}
+    end
+end
+
+fn resolve_clause_local
+  case {| clause, ctx |} =>
+    let pat = resolve_pat_local {| pat: clause.pat, ctx: ctx |}
+    let body = resolve_expr_local {| expr: clause.body, ctx: ctx |}
+    {| pat: pat, body: body |}
+end
+
+fn resolve_stmts_local
+  case {| stmts, ctx |} =>
+    resolve_stmts_local_loop {| stmts: stmts, ctx: ctx, acc: nil {| |} |}
+end
+
+fn resolve_stmts_local_loop
+  case {| stmts, ctx, acc |} =>
+    match is_nil {| list: stmts |}
+      case 1 => list_reverse {| list: acc |}
+      case 0 =>
+        let head = list_head {| list: stmts |}
+        let tail = list_tail {| list: stmts |}
+        let resolved = resolve_stmt_local {| stmt: head, ctx: ctx |}
+        resolve_stmts_local_loop {| stmts: tail, ctx: ctx, acc: cons {| head: resolved, tail: acc |} |}
+    end
+end
+
+fn resolve_stmt_local
+  case {| stmt, ctx |} =>
+    match stmt.tag
+      case "stmt_let" =>
+        {| tag: "stmt_let", name: stmt.name, value: resolve_expr_local {| expr: stmt.value, ctx: ctx |} |}
+      case "stmt_stele_print" =>
+        {| tag: "stmt_stele_print", value: resolve_expr_local {| expr: stmt.value, ctx: ctx |} |}
+      case "stmt_expr" =>
+        {| tag: "stmt_expr", value: resolve_expr_local {| expr: stmt.value, ctx: ctx |} |}
+      case _ => stmt
+    end
+end
+
+fn resolve_expr_local
+  case {| expr, ctx |} =>
+    match expr.tag
+      case "int_lit" => expr
+      case "str_lit" => expr
+      case "readln" => expr
+      case "readint" => expr
+      case "var" =>
+        resolve_var_local_ref {| name: expr.name, ctx: ctx |}
+      case "call" =>
+        let resolved_name = resolve_call_name_local {| name: expr.name, ctx: ctx |}
+        let arg = resolve_expr_local {| expr: expr.arg, ctx: ctx |}
+        {| tag: "call", name: resolved_name, arg: arg |}
+      case "named_record" =>
+        let resolved_name = resolve_type_name_local {| name: expr.name, ctx: ctx |}
+        let fields = resolve_record_fields_local {| fields: expr.fields, ctx: ctx |}
+        {| tag: "named_record", name: resolved_name, fields: fields |}
+      case "binop" =>
+        let left = resolve_expr_local {| expr: expr.left, ctx: ctx |}
+        let right = resolve_expr_local {| expr: expr.right, ctx: ctx |}
+        {| tag: "binop", op: expr.op, left: left, right: right |}
+      case "unop" =>
+        let operand = resolve_expr_local {| expr: expr.operand, ctx: ctx |}
+        {| tag: "unop", op: expr.op, operand: operand |}
+      case "field_access" =>
+        let obj = resolve_expr_local {| expr: expr.obj, ctx: ctx |}
+        {| tag: "field_access", obj: obj, field: expr.field |}
+      case "record" =>
+        let fields = resolve_record_fields_local {| fields: expr.fields, ctx: ctx |}
+        {| tag: "record", fields: fields |}
+      case "let_in" =>
+        let value = resolve_expr_local {| expr: expr.value, ctx: ctx |}
+        let body = resolve_expr_local {| expr: expr.body, ctx: ctx |}
+        {| tag: "let_in", name: expr.name, value: value, body: body |}
+      case "match" =>
+        let scrutinee = resolve_expr_local {| expr: expr.scrutinee, ctx: ctx |}
+        let clauses = resolve_clauses_local {| clauses: expr.clauses, ctx: ctx |}
+        {| tag: "match", scrutinee: scrutinee, clauses: clauses |}
+      case "closure" =>
+        let clauses = resolve_clauses_local {| clauses: expr.clauses, ctx: ctx |}
+        {| tag: "closure", clauses: clauses |}
+      case "qual_call" =>
+        let mangled = mangle {| mod_name: expr.module_name, name: expr.name |}
+        let arg = resolve_expr_local {| expr: expr.arg, ctx: ctx |}
+        {| tag: "call", name: mangled, arg: arg |}
+      case "qual_var" =>
+        let mangled = mangle {| mod_name: expr.module_name, name: expr.name |}
+        {| tag: "var", name: mangled |}
+      case "qual_named_record" =>
+        let mangled = mangle {| mod_name: expr.module_name, name: expr.name |}
+        let fields = resolve_record_fields_local {| fields: expr.fields, ctx: ctx |}
+        {| tag: "named_record", name: mangled, fields: fields |}
+      case _ => expr
+    end
+end
+
+fn resolve_record_fields_local
+  case {| fields, ctx |} =>
+    resolve_record_fields_local_loop {| fields: fields, ctx: ctx, acc: nil {| |} |}
+end
+
+fn resolve_record_fields_local_loop
+  case {| fields, ctx, acc |} =>
+    match is_nil {| list: fields |}
+      case 1 => list_reverse {| list: acc |}
+      case 0 =>
+        let head = list_head {| list: fields |}
+        let tail = list_tail {| list: fields |}
+        let resolved = {| name: head.name, value: resolve_expr_local {| expr: head.value, ctx: ctx |} |}
+        resolve_record_fields_local_loop {| fields: tail, ctx: ctx, acc: cons {| head: resolved, tail: acc |} |}
+    end
+end
+
+fn resolve_pat_local
+  case {| pat, ctx |} =>
+    match pat.tag
+      case "pat_var" => pat
+      case "pat_int" => pat
+      case "pat_str" => pat
+      case "pat_wild" => pat
+      case "pat_rec" =>
+        let fields = resolve_pat_fields_local {| fields: pat.fields, ctx: ctx |}
+        {| tag: "pat_rec", fields: fields |}
+      case "pat_variant" =>
+        let resolved_name = resolve_type_name_local {| name: pat.vname, ctx: ctx |}
+        let inner = resolve_pat_local {| pat: pat.inner, ctx: ctx |}
+        {| tag: "pat_variant", vname: resolved_name, inner: inner |}
+      case "pat_qual_variant" =>
+        let mangled = mangle {| mod_name: pat.module_name, name: pat.vname |}
+        let inner = resolve_pat_local {| pat: pat.inner, ctx: ctx |}
+        {| tag: "pat_variant", vname: mangled, inner: inner |}
+      case _ => pat
+    end
+end
+
+fn resolve_pat_fields_local
+  case {| fields, ctx |} =>
+    resolve_pat_fields_local_loop {| fields: fields, ctx: ctx, acc: nil {| |} |}
+end
+
+fn resolve_pat_fields_local_loop
+  case {| fields, ctx, acc |} =>
+    match is_nil {| list: fields |}
+      case 1 => list_reverse {| list: acc |}
+      case 0 =>
+        let head = list_head {| list: fields |}
+        let tail = list_tail {| list: fields |}
+        let resolved = {| name: head.name, pat: resolve_pat_local {| pat: head.pat, ctx: ctx |} |}
+        resolve_pat_fields_local_loop {| fields: tail, ctx: ctx, acc: cons {| head: resolved, tail: acc |} |}
+    end
+end
+
+fn resolve_var_local_ref
+  case {| name, ctx |} =>
+    -- For local (main file) resolution, only resolve names found in opened modules
+    let found = find_in_opened {| name: name, opened_mods: ctx.opened_mods, loaded: ctx.loaded |}
+    match found.tag
+      case "some" => {| tag: "var", name: mangle {| mod_name: found.mod_name, name: name |} |}
+      case "none" => {| tag: "var", name: name |}
+    end
+end
+
+fn resolve_call_name_local
+  case {| name, ctx |} =>
+    let found = find_in_opened {| name: name, opened_mods: ctx.opened_mods, loaded: ctx.loaded |}
+    match found.tag
+      case "some" => mangle {| mod_name: found.mod_name, name: name |}
+      case "none" => name
+    end
+end
+
+fn resolve_type_name_local
+  case {| name, ctx |} =>
+    let found = find_in_opened {| name: name, opened_mods: ctx.opened_mods, loaded: ctx.loaded |}
+    match found.tag
+      case "some" => mangle {| mod_name: found.mod_name, name: name |}
+      case "none" => name
+    end
+end
+
+-- ============================================================
+-- Entry Point
+-- ============================================================
+
+fn resolve_modules
+  case {| decls, base_path |} =>
+    let builtins = make_builtins {| |}
+    let parts = partition_decls {| decls: decls |}
+    -- Merge imports and opens to get all modules to load
+    let all_mods = list_append {| a: parts.imports, b: parts.opens |}
+    let all_mods_dedup = list_dedup_str {| list: all_mods |}
+    -- Load all referenced modules
+    let init_state = make_resolve_state {| |}
+    let final_state = load_modules {| mod_names: all_mods_dedup, base_path: base_path, state: init_state, builtins: builtins |}
+    -- Resolve local declarations
+    let local_ctx = {| loaded: final_state.loaded, opened_mods: parts.opens, builtins: builtins |}
+    let resolved_locals = resolve_decls_local {| decls: parts.locals, ctx: local_ctx |}
+    -- Collect all loaded module decls
+    let imported_decls = collect_all_loaded_decls {| loaded: final_state.loaded |}
+    -- Return imported decls ++ resolved locals
+    list_append {| a: imported_decls, b: resolved_locals |}
+end
+
+fn collect_all_loaded_decls
+  case {| loaded |} =>
+    collect_all_loaded_decls_loop {| loaded: loaded, acc: nil {| |} |}
+end
+
+fn collect_all_loaded_decls_loop
+  case {| loaded, acc |} =>
+    match is_nil {| list: loaded |}
+      case 1 => acc
+      case 0 =>
+        let head = list_head {| list: loaded |}
+        let tail = list_tail {| list: loaded |}
+        let new_acc = list_append {| a: acc, b: head.decls |}
+        collect_all_loaded_decls_loop {| loaded: tail, acc: new_acc |}
+    end
+end

@@ -1,0 +1,26 @@
+fn square
+  case {| n |} => n * n
+end
+
+fn add
+  case {| a, b |} => a + b
+end
+
+struct Point
+  x : Int
+  y : Int
+end
+
+oneof Shape
+  Circle { radius : Int }
+  Rect { w : Int, h : Int }
+end
+
+fn area
+  case Circle {| radius |} => radius * radius * 3
+  case Rect {| w, h |} => w * h
+end
+
+fn make_point
+  case {| x, y |} => Point {| x: x, y: y |}
+end

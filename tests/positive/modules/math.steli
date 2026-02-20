@@ -1,0 +1,6 @@
+fn square
+fn add
+struct Point
+oneof Shape
+fn area
+fn make_point

@@ -11,7 +11,8 @@ module Stele.Lower
 import Stele.AST
 import Stele.IR
 
-import Control.Monad.Trans.State.Strict (State, evalState, get, modify')
+import Control.Monad (when)
+import Control.Monad.Trans.State.Strict (State, evalState, get, gets, modify')
 import Data.Char (isUpper)
 import qualified Data.Set as Set
 
@@ -79,6 +80,17 @@ cName :: String -> String
 cName "arg" = "arg"
 cName name  = "stele_" ++ name
 
+-- | Deduplicate a list, keeping only the last occurrence of each element,
+-- then reverse the result.  Used for TCO release lists: when a variable
+-- is shadowed, only the final binding survives, so we must release it
+-- exactly once.
+nubReverse :: Ord a => [a] -> [a]
+nubReverse = go [] Set.empty . reverse
+  where
+    go acc _ [] = acc
+    go acc seen (x:xs)
+      | Set.member x seen = go acc seen xs
+      | otherwise          = go (x:acc) (Set.insert x seen) xs
 
 -- ---------------------------------------------------------------------------
 -- Program lowering
@@ -125,6 +137,8 @@ lowerDecl (TestDecl name stmts) = do
   body <- lowerDo stmts
   return [IRTest name body]
 lowerDecl (DoDecl _ _) = return []
+lowerDecl (ImportDecl _) = return []
+lowerDecl (OpenDecl _) = return []
 
 -- ---------------------------------------------------------------------------
 -- Fn lowering
@@ -135,7 +149,8 @@ lowerFn name clauses = do
   -- Reset state for this function
   modify' (\s -> s { emittedBlocks = []
                    , currentInstrs = []
-                   , currentBlockId = "entry" })
+                   , currentBlockId = "entry"
+                   , localVars = Set.empty })
 
   let hasTailCall = any (\(CaseClause _ body) -> isSelfTailCall name body) clauses
   if hasTailCall
@@ -244,8 +259,10 @@ lowerTailBody :: String -> Expr -> [Var] -> BlockId -> Lower ()
 lowerTailBody fnName (Call callee argExpr) outerBindings tcoEntryLbl
   | callee == fnName = do
       -- TAIL CALL: evaluate new arg, release all bindings + old arg, loop
+      -- Deduplicate to avoid double-freeing shadowed variables
+      let dedupBindings = nubReverse outerBindings
       varg <- lowerExpr argExpr
-      mapM_ (\v -> emit (IRelease v)) (reverse outerBindings)
+      mapM_ (\v -> emit (IRelease v)) dedupBindings
       emit (IRelease "arg")
       emit (ICopy "arg" varg)
       finishBlock (TJump tcoEntryLbl) tcoEntryLbl
@@ -283,8 +300,10 @@ lowerTailBody fnName (Match scrutinee clauses) outerBindings tcoEntryLbl = do
   finishBlockFinal (TMatchFail "match")
 lowerTailBody _ expr outerBindings _ = do
   -- FALLBACK (base case): evaluate body, release all bindings + old arg, return
+  -- Deduplicate to avoid double-freeing shadowed variables
+  let dedupBindings = nubReverse outerBindings
   result <- lowerExpr expr
-  mapM_ (\v -> emit (IRelease v)) (reverse outerBindings)
+  mapM_ (\v -> emit (IRelease v)) dedupBindings
   emit (IRelease "arg")
   finishBlockFinal (TReturn result)
 
@@ -385,6 +404,8 @@ lowerPatternTest scrut (PVariant vname innerPat) bodyLbl nextLbl = do
     _ -> finishBlock (TBranch tagEq bodyLbl nextLbl) bodyLbl
 lowerPatternTest _ (PLit _) _ nextLbl = do
   finishBlock (TJump nextLbl) nextLbl
+lowerPatternTest scrut (PQualVariant modN vname innerPat) bodyLbl nextLbl =
+  lowerPatternTest scrut (PVariant (modN ++ "__" ++ vname) innerPat) bodyLbl nextLbl
 
 -- | Lower field tests for a record pattern.
 lowerRecFieldTests :: Var -> [PatField] -> BlockId -> BlockId -> Lower ()
@@ -484,6 +505,8 @@ lowerPatternBindings scrut (PRec fields) =
   concat <$> mapM (lowerFieldBinding scrut) fields
 lowerPatternBindings scrut (PVariant _ innerPat) =
   lowerPatternBindings scrut innerPat
+lowerPatternBindings scrut (PQualVariant modN vname innerPat) =
+  lowerPatternBindings scrut (PVariant (modN ++ "__" ++ vname) innerPat)
 
 lowerFieldBinding :: Var -> PatField -> Lower [Var]
 lowerFieldBinding scrut (PatField fname mPat) = do
@@ -614,14 +637,20 @@ lowerExpr (LetIn name value body) = do
   boundNames <- mapM (\(n, v) -> do
     vr <- lowerExpr v
     let mangledName = cName n
+    -- If this variable was already bound, release the old value before reassignment
+    locals <- gets localVars
+    let alreadyBound = Set.member n locals
+    when alreadyBound $ emit (IRelease mangledName)
     emit (ICopy mangledName vr)
     modify' (\st -> st { localVars = Set.insert n (localVars st) })
-    return mangledName
+    -- Return Nothing for already-bound names to avoid duplicate releases
+    return (if alreadyBound then Nothing else Just mangledName)
     ) bindings
+  let uniqueBoundNames = [n | Just n <- boundNames]
   -- Lower body
   result <- lowerExpr finalBody
   -- Release bindings in reverse order
-  mapM_ (\v -> emit (IRelease v)) (reverse boundNames)
+  mapM_ (\v -> emit (IRelease v)) (reverse uniqueBoundNames)
   return result
 
 lowerExpr (Closure clauses) = do
@@ -680,6 +709,12 @@ lowerExpr (Match scrutinee clauses) = do
   modify' (\s -> s { currentBlockId = doneLbl, currentInstrs = [] })
   emit (IRelease scr)
   return mch
+
+-- Qualified expressions are resolved before lowering; treat as their
+-- desugared forms if they somehow reach here.
+lowerExpr (QualCall modN fn arg) = lowerExpr (Call (modN ++ "__" ++ fn) arg)
+lowerExpr (QualVar modN name) = lowerExpr (Var (modN ++ "__" ++ name))
+lowerExpr (QualRecord modN typN fields) = lowerExpr (NamedRecord (modN ++ "__" ++ typN) fields)
 
 -- | Lower match clauses - like fn clauses but write to a result var
 -- and jump to a done label instead of returning.
@@ -756,7 +791,8 @@ lowerDo :: [Stmt] -> Lower IRFuncBody
 lowerDo stmts = do
   modify' (\s -> s { emittedBlocks = []
                    , currentInstrs = []
-                   , currentBlockId = "entry" })
+                   , currentBlockId = "entry"
+                   , localVars = Set.empty })
 
   -- Lower each statement
   letNames <- lowerStmts stmts
@@ -785,9 +821,14 @@ lowerStmt :: Stmt -> Lower [Var]
 lowerStmt (LetStmt name expr) = do
   v <- lowerExpr expr
   let mangledName = cName name
+  -- If this variable was already bound, release the old value before reassignment
+  locals <- gets localVars
+  let alreadyBound = Set.member name locals
+  when alreadyBound $ emit (IRelease mangledName)
   emit (ICopy mangledName v)
   modify' (\st -> st { localVars = Set.insert name (localVars st) })
-  return [mangledName]
+  -- Only add to release list if this is a new binding (avoid duplicate releases)
+  if alreadyBound then return [] else return [mangledName]
 lowerStmt (PrintStmt expr) = do
   v <- lowerExpr expr
   emit (IPrint v)
@@ -827,6 +868,9 @@ exprFreeVars (Match scrut clauses) =
 exprFreeVars (Closure clauses) = Set.unions (map clauseFreeVars clauses)
 exprFreeVars ReadLn = Set.empty
 exprFreeVars ReadInt = Set.empty
+exprFreeVars (QualCall modN fn arg) = Set.insert (modN ++ "__" ++ fn) (exprFreeVars arg)
+exprFreeVars (QualVar modN name) = Set.singleton (modN ++ "__" ++ name)
+exprFreeVars (QualRecord modN _ fields) = Set.unions (Set.singleton modN : [exprFreeVars e | (_, e) <- fields])
 
 -- | Free variables in a case clause (body minus pattern bindings).
 clauseFreeVars :: CaseClause -> Set.Set String
@@ -841,6 +885,7 @@ patternBoundNames PWild = Set.empty
 patternBoundNames (PRec fields) = Set.unions
   [patFieldBoundNames pf | pf <- fields]
 patternBoundNames (PVariant _ inner) = patternBoundNames inner
+patternBoundNames (PQualVariant _ _ inner) = patternBoundNames inner
 
 -- | Names bound by a pattern field.
 patFieldBoundNames :: PatField -> Set.Set String

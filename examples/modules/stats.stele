@@ -1,0 +1,43 @@
+-- Stats: compute statistics over lists of integers
+-- Demonstrates using multiple modules together
+
+open List
+import Math
+
+fn range_helper
+  case {| i, n, acc |} =>
+    match i == n
+      case 1 => acc
+      case 0 => range_helper {| i: i + 1, n: n, acc: cons {| head: i, tail: acc |} |}
+    end
+end
+
+fn range
+  case {| from, to |} =>
+    range_helper {| i: from, n: to, acc: nil {| |} |}
+end
+
+fn mean
+  case {| list |} =>
+    let s = sum {| list: list |}
+    let n = length {| list: list |}
+    s / n
+end
+
+fn variance
+  case {| list |} =>
+    let m = mean {| list: list |}
+    let sq_diffs = map {| list: list, f: fn
+      case {| x |} =>
+        let d = x - m
+        d * d
+    end |}
+    mean {| list: sq_diffs |}
+end
+
+fn clamp
+  case {| list, lo, hi |} =>
+    map {| list: list, f: fn
+      case {| x |} => Math.min {| a: hi, b: Math.max {| a: lo, b: x |} |}
+    end |}
+end
