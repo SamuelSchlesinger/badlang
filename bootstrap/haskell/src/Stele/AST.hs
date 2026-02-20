@@ -53,6 +53,8 @@ data Decl
   | DoDecl     !String [Stmt]             -- ^ @do main ... end@
   | OneofDecl  !String [(String, [Field])] -- ^ @oneof Shape Circle { radius : Int } ... end@
   | TestDecl   !String [Stmt]             -- ^ @test "name" ... end@
+  | ImportDecl !String                    -- ^ @import Math@
+  | OpenDecl   !String                    -- ^ @open Math@
   deriving (Show, Eq)
 
 -- | A field in a struct declaration.
@@ -91,6 +93,9 @@ data Expr
   | Closure     [CaseClause]                      -- ^ @fn case ... end@ — anonymous function
   | ReadLn                                        -- ^ @readln@ — read line from stdin
   | ReadInt                                       -- ^ @readint@ — read integer from stdin
+  | QualCall    !String !String !Expr             -- ^ @Math.factorial {| ... |}@ — qualified function call
+  | QualVar     !String !String                   -- ^ @Math.pi@ — qualified variable
+  | QualRecord  !String !String [(String, Expr)]  -- ^ @Math.Point {| ... |}@ — qualified named record
   deriving (Show, Eq)
 
 -- | Binary operators.
@@ -112,7 +117,8 @@ data Pattern
   | PLit     !Expr                  -- ^ @0@, @"hello"@ — matches a literal value
   | PRec     [PatField]             -- ^ @{| x: 0, y |}@ — matches a record
   | PWild                           -- ^ @_@ — matches anything
-  | PVariant !String !Pattern       -- ^ @Circle {| radius |}@ — matches a variant
+  | PVariant     !String !Pattern              -- ^ @Circle {| radius |}@ — matches a variant
+  | PQualVariant !String !String !Pattern      -- ^ @Math.Circle {| radius |}@ — qualified variant pattern
   deriving (Show, Eq)
 
 -- | A field in a record pattern.

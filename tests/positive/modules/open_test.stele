@@ -1,0 +1,9 @@
+open Math
+
+do main
+  let result = square {| n: 7 |}
+  print result
+  let p = make_point {| x: 10, y: 20 |}
+  print p.x
+  print p.y
+end

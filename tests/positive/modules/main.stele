@@ -1,0 +1,13 @@
+import Math
+
+do main
+  let result = Math.square {| n: 5 |}
+  print result
+  let sum = Math.add {| a: 10, b: 20 |}
+  print sum
+  let p = Math.make_point {| x: 3, y: 4 |}
+  print p.x
+  let c = Math.Circle {| radius: 5 |}
+  let a = Math.area(c)
+  print a
+end

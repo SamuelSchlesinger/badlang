@@ -1,3 +1,6 @@
+open Util
+open Parser
+
 -- ============================================================
 -- Code Generation: Foundation Helpers
 -- ============================================================
@@ -299,14 +302,24 @@ fn emit_let_bindings_loop
         let n = nl {| |}
         let rv = emit_expr {| node: head.value, counter: counter |}
         let cn = c_name {| name: head.name |}
-        let s1 = concat {| a: rv.code, b: "Value* " |}
-        let s2 = concat {| a: s1, b: cn |}
-        let s3 = concat {| a: s2, b: " = " |}
-        let s4 = concat {| a: s3, b: rv.var |}
-        let s5 = concat {| a: s4, b: ";" |}
-        let line = concat {| a: s5, b: n |}
+        let already = list_contains_str {| list: names_acc, s: head.name |}
+        let line = match already
+          case 1 =>
+            -- Variable already declared: release old value, then reassign
+            let r1 = cat4 {| a: rv.code, b: "rc_release(", c: cn, d: concat {| a: ");", b: n |} |}
+            let r2 = cat4 {| a: r1, b: cn, c: " = ", d: concat {| a: rv.var, b: concat {| a: ";", b: n |} |} |}
+            r2
+          case 0 =>
+            -- First declaration
+            let d1 = concat {| a: rv.code, b: "Value* " |}
+            let d2 = cat4 {| a: d1, b: cn, c: " = ", d: concat {| a: rv.var, b: concat {| a: ";", b: n |} |} |}
+            d2
+        end
         let new_code = concat {| a: code_acc, b: line |}
-        let new_names = cons {| head: head.name, tail: names_acc |}
+        let new_names = match already
+          case 1 => names_acc
+          case 0 => cons {| head: head.name, tail: names_acc |}
+        end
         emit_let_bindings_loop {| bindings: tail, counter: rv.counter, code_acc: new_code, names_acc: new_names |}
     end
 end
@@ -847,20 +860,30 @@ end
 -- ============================================================
 
 -- Emit a single statement
+-- declared: list of variable names already declared in this scope
 fn emit_stmt
-  case {| stmt, counter |} =>
+  case {| stmt, counter, declared |} =>
     let n = nl {| |}
     match stmt.tag
       case "stmt_let" =>
         let r = emit_expr {| node: stmt.value, counter: counter |}
         let cn = c_name {| name: stmt.name |}
-        let s1 = concat {| a: r.code, b: "Value* " |}
-        let s2 = concat {| a: s1, b: cn |}
-        let s3 = concat {| a: s2, b: " = " |}
-        let s4 = concat {| a: s3, b: r.var |}
-        let s5 = concat {| a: s4, b: ";" |}
-        let code = concat {| a: s5, b: n |}
-        {| code: code, counter: r.counter |}
+        let already = list_contains_str {| list: declared, s: stmt.name |}
+        let code = match already
+          case 1 =>
+            -- Already declared: release old value, then reassign
+            let r1 = cat4 {| a: r.code, b: "rc_release(", c: cn, d: concat {| a: ");", b: n |} |}
+            cat4 {| a: r1, b: cn, c: " = ", d: concat {| a: r.var, b: concat {| a: ";", b: n |} |} |}
+          case 0 =>
+            -- First declaration
+            let d1 = concat {| a: r.code, b: "Value* " |}
+            cat4 {| a: d1, b: cn, c: " = ", d: concat {| a: r.var, b: concat {| a: ";", b: n |} |} |}
+        end
+        let new_declared = match already
+          case 1 => declared
+          case 0 => cons {| head: stmt.name, tail: declared |}
+        end
+        {| code: code, counter: r.counter, declared: new_declared |}
       case "stmt_stele_print" =>
         let r = emit_expr {| node: stmt.value, counter: counter |}
         let s1 = concat {| a: r.code, b: "stele_print(" |}
@@ -871,7 +894,7 @@ fn emit_stmt
         let s6 = concat {| a: s5, b: r.var |}
         let s7 = concat {| a: s6, b: ");" |}
         let code = concat {| a: s7, b: n |}
-        {| code: code, counter: r.counter |}
+        {| code: code, counter: r.counter, declared: declared |}
       case "stmt_stele_write" =>
         let r = emit_expr {| node: stmt.value, counter: counter |}
         let fv = fresh_var {| prefix: "_t", counter: r.counter |}
@@ -889,32 +912,33 @@ fn emit_stmt
         let s12 = concat {| a: s11, b: fv.name |}
         let s13 = concat {| a: s12, b: ");" |}
         let code = concat {| a: s13, b: n |}
-        {| code: code, counter: fv.counter |}
+        {| code: code, counter: fv.counter, declared: declared |}
       case "stmt_expr" =>
         let r = emit_expr {| node: stmt.value, counter: counter |}
         let s1 = concat {| a: r.code, b: "rc_release(" |}
         let s2 = concat {| a: s1, b: r.var |}
         let s3 = concat {| a: s2, b: ");" |}
         let code = concat {| a: s3, b: n |}
-        {| code: code, counter: r.counter |}
+        {| code: code, counter: r.counter, declared: declared |}
     end
 end
 
--- Loop over statements, threading the counter
+-- Loop over statements, threading the counter and declared names
 fn emit_stmts_loop
-  case {| stmts, counter, acc |} =>
+  case {| stmts, counter, acc, declared |} =>
     match is_nil {| list: stmts |}
       case 1 => {| code: acc, counter: counter |}
       case 0 =>
         let head = list_head {| list: stmts |}
         let tail = list_tail {| list: stmts |}
-        let r = emit_stmt {| stmt: head, counter: counter |}
+        let r = emit_stmt {| stmt: head, counter: counter, declared: declared |}
         let new_acc = concat {| a: acc, b: r.code |}
-        emit_stmts_loop {| stmts: tail, counter: r.counter, acc: new_acc |}
+        emit_stmts_loop {| stmts: tail, counter: r.counter, acc: new_acc, declared: r.declared |}
     end
 end
 
--- Collect let-bound names from statements (for cleanup at end of main)
+-- Collect unique let-bound names from statements (for cleanup at end of main)
+-- Deduplicates to avoid double-freeing shadowed variables
 fn collect_let_names
   case {| stmts, acc |} =>
     match is_nil {| list: stmts |}
@@ -923,7 +947,11 @@ fn collect_let_names
         let head = list_head {| list: stmts |}
         let tail = list_tail {| list: stmts |}
         let new_acc = match str_eq {| a: head.tag, b: "stmt_let" |}
-          case 1 => cons {| head: head.name, tail: acc |}
+          case 1 =>
+            match list_contains_str {| list: acc, s: head.name |}
+              case 1 => acc
+              case 0 => cons {| head: head.name, tail: acc |}
+            end
           case 0 => acc
         end
         collect_let_names {| stmts: tail, acc: new_acc |}
@@ -966,7 +994,7 @@ fn emit_main_fn
         let c8 = concat {| a: c7, b: "}" |}
         concat {| a: c8, b: n |}
       case "some" =>
-        let rs = emit_stmts_loop {| stmts: rit.stmts, counter: counter, acc: "" |}
+        let rs = emit_stmts_loop {| stmts: rit.stmts, counter: counter, acc: "", declared: nil {| |} |}
         let empty = nil {| |}
         let let_names = collect_let_names {| stmts: rit.stmts, acc: empty |}
         let rel = gen_release_code {| names: let_names |}
@@ -1029,7 +1057,7 @@ end
 fn emit_test_body
   case {| decl, counter |} =>
     let n = nl {| |}
-    let rs = emit_stmts_loop {| stmts: decl.stmts, counter: counter, acc: "" |}
+    let rs = emit_stmts_loop {| stmts: decl.stmts, counter: counter, acc: "", declared: nil {| |} |}
     let empty = nil {| |}
     let let_names = collect_let_names {| stmts: decl.stmts, acc: empty |}
     let rel = gen_release_code {| names: let_names |}
@@ -1162,5 +1190,112 @@ fn emit_c
     let s13 = concat {| a: s12, b: n |}
     let s14 = concat {| a: s13, b: n |}
     concat {| a: s14, b: main_fn |}
+end
+
+-- ============================================================
+-- Shared Assembly Helpers (used by both AArch64 and x86 backends)
+-- ============================================================
+
+-- Allocate a stack slot for a named variable
+fn alloc_slot
+  case {| name, state |} =>
+    let slot = state.slot_counter
+    let new_slots = cons {| head: {| name: name, slot: slot |}, tail: state.slots |}
+    {| slot: slot, state: {| counter: state.counter, slot_counter: slot + 1, slots: new_slots, strs: state.strs |} |}
+end
+
+-- Look up a named variable's slot number
+fn lookup_slot
+  case {| name, slots |} =>
+    match slots
+      case {| tag: "cons", head, tail |} =>
+        match str_eq {| a: head.name, b: name |}
+          case 1 => head.slot
+          case 0 => lookup_slot {| name: name, slots: tail |}
+        end
+    end
+end
+
+-- Append newline to a string (assembly line terminator)
+fn asm_ln
+  case {| s |} => concat {| a: s, b: nl {| |} |}
+end
+
+-- Search string table for existing entry
+fn find_str_asm
+  case {| s, strs |} =>
+    match is_nil {| list: strs |}
+      case 1 => {| tag: "none" |}
+      case 0 =>
+        let head = list_head {| list: strs |}
+        let tail = list_tail {| list: strs |}
+        match str_eq {| a: head.value, b: s |}
+          case 1 => {| tag: "some", label: head.label |}
+          case 0 => find_str_asm {| s: s, strs: tail |}
+        end
+    end
+end
+
+-- Add string to table (with dedup), return label
+fn add_str_asm
+  case {| s, state |} =>
+    let found = find_str_asm {| s: s, strs: state.strs |}
+    match found.tag
+      case "some" => {| label: found.label, state: state |}
+      case "none" =>
+        let idx = list_len {| list: state.strs |}
+        let label = concat {| a: "Lstr", b: int_to_str {| n: idx |} |}
+        let entry = {| label: label, value: s |}
+        let new_strs = cons {| head: entry, tail: state.strs |}
+        {| label: label, state: {| counter: state.counter, slot_counter: state.slot_counter, slots: state.slots, strs: new_strs |} |}
+    end
+end
+
+-- Escape a character for .asciz
+fn asm_escape_char
+  case {| c |} =>
+    match c
+      case 34 => concat {| a: bsl {| |}, b: dq {| |} |}
+      case 92 =>
+        let b = bsl {| |}
+        concat {| a: b, b: b |}
+      case 10 => concat {| a: bsl {| |}, b: "n" |}
+      case 9 => concat {| a: bsl {| |}, b: "t" |}
+      case 13 => concat {| a: bsl {| |}, b: "r" |}
+      case _ => char_of_int {| n: c |}
+    end
+end
+
+fn asm_escape_loop
+  case {| s, pos, acc |} =>
+    let slen = strlen {| s: s |}
+    match pos >= slen
+      case 1 => acc
+      case 0 =>
+        let ch = char_at {| s: s, n: pos |}
+        let esc = asm_escape_char {| c: ch |}
+        asm_escape_loop {| s: s, pos: pos + 1, acc: concat {| a: acc, b: esc |} |}
+    end
+end
+
+fn asm_string
+  case {| s |} =>
+    let escaped = asm_escape_loop {| s: s, pos: 0, acc: "" |}
+    wrap {| prefix: dq {| |}, s: escaped, suffix: dq {| |} |}
+end
+
+-- Emit string table entries for assembly
+fn emit_string_table_loop
+  case {| strs, acc |} =>
+    let n = nl {| |}
+    match is_nil {| list: strs |}
+      case 1 => acc
+      case 0 =>
+        let head = list_head {| list: strs |}
+        let tail = list_tail {| list: strs |}
+        let esc = asm_string {| s: head.value |}
+        let line = cat5 {| a: head.label, b: ":", c: concat {| a: n, b: "  .asciz " |}, d: esc, e: n |}
+        emit_string_table_loop {| strs: tail, acc: concat {| a: acc, b: line |} |}
+    end
 end
 

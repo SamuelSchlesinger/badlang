@@ -5,7 +5,7 @@ import System.IO (hPutStrLn, stderr)
 import System.Exit (exitFailure, exitWith, ExitCode(..))
 import System.Process (rawSystem)
 import System.Info (arch, os)
-import Data.List (elemIndices)
+import Data.List (elemIndices, isPrefixOf)
 import Stele.Grammar (parseProgram)
 import Stele.Types (typeCheck)
 import Stele.Lower (lowerProgram)
@@ -13,6 +13,7 @@ import Stele.EmitC (emitCFromIR, emitCFromIRTest)
 import Stele.EmitAArch64 (emitAArch64With, AArch64Target(..))
 import Stele.EmitX86_64 (emitX86_64, X86Target(..))
 import Stele.Runtime (runtimeSource)
+import Stele.Resolve (resolveModules)
 
 data NativeTarget = AArch64_macOS | AArch64_Linux | X86_64_macOS | X86_64_Linux
   deriving (Eq, Show)
@@ -32,19 +33,35 @@ parseTarget "x86_64-macos"  = Just X86_64_macOS
 parseTarget "x86_64-linux"  = Just X86_64_Linux
 parseTarget _               = Nothing
 
+-- | Extract search paths (-I / --search-path flags) and remaining args.
+extractSearchPaths :: [String] -> ([FilePath], [String])
+extractSearchPaths [] = ([], [])
+extractSearchPaths ("-I":p:rest) =
+  let (ps, args) = extractSearchPaths rest in (p:ps, args)
+extractSearchPaths ("--search-path":p:rest) =
+  let (ps, args) = extractSearchPaths rest in (p:ps, args)
+extractSearchPaths (a:rest)
+  | "-I" `isPrefixOf` a =
+      let p = drop 2 a
+          (ps, args) = extractSearchPaths rest
+      in (p:ps, args)
+  | otherwise =
+      let (ps, args) = extractSearchPaths rest in (ps, a:args)
+
 main :: IO ()
 main = do
-  args <- getArgs
+  allArgs <- getArgs
+  let (searchPaths, args) = extractSearchPaths allArgs
   case args of
-    ["--native", "--target", tgt, "--run", file] -> withTarget tgt (compileNativeAndRun file)
-    ["--native", "--run", "--target", tgt, file] -> withTarget tgt (compileNativeAndRun file)
-    ["--native", "--run", file]                  -> withDetectedTarget (compileNativeAndRun file)
-    ["--native", "--target", tgt, file]          -> withTarget tgt (compileNative file)
-    ["--native", file]                           -> withDetectedTarget (compileNative file)
-    ["--test", "--run", file]                     -> compileTestAndRun file
-    ["--test", file]                             -> compileTest file
-    ["--run", file]                              -> compileAndRun file
-    [file]                                       -> compile file
+    ["--native", "--target", tgt, "--run", file] -> withTarget tgt (compileNativeAndRun file searchPaths)
+    ["--native", "--run", "--target", tgt, file] -> withTarget tgt (compileNativeAndRun file searchPaths)
+    ["--native", "--run", file]                  -> withDetectedTarget (compileNativeAndRun file searchPaths)
+    ["--native", "--target", tgt, file]          -> withTarget tgt (compileNative file searchPaths)
+    ["--native", file]                           -> withDetectedTarget (compileNative file searchPaths)
+    ["--test", "--run", file]                     -> compileTestAndRun file searchPaths
+    ["--test", file]                             -> compileTest file searchPaths
+    ["--run", file]                              -> compileAndRun file searchPaths
+    [file]                                       -> compile file searchPaths
     _                                            -> do
       hPutStrLn stderr "stele — a small language with structural records and sum types"
       hPutStrLn stderr ""
@@ -54,6 +71,9 @@ main = do
       hPutStrLn stderr "  stele --native <source.stele>                     Compile to native (auto-detect)"
       hPutStrLn stderr "  stele --native --run <source.stele>               Compile native and run"
       hPutStrLn stderr "  stele --native --target <target> <source.stele>   Compile to specific target"
+      hPutStrLn stderr ""
+      hPutStrLn stderr "Options:"
+      hPutStrLn stderr "  -I <path>, --search-path <path>   Add module search path"
       hPutStrLn stderr ""
       hPutStrLn stderr "Targets: aarch64-macos, aarch64-linux, x86_64-macos, x86_64-linux"
       exitFailure
@@ -76,10 +96,11 @@ withDetectedTarget action =
       hPutStrLn stderr "Use --target to specify: aarch64-macos, aarch64-linux, x86_64-macos, x86_64-linux"
       exitFailure
 
-compile :: FilePath -> IO ()
-compile path = do
+compile :: FilePath -> [FilePath] -> IO ()
+compile path searchPaths = do
   src <- readFile path
-  case pipelineC src of
+  result <- pipelineC path searchPaths src
+  case result of
     Left err -> do
       hPutStrLn stderr err
       exitFailure
@@ -88,10 +109,11 @@ compile path = do
       writeFile outPath cCode
       putStrLn $ "Compiled to " ++ outPath
 
-compileAndRun :: FilePath -> IO ()
-compileAndRun path = do
+compileAndRun :: FilePath -> [FilePath] -> IO ()
+compileAndRun path searchPaths = do
   src <- readFile path
-  case pipelineC src of
+  result <- pipelineC path searchPaths src
+  case result of
     Left err -> do
       hPutStrLn stderr err
       exitFailure
@@ -115,10 +137,11 @@ ccFlags AArch64_Linux = []
 ccFlags X86_64_macOS  = ["-arch", "x86_64"]
 ccFlags X86_64_Linux  = []  -- requires native or cross-compiler
 
-compileNative :: FilePath -> NativeTarget -> IO ()
-compileNative path tgt = do
+compileNative :: FilePath -> [FilePath] -> NativeTarget -> IO ()
+compileNative path searchPaths tgt = do
   src <- readFile path
-  case pipelineNative tgt src of
+  result <- pipelineNative tgt path searchPaths src
+  case result of
     Left err -> do
       hPutStrLn stderr err
       exitFailure
@@ -136,10 +159,11 @@ compileNative path tgt = do
           hPutStrLn stderr $ "Native compilation failed (exit " ++ show n ++ ")"
           exitFailure
 
-compileNativeAndRun :: FilePath -> NativeTarget -> IO ()
-compileNativeAndRun path tgt = do
+compileNativeAndRun :: FilePath -> [FilePath] -> NativeTarget -> IO ()
+compileNativeAndRun path searchPaths tgt = do
   src <- readFile path
-  case pipelineNative tgt src of
+  result <- pipelineNative tgt path searchPaths src
+  case result of
     Left err -> do
       hPutStrLn stderr err
       exitFailure
@@ -158,10 +182,11 @@ compileNativeAndRun path tgt = do
           hPutStrLn stderr $ "Native compilation failed (exit " ++ show n ++ ")"
           exitFailure
 
-compileTest :: FilePath -> IO ()
-compileTest path = do
+compileTest :: FilePath -> [FilePath] -> IO ()
+compileTest path searchPaths = do
   src <- readFile path
-  case pipelineCTest src of
+  result <- pipelineCTest path searchPaths src
+  case result of
     Left err -> do
       hPutStrLn stderr err
       exitFailure
@@ -170,10 +195,11 @@ compileTest path = do
       writeFile outPath cCode
       putStrLn $ "Compiled test runner to " ++ outPath
 
-compileTestAndRun :: FilePath -> IO ()
-compileTestAndRun path = do
+compileTestAndRun :: FilePath -> [FilePath] -> IO ()
+compileTestAndRun path searchPaths = do
   src <- readFile path
-  case pipelineCTest src of
+  result <- pipelineCTest path searchPaths src
+  case result of
     Left err -> do
       hPutStrLn stderr err
       exitFailure
@@ -190,31 +216,38 @@ compileTestAndRun path = do
           hPutStrLn stderr $ "C compilation failed (exit " ++ show n ++ ")"
           exitFailure
 
-pipelineC :: String -> Either String String
-pipelineC src = do
-  ast     <- parseProgram src
-  checked <- typeCheck ast
-  let ir = lowerProgram checked
-  return (emitCFromIR ir)
+pipelineC :: FilePath -> [FilePath] -> String -> IO (Either String String)
+pipelineC path searchPaths src =
+  case parseProgram src of
+    Left err -> return (Left err)
+    Right ast -> do
+      resolved <- resolveModules path searchPaths ast
+      return $ resolved >>= \flat -> typeCheck flat >>= \checked ->
+        Right (emitCFromIR (lowerProgram checked))
 
-pipelineCTest :: String -> Either String String
-pipelineCTest src = do
-  ast     <- parseProgram src
-  checked <- typeCheck ast
-  let ir = lowerProgram checked
-  return (emitCFromIRTest ir)
+pipelineCTest :: FilePath -> [FilePath] -> String -> IO (Either String String)
+pipelineCTest path searchPaths src =
+  case parseProgram src of
+    Left err -> return (Left err)
+    Right ast -> do
+      resolved <- resolveModules path searchPaths ast
+      return $ resolved >>= \flat -> typeCheck flat >>= \checked ->
+        Right (emitCFromIRTest (lowerProgram checked))
 
-pipelineNative :: NativeTarget -> String -> Either String (String, String)
-pipelineNative tgt src = do
-  ast     <- parseProgram src
-  checked <- typeCheck ast
-  let ir  = lowerProgram checked
-      asm = case tgt of
-              AArch64_macOS -> emitAArch64With MacOS_AArch64 ir
-              AArch64_Linux -> emitAArch64With Linux_AArch64 ir
-              X86_64_macOS  -> emitX86_64 MacOS_x86_64 ir
-              X86_64_Linux  -> emitX86_64 Linux_x86_64 ir
-  return (asm, runtimeSource)
+pipelineNative :: NativeTarget -> FilePath -> [FilePath] -> String -> IO (Either String (String, String))
+pipelineNative tgt path searchPaths src =
+  case parseProgram src of
+    Left err -> return (Left err)
+    Right ast -> do
+      resolved <- resolveModules path searchPaths ast
+      return $ resolved >>= \flat -> typeCheck flat >>= \checked ->
+        let ir  = lowerProgram checked
+            asm = case tgt of
+                    AArch64_macOS -> emitAArch64With MacOS_AArch64 ir
+                    AArch64_Linux -> emitAArch64With Linux_AArch64 ir
+                    X86_64_macOS  -> emitX86_64 MacOS_x86_64 ir
+                    X86_64_Linux  -> emitX86_64 Linux_x86_64 ir
+        in Right (asm, runtimeSource)
 
 replaceExtension :: FilePath -> String -> FilePath
 replaceExtension path newExt =

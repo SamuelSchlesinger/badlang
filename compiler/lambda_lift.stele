@@ -1,3 +1,6 @@
+open Util
+open Codegen_c
+
 -- ============================================================
 -- Lambda Lifting: Free Variable Analysis
 -- ============================================================
@@ -80,6 +83,11 @@ fn free_vars_expr
       case "closure" =>
         free_vars_clauses {| clauses: node.clauses, bound: bound |}
       case "closure_ref" => nil {| |}
+      case "qual_call" =>
+        free_vars_expr {| node: node.arg, bound: bound |}
+      case "qual_var" => nil {| |}
+      case "qual_named_record" =>
+        free_vars_record_fields {| fields: node.fields, bound: bound |}
       case _ => nil {| |}
     end
 end
@@ -205,8 +213,14 @@ fn lift_expr
         let cr = lift_clauses {| clauses: node.clauses, fn_names: fn_names, counter: sr.counter |}
         let new_lambdas = list_append {| a: sr.lambdas, b: cr.lambdas |}
         {| node: {| tag: "match", scrutinee: sr.node, clauses: cr.clauses |}, lambdas: new_lambdas, counter: cr.counter |}
+      case "qual_call" =>
+        let ar = lift_expr {| node: node.arg, fn_names: fn_names, counter: counter |}
+        {| node: {| tag: "qual_call", module_name: node.module_name, name: node.name, arg: ar.node |}, lambdas: ar.lambdas, counter: ar.counter |}
+      case "qual_named_record" =>
+        let r = lift_record_fields {| fields: node.fields, fn_names: fn_names, counter: counter |}
+        {| node: {| tag: "qual_named_record", module_name: node.module_name, name: node.name, fields: r.fields |}, lambdas: r.lambdas, counter: r.counter |}
       case _ =>
-        -- Leaf nodes: int_lit, str_lit, var, readln, readint
+        -- Leaf nodes: int_lit, str_lit, var, readln, readint, qual_var
         let empty = nil {| |}
         {| node: node, lambdas: empty, counter: counter |}
     end
@@ -371,6 +385,12 @@ fn lift_decl
         let r = lift_stmts {| stmts: decl.stmts, fn_names: fn_names, counter: counter |}
         let new_decl = {| tag: "decl_test", name: decl.name, stmts: r.stmts |}
         {| decl: new_decl, lambdas: r.lambdas, counter: r.counter |}
+      case "decl_import" =>
+        let empty = nil {| |}
+        {| decl: decl, lambdas: empty, counter: counter |}
+      case "decl_open" =>
+        let empty = nil {| |}
+        {| decl: decl, lambdas: empty, counter: counter |}
       case _ =>
         let empty = nil {| |}
         {| decl: decl, lambdas: empty, counter: counter |}

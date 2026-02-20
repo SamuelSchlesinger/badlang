@@ -1,0 +1,5 @@
+import CircularB
+
+fn a_func
+  case {| n |} => n + 1
+end

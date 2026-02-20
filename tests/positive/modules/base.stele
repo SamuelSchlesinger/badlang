@@ -1,0 +1,3 @@
+fn double
+  case {| n |} => n * 2
+end

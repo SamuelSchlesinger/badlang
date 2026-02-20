@@ -1,0 +1,9 @@
+import Left
+import Right
+
+do main
+  let a = Left.left_op {| n: 5 |}
+  print a
+  let b = Right.right_op {| n: 5 |}
+  print b
+end

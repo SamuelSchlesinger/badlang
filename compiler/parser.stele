@@ -1,3 +1,5 @@
+open Util
+
 -- ============================================================
 -- Parser Infrastructure
 -- ============================================================
@@ -186,6 +188,40 @@ fn parse_pattern
       case "_" =>
         let rest1 = advance {| tokens: tokens |}
         {| node: {| tag: "pat_wild" |}, rest: rest1 |}
+      case "ident" =>
+        -- Check for qualified variant pattern: Module.Variant {| ... |}
+        let first_ch = char_at {| s: tok.value, n: 0 |}
+        let is_upper = (first_ch >= 65) && (first_ch <= 90)
+        let rest1 = advance {| tokens: tokens |}
+        let next = peek {| tokens: rest1 |}
+        match is_upper && (str_eq {| a: next.type, b: "." |})
+          case 1 =>
+            let rest2 = advance {| tokens: rest1 |}
+            let vname_tok = peek {| tokens: rest2 |}
+            let vfirst = char_at {| s: vname_tok.value, n: 0 |}
+            let vis_upper = (vfirst >= 65) && (vfirst <= 90)
+            let rest3 = advance {| tokens: rest2 |}
+            let after_name = peek {| tokens: rest3 |}
+            match vis_upper && (str_eq {| a: after_name.type, b: "{|" |})
+              case 1 =>
+                -- Qualified variant pattern: Module.Variant {| ... |}
+                let rpat = parse_record_pat {| tokens: rest3 |}
+                {| node: {| tag: "pat_qual_variant", module_name: tok.value, vname: vname_tok.value, inner: rpat.node |}, rest: rpat.rest |}
+              case 0 =>
+                -- Not a qualified pattern, was just an identifier followed by dot
+                -- Back up — treat as simple variable pattern
+                {| node: {| tag: "pat_var", name: tok.value |}, rest: rest1 |}
+            end
+          case 0 =>
+            -- Check for unqualified variant pattern: Variant {| ... |}
+            match is_upper && (str_eq {| a: next.type, b: "{|" |})
+              case 1 =>
+                let rpat = parse_record_pat {| tokens: rest1 |}
+                {| node: {| tag: "pat_variant", vname: tok.value, inner: rpat.node |}, rest: rpat.rest |}
+              case 0 =>
+                {| node: {| tag: "pat_var", name: tok.value |}, rest: rest1 |}
+            end
+        end
       case _ =>
         let rest1 = advance {| tokens: tokens |}
         {| node: {| tag: "pat_var", name: tok.value |}, rest: rest1 |}
@@ -323,28 +359,76 @@ fn parse_primary
       case "ident" =>
         let first_ch = char_at {| s: tok.value, n: 0 |}
         let is_upper = (first_ch >= 65) && (first_ch <= 90)
-        let next_tok = peek {| tokens: advance {| tokens: tokens |} |}
+        let rest1_tmp = advance {| tokens: tokens |}
+        let next_tok = peek {| tokens: rest1_tmp |}
+        let next_is_dot = str_eq {| a: next_tok.type, b: "." |}
         let next_is_rec = str_eq {| a: next_tok.type, b: "{|" |}
         let next_is_paren = str_eq {| a: next_tok.type, b: "(" |}
-        match is_upper && next_is_rec
-          case 1 => parse_named_record_expr {| tokens: tokens |}
-          case 0 =>
-            match (is_upper == 0) && next_is_rec
+        -- Check for qualified name: Module.name
+        match is_upper && next_is_dot
+          case 1 =>
+            let rest_after_dot = advance {| tokens: rest1_tmp |}
+            let member_tok = peek {| tokens: rest_after_dot |}
+            let member_first = char_at {| s: member_tok.value, n: 0 |}
+            let member_is_upper = (member_first >= 65) && (member_first <= 90)
+            let rest_after_member = advance {| tokens: rest_after_dot |}
+            let after_member_tok = peek {| tokens: rest_after_member |}
+            let after_is_rec = str_eq {| a: after_member_tok.type, b: "{|" |}
+            let after_is_paren = str_eq {| a: after_member_tok.type, b: "(" |}
+            match member_is_upper && after_is_rec
               case 1 =>
-                let id = expect_ident {| tokens: tokens |}
-                let r = parse_record_lit {| tokens: id.rest |}
-                {| node: {| tag: "call", name: id.name, arg: r.node |}, rest: r.rest |}
+                -- Module.Type {| ... |} => qual_named_record
+                let r = parse_record_lit {| tokens: rest_after_member |}
+                {| node: {| tag: "qual_named_record", module_name: tok.value, name: member_tok.value, fields: r.node.fields |}, rest: r.rest |}
               case 0 =>
-                match (is_upper == 0) && next_is_paren
+                match (member_is_upper == 0) && after_is_rec
+                  case 1 =>
+                    -- Module.func {| ... |} => qual_call
+                    let r = parse_record_lit {| tokens: rest_after_member |}
+                    {| node: {| tag: "qual_call", module_name: tok.value, name: member_tok.value, arg: r.node |}, rest: r.rest |}
+                  case 0 =>
+                    match (member_is_upper == 0) && after_is_paren
+                      case 1 =>
+                        -- Module.func( ... ) => qual_call
+                        let rest_p = expect {| tokens: rest_after_member, type: "(" |}
+                        let r = parse_expr {| tokens: rest_p |}
+                        let rest_p2 = expect {| tokens: r.rest, type: ")" |}
+                        {| node: {| tag: "qual_call", module_name: tok.value, name: member_tok.value, arg: r.node |}, rest: rest_p2 |}
+                      case 0 =>
+                        match member_is_upper == 0
+                          case 1 =>
+                            -- Module.var => qual_var
+                            {| node: {| tag: "qual_var", module_name: tok.value, name: member_tok.value |}, rest: rest_after_member |}
+                          case 0 =>
+                            -- Not a qualified expression, back up to treat as plain ident
+                            -- (uppercase Module followed by dot then uppercase non-record)
+                            let rest1 = advance {| tokens: tokens |}
+                            {| node: {| tag: "var", name: tok.value |}, rest: rest1 |}
+                        end
+                    end
+                end
+            end
+          case 0 =>
+            match is_upper && next_is_rec
+              case 1 => parse_named_record_expr {| tokens: tokens |}
+              case 0 =>
+                match (is_upper == 0) && next_is_rec
                   case 1 =>
                     let id = expect_ident {| tokens: tokens |}
-                    let rest1 = expect {| tokens: id.rest, type: "(" |}
-                    let r = parse_expr {| tokens: rest1 |}
-                    let rest2 = expect {| tokens: r.rest, type: ")" |}
-                    {| node: {| tag: "call", name: id.name, arg: r.node |}, rest: rest2 |}
+                    let r = parse_record_lit {| tokens: id.rest |}
+                    {| node: {| tag: "call", name: id.name, arg: r.node |}, rest: r.rest |}
                   case 0 =>
-                    let rest1 = advance {| tokens: tokens |}
-                    {| node: {| tag: "var", name: tok.value |}, rest: rest1 |}
+                    match (is_upper == 0) && next_is_paren
+                      case 1 =>
+                        let id = expect_ident {| tokens: tokens |}
+                        let rest1 = expect {| tokens: id.rest, type: "(" |}
+                        let r = parse_expr {| tokens: rest1 |}
+                        let rest2 = expect {| tokens: r.rest, type: ")" |}
+                        {| node: {| tag: "call", name: id.name, arg: r.node |}, rest: rest2 |}
+                      case 0 =>
+                        let rest1 = advance {| tokens: tokens |}
+                        {| node: {| tag: "var", name: tok.value |}, rest: rest1 |}
+                    end
                 end
             end
         end
@@ -620,12 +704,20 @@ fn parse_decl
   case {| tokens |} =>
     let tok = peek {| tokens: tokens |}
     match tok.type
+      case "import" =>
+        let rest1 = advance {| tokens: tokens |}
+        let id = expect_ident {| tokens: rest1 |}
+        {| node: {| tag: "decl_import", name: id.name |}, rest: id.rest |}
+      case "open" =>
+        let rest1 = advance {| tokens: tokens |}
+        let id = expect_ident {| tokens: rest1 |}
+        {| node: {| tag: "decl_open", name: id.name |}, rest: id.rest |}
       case "fn" => parse_fn_decl {| tokens: tokens |}
       case "do" => parse_do_decl {| tokens: tokens |}
       case "struct" => parse_struct_decl {| tokens: tokens |}
       case "test" => parse_test_decl {| tokens: tokens |}
       case _ =>
-        let s1 = concat {| a: "expected 'fn', 'do', 'struct', or 'test' but got '", b: tok.type |}
+        let s1 = concat {| a: "expected 'import', 'open', 'fn', 'do', 'struct', or 'test' but got '", b: tok.type |}
         let s2 = concat {| a: s1, b: "'" |}
         let _ = parse_error {| msg: s2, line: tok.line, col: tok.col |}
         {| node: {| tag: "decl_fn", name: "", clauses: nil {| |} |}, rest: tokens |}
