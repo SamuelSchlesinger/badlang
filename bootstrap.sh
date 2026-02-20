@@ -198,7 +198,6 @@ if [ -f "$STELA_SRC" ]; then
     STELA_RUN_DIR="$WORK_DIR/stela-run"
     mkdir -p "$STELA_RUN_DIR"
     mkdir -p "$STELA_RUN_DIR/runtime"
-    cp "$SCRIPT_DIR/runtime.c" "$STELA_RUN_DIR/runtime.c"
     cp "$NATIVE_RUNTIME" "$STELA_RUN_DIR/runtime/runtime.c"
     cp "$STDLIB_DIR/cli.stele" "$STELA_RUN_DIR/cli.stele"
     cp "$STDLIB_DIR/math.stele" "$STELA_RUN_DIR/math.stele"
