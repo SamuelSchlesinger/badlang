@@ -1,0 +1,43 @@
+-- Module system example
+--
+-- Demonstrates:
+--   open  (unqualified access to List functions)
+--   import (qualified access via Math.xxx)
+--   transitive dependencies (Stats uses both List and Math)
+
+open List
+open Stats
+import Math
+
+do main
+  -- Build a list using opened List functions
+  let xs = cons {| head: 10, tail: cons {| head: 20, tail: cons {| head: 30, tail: cons {| head: 40, tail: cons {| head: 50, tail: nil {| |} |} |} |} |} |}
+
+  -- List operations (from open List)
+  print length {| list: xs |}
+  print sum {| list: xs |}
+
+  -- Stats operations (from open Stats)
+  print mean {| list: xs |}
+  print variance {| list: xs |}
+
+  -- Qualified access to Math
+  print Math.factorial {| n: 6 |}
+  print Math.gcd {| a: 48, b: 18 |}
+  print Math.pow {| base: 2, exp: 10 |}
+
+  -- Filter + map with closures
+  let evens = filter {| list: xs, pred: fn
+    case {| x |} =>
+      let r = x - (x / 2) * 2
+      match r
+        case 0 => 1
+        case _ => 0
+      end
+    end |}
+  print sum {| list: evens |}
+
+  -- Clamp values to a range (Stats uses Math.min/Math.max internally)
+  let clamped = clamp {| list: xs, lo: 15, hi: 35 |}
+  print sum {| list: clamped |}
+end
