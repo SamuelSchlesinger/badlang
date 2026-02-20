@@ -330,6 +330,7 @@ emitInstrAsm (IBinOp v Eq l r) = do
   loadVar l "%rdi"
   loadVar r "%rsi"
   line $ "  callq " ++ symPrefix tgt ++ "stele_value_eq"
+  line "  movl %eax, %edi"  -- zero-extend 32-bit int return to 64-bit arg
   line $ "  callq " ++ symPrefix tgt ++ "make_int"
   storeVar v "%rax"
 
@@ -338,6 +339,7 @@ emitInstrAsm (IBinOp v Neq l r) = do
   loadVar l "%rdi"
   loadVar r "%rsi"
   line $ "  callq " ++ symPrefix tgt ++ "stele_value_neq"
+  line "  movl %eax, %edi"  -- zero-extend 32-bit int return to 64-bit arg
   line $ "  callq " ++ symPrefix tgt ++ "make_int"
   storeVar v "%rax"
 
