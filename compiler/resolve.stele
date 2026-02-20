@@ -130,6 +130,18 @@ fn all_decl_names
     all_decl_names_loop {| decls: decls, acc: nil {| |} |}
 end
 
+fn collect_variant_names
+  case {| variants, acc |} =>
+    match is_nil {| list: variants |}
+      case 1 => acc
+      case 0 =>
+        let head = list_head {| list: variants |}
+        let tail = list_tail {| list: variants |}
+        let new_acc = cons {| head: head.name, tail: acc |}
+        collect_variant_names {| variants: tail, acc: new_acc |}
+    end
+end
+
 fn all_decl_names_loop
   case {| decls, acc |} =>
     match is_nil {| list: decls |}
@@ -137,10 +149,17 @@ fn all_decl_names_loop
       case 0 =>
         let head = list_head {| list: decls |}
         let tail = list_tail {| list: decls |}
-        let name = decl_name {| decl: head |}
-        let new_acc = match str_eq {| a: name, b: "" |}
-          case 1 => acc
-          case 0 => cons {| head: name, tail: acc |}
+        let new_acc = match str_eq {| a: head.tag, b: "decl_oneof" |}
+          case 1 =>
+            -- Export both the oneof name and all variant names
+            let with_name = cons {| head: head.name, tail: acc |}
+            collect_variant_names {| variants: head.variants, acc: with_name |}
+          case 0 =>
+            let name = decl_name {| decl: head |}
+            match str_eq {| a: name, b: "" |}
+              case 1 => acc
+              case 0 => cons {| head: name, tail: acc |}
+            end
         end
         all_decl_names_loop {| decls: tail, acc: new_acc |}
     end
@@ -264,6 +283,18 @@ end
 -- Declaration Mangling
 -- ============================================================
 
+fn mangle_oneof_variants
+  case {| variants, mod_name |} =>
+    match is_nil {| list: variants |}
+      case 1 => nil {| |}
+      case 0 =>
+        let head = list_head {| list: variants |}
+        let tail = list_tail {| list: variants |}
+        let mangled = {| name: mangle {| mod_name: mod_name, name: head.name |}, fields: head.fields |}
+        cons {| head: mangled, tail: mangle_oneof_variants {| variants: tail, mod_name: mod_name |} |}
+    end
+end
+
 fn mangle_decl
   case {| decl, mod_name |} =>
     match decl.tag
@@ -273,6 +304,9 @@ fn mangle_decl
         {| tag: "decl_do", name: mangle {| mod_name: mod_name, name: decl.name |}, stmts: decl.stmts |}
       case "decl_struct" =>
         {| tag: "decl_struct", name: mangle {| mod_name: mod_name, name: decl.name |}, fields: decl.fields |}
+      case "decl_oneof" =>
+        let mangled_variants = mangle_oneof_variants {| variants: decl.variants, mod_name: mod_name |}
+        {| tag: "decl_oneof", name: mangle {| mod_name: mod_name, name: decl.name |}, variants: mangled_variants |}
       case "decl_test" =>
         decl
       case _ => decl
