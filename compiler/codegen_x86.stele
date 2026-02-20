@@ -785,8 +785,8 @@ fn emit_closure_ref_x86
           case 1 => ""
           case 0 => asm_ln {| s: concat {| a: "  addq $", b: concat {| a: tot_s, b: ", %rsp" |} |} |}
         end
-        let s1 = concat {| a: retain_code.code, b: sub_sp |}
-        let s1 = concat {| a: s1, b: sr.code |}
+        let s0 = concat {| a: retain_code.code, b: sub_sp |}
+        let s1 = concat {| a: s0, b: sr.code |}
         let s2 = concat {| a: s1, b: emit_mov_imm_x86 {| reg: "%rdi", n: nf |} |}
         let s3 = concat {| a: s2, b: "  movq %rsp, %rsi" |}
         let s4 = concat {| a: s3, b: n |}
