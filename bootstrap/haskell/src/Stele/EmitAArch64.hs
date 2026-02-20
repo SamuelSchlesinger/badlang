@@ -188,6 +188,8 @@ countVars (IRFuncBody _ blocks) =
     instrVars (IRecord v _)      = [v]
     instrVars (IFieldGet v _ _)  = [v]
     instrVars (ICall v _ _)      = [v]
+    instrVars (IClosure v _ _)   = [v]
+    instrVars (ICallClosure v _ _) = [v]
     instrVars (IRetain _)        = []
     instrVars (IRelease _)       = []
     instrVars (ITagCheck v _ _)  = [v]
@@ -452,6 +454,52 @@ emitInstrAsm (IFieldGet v rec fld) = do
 emitInstrAsm (ICall v riteName arg) = do
   loadVar arg "x0"
   callSym ("fn_" ++ riteName)
+  storeVar v "x0"
+
+emitInstrAsm (IClosure v lambdaName envFields) = do
+  tgt <- getTarget
+  if null envFields
+    then do
+      -- No captures: make_closure(fn_ptr, NULL)
+      emitLoadLabelAddr "x0" (symPrefix tgt ++ "fn_" ++ lambdaName)
+      line "  mov x1, #0"
+      callSym "make_closure"
+      storeVar v "x0"
+    else do
+      -- Retain captured values so env record owns them
+      mapM_ (\(_, fvar) -> do
+        loadVar fvar "x0"
+        callSym "rc_retain"
+        ) envFields
+      -- Build env record
+      let n = length envFields
+          namesSize = n * 8
+          valsSize = n * 8
+          totalSize = align16 (namesSize + valsSize)
+      emitSubSp totalSize
+      mapM_ (\(i, (fname, fvar)) -> do
+        lbl <- addString fname
+        emitLoadLabelAddr "x8" lbl
+        line $ "  str x8, [sp, #" ++ show (i * 8) ++ "]"
+        loadVar fvar "x9"
+        line $ "  str x9, [sp, #" ++ show (namesSize + i * 8) ++ "]"
+        ) (zip [0..] envFields)
+      loadImm64 "x0" (fromIntegral n)
+      line "  mov x1, sp"
+      line $ "  add x2, sp, #" ++ show namesSize
+      callSym "make_record_with_fields"
+      emitAddSp totalSize
+      -- x0 = env record, save to x19
+      line "  mov x19, x0"
+      emitLoadLabelAddr "x0" (symPrefix tgt ++ "fn_" ++ lambdaName)
+      line "  mov x1, x19"
+      callSym "make_closure"
+      storeVar v "x0"
+
+emitInstrAsm (ICallClosure v clos arg) = do
+  loadVar clos "x0"
+  loadVar arg "x1"
+  callSym "stele_call_closure"
   storeVar v "x0"
 
 emitInstrAsm (IRetain v) = do

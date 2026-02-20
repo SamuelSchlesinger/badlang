@@ -36,6 +36,7 @@ COMPILER_SRC="$WORK_DIR/compiler_combined.stele"
 cat "$SCRIPT_DIR/compiler/util.stele" \
     "$SCRIPT_DIR/compiler/lexer.stele" \
     "$SCRIPT_DIR/compiler/parser.stele" \
+    "$SCRIPT_DIR/compiler/lambda_lift.stele" \
     "$SCRIPT_DIR/compiler/codegen_c.stele" \
     "$SCRIPT_DIR/compiler/codegen_aarch64.stele" \
     "$SCRIPT_DIR/compiler/codegen_x86.stele" \

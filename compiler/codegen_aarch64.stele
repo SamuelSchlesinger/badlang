@@ -896,6 +896,98 @@ fn emit_match_asm
     {| code: code, var: dvn.name, state: mf_sr.state |}
 end
 
+fn emit_closure_env_fields_asm
+  case {| fields, state, entries |} =>
+    match is_nil {| list: fields |}
+      case 1 => {| code: "", entries: entries, state: state |}
+      case 0 =>
+        let head = list_head {| list: fields |}
+        let tail = list_tail {| list: fields |}
+        let cn = c_name {| name: head.name |}
+        let src_slot = lookup_slot {| name: cn, slots: state.slots |}
+        let entry = {| name: head.name, var: cn |}
+        let new_entries = cons {| head: entry, tail: entries |}
+        emit_closure_env_fields_asm {| fields: tail, state: state, entries: new_entries |}
+    end
+end
+
+fn emit_closure_ref_asm
+  case {| node, state |} =>
+    let n = nl {| |}
+    let num_fvs = list_len {| list: node.free_vars |}
+    match num_fvs == 0
+      case 1 =>
+        -- No captures: make_closure(fn_ptr, NULL)
+        let f = fresh_var {| prefix: "_t", counter: state.counter |}
+        let st1 = {| counter: f.counter, slot_counter: state.slot_counter, slots: state.slots, strs: state.strs |}
+        let ar = alloc_slot {| name: f.name, state: st1 |}
+        let store = emit_store_slot {| slot: ar.slot, reg: "x0" |}
+        let fn_sym = asm_symbol {| name: concat {| a: "fn_", b: node.lambda_name |} |}
+        let s1 = asm_load_label_addr {| reg: "x0", label: fn_sym |}
+        let s2 = concat {| a: s1, b: asm_ln {| s: "  mov x1, #0" |} |}
+        let s3 = concat {| a: s2, b: asm_bl {| name: "make_closure" |} |}
+        {| code: concat {| a: s3, b: store |}, var: f.name, state: ar.state |}
+      case 0 =>
+        -- Build env record from free vars, then make_closure
+        let er = emit_closure_env_fields_asm {| fields: node.free_vars, state: state, entries: nil {| |} |}
+        let entries = list_reverse {| list: er.entries |}
+        let nf = num_fvs
+        let total = ((nf * 16 + 15) / 16) * 16
+        let sr = emit_record_setup_loop_asm {| entries: entries, state: er.state, idx: 0, num_fields: nf |}
+        let ns_s = int_to_str {| n: nf * 8 |}
+        let tot_s = int_to_str {| n: total |}
+        let sub_sp = match total == 0
+          case 1 => ""
+          case 0 => asm_ln {| s: concat {| a: "  sub sp, sp, #", b: tot_s |} |}
+        end
+        let add_sp = match total == 0
+          case 1 => ""
+          case 0 => asm_ln {| s: concat {| a: "  add sp, sp, #", b: tot_s |} |}
+        end
+        let s1 = concat {| a: sub_sp, b: sr.code |}
+        let s2 = concat {| a: s1, b: emit_mov_imm {| reg: "x0", n: nf |} |}
+        let s3 = concat {| a: s2, b: "  mov x1, sp" |}
+        let s4 = concat {| a: s3, b: n |}
+        let s5 = concat {| a: s4, b: "  add x2, sp, #" |}
+        let s6 = concat {| a: s5, b: ns_s |}
+        let s7 = concat {| a: s6, b: n |}
+        let s8 = concat {| a: s7, b: asm_bl {| name: "make_record_with_fields" |} |}
+        let s9 = concat {| a: s8, b: add_sp |}
+        -- x0 = env record, save to x19
+        let s10 = concat {| a: s9, b: asm_ln {| s: "  mov x19, x0" |} |}
+        let fn_sym = asm_symbol {| name: concat {| a: "fn_", b: node.lambda_name |} |}
+        let s11 = concat {| a: s10, b: asm_load_label_addr {| reg: "x0", label: fn_sym |} |}
+        let s12 = concat {| a: s11, b: asm_ln {| s: "  mov x1, x19" |} |}
+        let s13 = concat {| a: s12, b: asm_bl {| name: "make_closure" |} |}
+        let f = fresh_var {| prefix: "_t", counter: sr.state.counter |}
+        let st1 = {| counter: f.counter, slot_counter: sr.state.slot_counter, slots: sr.state.slots, strs: sr.state.strs |}
+        let ar = alloc_slot {| name: f.name, state: st1 |}
+        let store = emit_store_slot {| slot: ar.slot, reg: "x0" |}
+        {| code: concat {| a: s13, b: store |}, var: f.name, state: ar.state |}
+    end
+end
+
+fn emit_closure_call_asm
+  case {| node, state |} =>
+    let r = emit_expr_asm {| node: node.arg, state: state |}
+    let f = fresh_var {| prefix: "_t", counter: r.state.counter |}
+    let st = {| counter: f.counter, slot_counter: r.state.slot_counter, slots: r.state.slots, strs: r.state.strs |}
+    let ar = alloc_slot {| name: f.name, state: st |}
+    let cn = c_name {| name: node.closure_var |}
+    let cs = lookup_slot {| name: cn, slots: ar.state.slots |}
+    let cl = emit_load_slot {| slot: cs, reg: "x0" |}
+    let as2 = lookup_slot {| name: r.var, slots: ar.state.slots |}
+    let al = emit_load_slot {| slot: as2, reg: "x1" |}
+    let store = emit_store_slot {| slot: ar.slot, reg: "x0" |}
+    let rla = emit_load_slot {| slot: as2, reg: "x0" |}
+    let s1 = concat {| a: r.code, b: cl |}
+    let s2 = concat {| a: s1, b: al |}
+    let s3 = concat {| a: s2, b: asm_bl {| name: "stele_call_closure" |} |}
+    let s4 = concat {| a: s3, b: store |}
+    let s5 = concat {| a: s4, b: rla |}
+    {| code: concat {| a: s5, b: asm_bl {| name: "rc_release" |} |}, var: f.name, state: ar.state |}
+end
+
 -- Expression dispatcher (ASM)
 fn emit_expr_asm
   case {| node, state |} =>
@@ -913,6 +1005,8 @@ fn emit_expr_asm
       case "readint" => emit_readint_asm {| state: state |}
       case "let_in" => emit_let_in_asm {| node: node, state: state |}
       case "match" => emit_match_asm {| node: node, state: state |}
+      case "closure_ref" => emit_closure_ref_asm {| node: node, state: state |}
+      case "closure_call" => emit_closure_call_asm {| node: node, state: state |}
     end
 end
 

@@ -32,7 +32,7 @@ cRuntime = unlines
   , ""
   , "/* ── stele runtime (reference counted) ────────────────────── */"
   , ""
-  , "typedef enum { TAG_INT, TAG_STR, TAG_RECORD, TAG_VOID } Tag;"
+  , "typedef enum { TAG_INT, TAG_STR, TAG_RECORD, TAG_VOID, TAG_CLOSURE } Tag;"
   , ""
   , "typedef struct Field {"
   , "    const char* name;"
@@ -46,6 +46,7 @@ cRuntime = unlines
   , "        int64_t int_val;"
   , "        char* str_val;"
   , "        struct { int num_fields; Field* fields; } record;"
+  , "        struct { struct Value* (*fn_ptr)(struct Value*); struct Value* env; } closure;"
   , "    };"
   , "} Value;"
   , ""
@@ -112,6 +113,44 @@ cRuntime = unlines
   , "    return v;"
   , "}"
   , ""
+  , "static Value* make_closure(Value* (*fn_ptr)(Value*), Value* env) {"
+  , "    Value* v = (Value*)stele_malloc(sizeof(Value));"
+  , "    v->tag = TAG_CLOSURE;"
+  , "    v->refcount = 1;"
+  , "    v->closure.fn_ptr = fn_ptr;"
+  , "    v->closure.env = env;"
+  , "    if (env) rc_retain(env);"
+  , "    return v;"
+  , "}"
+  , ""
+  , "static Value* stele_call_closure(Value* clos, Value* arg) {"
+  , "    if (!clos || clos->tag != TAG_CLOSURE) {"
+  , "        fprintf(stderr, \"stele: attempt to call non-closure value\\n\");"
+  , "        exit(1);"
+  , "    }"
+  , "    Value* env = clos->closure.env;"
+  , "    if (env && env->tag == TAG_RECORD && arg && arg->tag == TAG_RECORD) {"
+  , "        int total = arg->record.num_fields + env->record.num_fields;"
+  , "        Value* merged = (Value*)stele_malloc(sizeof(Value));"
+  , "        merged->tag = TAG_RECORD;"
+  , "        merged->refcount = 1;"
+  , "        merged->record.num_fields = total;"
+  , "        merged->record.fields = (Field*)stele_malloc(sizeof(Field) * total);"
+  , "        for (int i = 0; i < arg->record.num_fields; i++) {"
+  , "            merged->record.fields[i] = arg->record.fields[i];"
+  , "            rc_retain(arg->record.fields[i].value);"
+  , "        }"
+  , "        for (int i = 0; i < env->record.num_fields; i++) {"
+  , "            merged->record.fields[arg->record.num_fields + i] = env->record.fields[i];"
+  , "            rc_retain(env->record.fields[i].value);"
+  , "        }"
+  , "        Value* result = clos->closure.fn_ptr(merged);"
+  , "        rc_release(merged);"
+  , "        return result;"
+  , "    }"
+  , "    return clos->closure.fn_ptr(arg);"
+  , "}"
+  , ""
   , "static void rc_release(Value* v) {"
   , "    Value* stack[64];"
   , "    int sp = 0;"
@@ -135,6 +174,12 @@ cRuntime = unlines
   , "                    }"
   , "                }"
   , "                free(cur->record.fields);"
+  , "                break;"
+  , "            case TAG_CLOSURE:"
+  , "                if (cur->closure.env) {"
+  , "                    if (sp < 64) { stack[sp++] = cur->closure.env; }"
+  , "                    else { rc_release(cur->closure.env); }"
+  , "                }"
   , "                break;"
   , "            default: break;"
   , "        }"
@@ -161,6 +206,7 @@ cRuntime = unlines
   , "        case TAG_INT: return a->int_val == b->int_val;"
   , "        case TAG_STR: return strcmp(a->str_val, b->str_val) == 0;"
   , "        case TAG_VOID: return 1;"
+  , "        case TAG_CLOSURE: return a == b;"
   , "        case TAG_RECORD:"
   , "            if (a->record.num_fields != b->record.num_fields) return 0;"
   , "            for (int i = 0; i < a->record.num_fields; i++) {"
@@ -182,7 +228,8 @@ cRuntime = unlines
   , "    switch (v->tag) {"
   , "        case TAG_INT:    printf(\"%lld\\n\", (long long)v->int_val); break;"
   , "        case TAG_STR:    printf(\"%s\\n\", v->str_val); break;"
-  , "        case TAG_VOID:   printf(\"void\\n\"); break;"
+  , "        case TAG_VOID:    printf(\"void\\n\"); break;"
+  , "        case TAG_CLOSURE: printf(\"<closure>\\n\"); break;"
   , "        case TAG_RECORD: {"
   , "            printf(\"{| \");"
   , "            for (int i = 0; i < v->record.num_fields; i++) {"
@@ -199,9 +246,10 @@ cRuntime = unlines
   , "static void stele_write(Value* v) {"
   , "    if (!v) stele_runtime_null(\"write\");"
   , "    switch (v->tag) {"
-  , "        case TAG_INT:    printf(\"%lld\", (long long)v->int_val); break;"
-  , "        case TAG_STR:    printf(\"%s\", v->str_val); break;"
-  , "        case TAG_VOID:   printf(\"void\"); break;"
+  , "        case TAG_INT:     printf(\"%lld\", (long long)v->int_val); break;"
+  , "        case TAG_STR:     printf(\"%s\", v->str_val); break;"
+  , "        case TAG_VOID:    printf(\"void\"); break;"
+  , "        case TAG_CLOSURE: printf(\"<closure>\"); break;"
   , "        case TAG_RECORD: {"
   , "            printf(\"{| \");"
   , "            for (int i = 0; i < v->record.num_fields; i++) {"
@@ -600,6 +648,8 @@ collectVarDecls blocks = foldl addBlock (Set.empty, Set.empty) blocks
       IRecord v _      -> (Set.insert v ptrs, ints)
       IFieldGet v _ _  -> (Set.insert v ptrs, ints)
       ICall v _ _      -> (Set.insert v ptrs, ints)
+      IClosure v _ _   -> (Set.insert v ptrs, ints)
+      ICallClosure v _ _ -> (Set.insert v ptrs, ints)
       ITagCheck v _ _  -> (ptrs, Set.insert v ints)
       INullCheck v _   -> (ptrs, Set.insert v ints)
       IIntEq v _ _     -> (ptrs, Set.insert v ints)
@@ -653,6 +703,16 @@ emitInstr (IFieldGet v rec fld) =
   v ++ " = record_field(" ++ rec ++ ", " ++ cString fld ++ ");\n"
 emitInstr (ICall v fnName arg) =
   v ++ " = fn_" ++ fnName ++ "(" ++ arg ++ ");\n"
+emitInstr (IClosure v lambdaName envFields) =
+  let retains = concatMap (\(_, fv) -> "rc_retain(" ++ fv ++ ");\n") envFields
+      envCode = if null envFields
+        then v ++ " = make_closure(fn_" ++ lambdaName ++ ", NULL);\n"
+        else let envRec = "make_record(" ++ show (length envFields) ++
+                   concatMap (\(name, fv) -> ", " ++ cString name ++ ", " ++ fv) envFields ++ ")"
+             in v ++ " = make_closure(fn_" ++ lambdaName ++ ", " ++ envRec ++ ");\n"
+  in retains ++ envCode
+emitInstr (ICallClosure v clos arg) =
+  v ++ " = stele_call_closure(" ++ clos ++ ", " ++ arg ++ ");\n"
 emitInstr (IRetain v) =
   "rc_retain(" ++ v ++ ");\n"
 emitInstr (IRelease v) =

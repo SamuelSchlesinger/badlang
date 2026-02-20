@@ -203,3 +203,53 @@ fn wrap
     concat {| a: s1, b: suffix |}
 end
 
+-- Check if a string is in a list of strings
+fn list_contains_str
+  case {| list, s |} =>
+    match is_nil {| list: list |}
+      case 1 => 0
+      case 0 =>
+        let head = list_head {| list: list |}
+        match str_eq {| a: head, b: s |}
+          case 1 => 1
+          case 0 => list_contains_str {| list: list_tail {| list: list |}, s: s |}
+        end
+    end
+end
+
+-- Append two lists
+fn list_append
+  case {| a, b |} =>
+    match is_nil {| list: a |}
+      case 1 => b
+      case 0 =>
+        let head = list_head {| list: a |}
+        let tail = list_tail {| list: a |}
+        cons {| head: head, tail: list_append {| a: tail, b: b |} |}
+    end
+end
+
+-- Remove duplicate strings from a list
+fn list_dedup_str_acc
+  case {| list, seen, acc |} =>
+    match is_nil {| list: list |}
+      case 1 => list_reverse {| list: acc |}
+      case 0 =>
+        let head = list_head {| list: list |}
+        let tail = list_tail {| list: list |}
+        match list_contains_str {| list: seen, s: head |}
+          case 1 => list_dedup_str_acc {| list: tail, seen: seen, acc: acc |}
+          case 0 =>
+            let new_seen = cons {| head: head, tail: seen |}
+            let new_acc = cons {| head: head, tail: acc |}
+            list_dedup_str_acc {| list: tail, seen: new_seen, acc: new_acc |}
+        end
+    end
+end
+
+fn list_dedup_str
+  case {| list |} =>
+    let empty = nil {| |}
+    list_dedup_str_acc {| list: list, seen: empty, acc: empty |}
+end
+

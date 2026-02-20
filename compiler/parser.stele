@@ -361,6 +361,12 @@ fn parse_primary
         {| node: r.node, rest: rest2 |}
       case "match" => parse_match_expr {| tokens: tokens |}
       case "{|" => parse_record_lit {| tokens: tokens |}
+      case "fn" =>
+        let rest1 = advance {| tokens: tokens |}
+        let empty = nil {| |}
+        let r = parse_case_clauses {| tokens: rest1, acc: empty |}
+        let rest2 = expect {| tokens: r.rest, type: "end" |}
+        {| node: {| tag: "closure", clauses: r.node |}, rest: rest2 |}
       case _ =>
         let s1 = concat {| a: "unexpected token '", b: tok.type |}
         let s2 = concat {| a: s1, b: "' in expression" |}

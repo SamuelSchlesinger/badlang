@@ -1,0 +1,54 @@
+-- Test closures (anonymous functions)
+
+fn apply
+  case {| f, x |} =>
+    f {| n: x |}
+end
+
+fn make_adder
+  case {| base |} =>
+    fn case {| n |} => n + base end
+end
+
+do main
+  -- Basic closure (no captures)
+  let double = fn case {| n |} => n * 2 end
+  print double {| n: 7 |}
+
+  -- Closure capturing a let-bound variable
+  let x = 100
+  let add_x = fn case {| n |} => n + x end
+  print add_x {| n: 42 |}
+
+  -- Closure returned from a function (captures pattern-bound var)
+  let add5 = make_adder {| base: 5 |}
+  print add5 {| n: 10 |}
+
+  -- Closure passed as argument to a function
+  let triple = fn case {| n |} => n * 3 end
+  let result = apply {| f: triple, x: 9 |}
+  print result
+
+  -- Closure capturing multiple variables
+  let a = 1
+  let b = 2
+  let f = fn case {| n |} => n + a + b end
+  print f {| n: 10 |}
+
+  -- Multi-clause closure
+  let describe = fn
+    case {| n: 0 |} => "zero"
+    case {| n |} => "nonzero"
+  end
+  print describe {| n: 0 |}
+  print describe {| n: 42 |}
+
+  -- Closure stored in a record
+  let adder = fn case {| a, b |} => a + b end
+  let muler = fn case {| a, b |} => a * b end
+  let ops = {| add: adder, mul: muler |}
+  let add_fn = ops.add
+  let mul_fn = ops.mul
+  print add_fn {| a: 3, b: 4 |}
+  print mul_fn {| a: 3, b: 4 |}
+end

@@ -635,6 +635,84 @@ fn emit_match
     {| code: code, var: fdvn.name, counter: rc.counter |}
 end
 
+fn emit_closure_ref
+  case {| node, counter |} =>
+    let n = nl {| |}
+    -- Build the environment record from free vars
+    let num_fvs = list_len {| list: node.free_vars |}
+    match num_fvs == 0
+      case 1 =>
+        -- No captures: make_closure(fn_lambda_N, NULL)
+        let f = fresh_var {| prefix: "_t", counter: counter |}
+        let s1 = concat {| a: "Value* ", b: f.name |}
+        let s2 = concat {| a: s1, b: " = make_closure(fn_" |}
+        let s3 = concat {| a: s2, b: node.lambda_name |}
+        let s4 = concat {| a: s3, b: ", NULL);" |}
+        let code = concat {| a: s4, b: n |}
+        {| code: code, var: f.name, counter: f.counter |}
+      case 0 =>
+        -- Build env record, then make_closure
+        let env_r = emit_closure_env_fields {| fields: node.free_vars, counter: counter, setup: "", args: "" |}
+        let env_f = fresh_var {| prefix: "_env", counter: env_r.counter |}
+        let num_str = int_to_str {| n: num_fvs |}
+        let e1 = concat {| a: env_r.setup, b: "Value* " |}
+        let e2 = concat {| a: e1, b: env_f.name |}
+        let e3 = concat {| a: e2, b: " = make_record(" |}
+        let e4 = concat {| a: e3, b: num_str |}
+        let e5 = concat {| a: e4, b: env_r.args |}
+        let e6 = concat {| a: e5, b: ");" |}
+        let env_code = concat {| a: e6, b: n |}
+        let f = fresh_var {| prefix: "_t", counter: env_f.counter |}
+        let s1 = concat {| a: "Value* ", b: f.name |}
+        let s2 = concat {| a: s1, b: " = make_closure(fn_" |}
+        let s3 = concat {| a: s2, b: node.lambda_name |}
+        let s4 = concat {| a: s3, b: ", " |}
+        let s5 = concat {| a: s4, b: env_f.name |}
+        let s6 = concat {| a: s5, b: ");" |}
+        let clos_code = concat {| a: s6, b: n |}
+        let code = concat {| a: env_code, b: clos_code |}
+        {| code: code, var: f.name, counter: f.counter |}
+    end
+end
+
+fn emit_closure_env_fields
+  case {| fields, counter, setup, args |} =>
+    match is_nil {| list: fields |}
+      case 1 => {| setup: setup, args: args, counter: counter |}
+      case 0 =>
+        let head = list_head {| list: fields |}
+        let tail = list_tail {| list: fields |}
+        let cn = c_name {| name: head.name |}
+        let cs = c_string {| s: head.name |}
+        let a1 = concat {| a: args, b: ", " |}
+        let a2 = concat {| a: a1, b: cs |}
+        let a3 = concat {| a: a2, b: ", " |}
+        let new_args = concat {| a: a3, b: cn |}
+        emit_closure_env_fields {| fields: tail, counter: counter, setup: setup, args: new_args |}
+    end
+end
+
+fn emit_closure_call
+  case {| node, counter |} =>
+    let n = nl {| |}
+    let r = emit_expr {| node: node.arg, counter: counter |}
+    let f = fresh_var {| prefix: "_t", counter: r.counter |}
+    let cn = c_name {| name: node.closure_var |}
+    let s1 = concat {| a: r.code, b: "Value* " |}
+    let s2 = concat {| a: s1, b: f.name |}
+    let s3 = concat {| a: s2, b: " = stele_call_closure(" |}
+    let s4 = concat {| a: s3, b: cn |}
+    let s5 = concat {| a: s4, b: ", " |}
+    let s6 = concat {| a: s5, b: r.var |}
+    let s7 = concat {| a: s6, b: ");" |}
+    let s8 = concat {| a: s7, b: n |}
+    let s9 = concat {| a: s8, b: "rc_release(" |}
+    let s10 = concat {| a: s9, b: r.var |}
+    let s11 = concat {| a: s10, b: ");" |}
+    let code = concat {| a: s11, b: n |}
+    {| code: code, var: f.name, counter: f.counter |}
+end
+
 -- Central expression dispatcher
 fn emit_expr
   case {| node, counter |} =>
@@ -652,6 +730,8 @@ fn emit_expr
       case "readint" => emit_readint {| counter: counter |}
       case "let_in" => emit_let_in {| node: node, counter: counter |}
       case "match" => emit_match {| node: node, counter: counter |}
+      case "closure_ref" => emit_closure_ref {| node: node, counter: counter |}
+      case "closure_call" => emit_closure_call {| node: node, counter: counter |}
     end
 end
 

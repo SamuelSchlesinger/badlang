@@ -76,6 +76,8 @@ data Instr
   | IFieldGet  Var Var String           -- ^ @var = record_field(rec, "name")@
   -- Calls
   | ICall      Var String Var           -- ^ @var = fn_name(arg)@
+  | IClosure   Var String [(String, Var)] -- ^ @var = make_closure(fn_lambda_N, env_record)@
+  | ICallClosure Var Var Var            -- ^ @var = stele_call_closure(closure, arg)@
   -- Reference counting
   | IRetain    Var                      -- ^ @rc_retain(var)@
   | IRelease   Var                      -- ^ @rc_release(var)@

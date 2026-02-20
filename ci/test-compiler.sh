@@ -54,6 +54,7 @@ build_self_hosted() {
     cat "$ROOT_DIR/compiler/util.stele" \
         "$ROOT_DIR/compiler/lexer.stele" \
         "$ROOT_DIR/compiler/parser.stele" \
+        "$ROOT_DIR/compiler/lambda_lift.stele" \
         "$ROOT_DIR/compiler/codegen_c.stele" \
         "$ROOT_DIR/compiler/codegen_aarch64.stele" \
         "$ROOT_DIR/compiler/codegen_x86.stele" \

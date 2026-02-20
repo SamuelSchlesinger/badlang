@@ -1,0 +1,391 @@
+-- ============================================================
+-- Lambda Lifting: Free Variable Analysis
+-- ============================================================
+
+-- Extract variable names bound by a pattern
+fn pat_bound_names
+  case {| pat |} =>
+    match pat.tag
+      case "pat_var" =>
+        cons {| head: pat.name, tail: nil {| |} |}
+      case "pat_rec" =>
+        pat_fields_bound_names {| fields: pat.fields |}
+      case _ => nil {| |}
+    end
+end
+
+fn pat_fields_bound_names
+  case {| fields |} =>
+    match is_nil {| list: fields |}
+      case 1 => nil {| |}
+      case 0 =>
+        let head = list_head {| list: fields |}
+        let tail = list_tail {| list: fields |}
+        let name = match head.pat.tag
+          case "pat_none" => head.name
+          case "pat_var" => head.pat.name
+          case _ => ""
+        end
+        let rest = pat_fields_bound_names {| fields: tail |}
+        match str_eq {| a: name, b: "" |}
+          case 1 => rest
+          case 0 => cons {| head: name, tail: rest |}
+        end
+    end
+end
+
+-- Collect free variable names in an expression
+-- bound: list of names that are locally bound (not free)
+fn free_vars_expr
+  case {| node, bound |} =>
+    match node.tag
+      case "var" =>
+        match list_contains_str {| list: bound, s: node.name |}
+          case 1 => nil {| |}
+          case 0 => cons {| head: node.name, tail: nil {| |} |}
+        end
+      case "int_lit" => nil {| |}
+      case "str_lit" => nil {| |}
+      case "readln" => nil {| |}
+      case "readint" => nil {| |}
+      case "binop" =>
+        let l = free_vars_expr {| node: node.left, bound: bound |}
+        let r = free_vars_expr {| node: node.right, bound: bound |}
+        list_append {| a: l, b: r |}
+      case "unop" =>
+        free_vars_expr {| node: node.operand, bound: bound |}
+      case "field_access" =>
+        free_vars_expr {| node: node.obj, bound: bound |}
+      case "record" =>
+        free_vars_record_fields {| fields: node.fields, bound: bound |}
+      case "named_record" =>
+        free_vars_record_fields {| fields: node.fields, bound: bound |}
+      case "call" =>
+        let arg_fvs = free_vars_expr {| node: node.arg, bound: bound |}
+        -- The call target name itself might be a free variable
+        match list_contains_str {| list: bound, s: node.name |}
+          case 1 => arg_fvs
+          case 0 => arg_fvs
+        end
+      case "closure_call" =>
+        let arg_fvs = free_vars_expr {| node: node.arg, bound: bound |}
+        match list_contains_str {| list: bound, s: node.closure_var |}
+          case 1 => arg_fvs
+          case 0 => cons {| head: node.closure_var, tail: arg_fvs |}
+        end
+      case "let_in" =>
+        let v_fvs = free_vars_expr {| node: node.value, bound: bound |}
+        let new_bound = cons {| head: node.name, tail: bound |}
+        let b_fvs = free_vars_expr {| node: node.body, bound: new_bound |}
+        list_append {| a: v_fvs, b: b_fvs |}
+      case "match" =>
+        let s_fvs = free_vars_expr {| node: node.scrutinee, bound: bound |}
+        let c_fvs = free_vars_clauses {| clauses: node.clauses, bound: bound |}
+        list_append {| a: s_fvs, b: c_fvs |}
+      case "closure" =>
+        free_vars_clauses {| clauses: node.clauses, bound: bound |}
+      case "closure_ref" => nil {| |}
+      case _ => nil {| |}
+    end
+end
+
+fn free_vars_record_fields
+  case {| fields, bound |} =>
+    match is_nil {| list: fields |}
+      case 1 => nil {| |}
+      case 0 =>
+        let head = list_head {| list: fields |}
+        let tail = list_tail {| list: fields |}
+        let fvs = free_vars_expr {| node: head.value, bound: bound |}
+        let rest = free_vars_record_fields {| fields: tail, bound: bound |}
+        list_append {| a: fvs, b: rest |}
+    end
+end
+
+fn free_vars_clause
+  case {| clause, bound |} =>
+    let pat_names = pat_bound_names {| pat: clause.pat |}
+    let new_bound = list_append {| a: pat_names, b: bound |}
+    free_vars_expr {| node: clause.body, bound: new_bound |}
+end
+
+fn free_vars_clauses
+  case {| clauses, bound |} =>
+    match is_nil {| list: clauses |}
+      case 1 => nil {| |}
+      case 0 =>
+        let head = list_head {| list: clauses |}
+        let tail = list_tail {| list: clauses |}
+        let fvs = free_vars_clause {| clause: head, bound: bound |}
+        let rest = free_vars_clauses {| clauses: tail, bound: bound |}
+        list_append {| a: fvs, b: rest |}
+    end
+end
+
+-- ============================================================
+-- Lambda Lifting: AST Transformation
+-- ============================================================
+
+-- Collect top-level function names from declarations
+fn collect_fn_names
+  case {| decls, acc |} =>
+    match is_nil {| list: decls |}
+      case 1 => acc
+      case 0 =>
+        let head = list_head {| list: decls |}
+        let tail = list_tail {| list: decls |}
+        let new_acc = match str_eq {| a: head.tag, b: "decl_fn" |}
+          case 1 => cons {| head: head.name, tail: acc |}
+          case 0 => acc
+        end
+        collect_fn_names {| decls: tail, acc: new_acc |}
+    end
+end
+
+-- Lift closures in an expression, replacing them with closure_ref nodes.
+-- Also transforms calls to unknown functions into closure_calls.
+-- fn_names: list of all known top-level function names
+-- Returns {| node, lambdas: list of decl_fn, counter |}
+fn lift_expr
+  case {| node, fn_names, counter |} =>
+    match node.tag
+      case "closure" =>
+        -- First lift closures inside the clause bodies
+        let lr = lift_clauses {| clauses: node.clauses, fn_names: fn_names, counter: counter |}
+        -- Compute free variables of the (already-lifted) closure body
+        let empty = nil {| |}
+        let fvs_raw = free_vars_clauses {| clauses: lr.clauses, bound: empty |}
+        -- Filter: only keep names that are NOT known functions and NOT builtins
+        let fvs_filtered = filter_non_fn_vars {| vars: fvs_raw, fn_names: fn_names |}
+        let fvs = list_dedup_str {| list: fvs_filtered |}
+        -- Assign a lambda name
+        let lambda_name = concat {| a: "_lambda_", b: int_to_str {| n: lr.counter |} |}
+        let new_counter = lr.counter + 1
+        -- Create a top-level decl_fn for the lambda
+        let lambda_decl = {| tag: "decl_fn", name: lambda_name, clauses: lr.clauses |}
+        let new_lambdas = cons {| head: lambda_decl, tail: lr.lambdas |}
+        -- Build list of free var field records for the closure_ref node
+        let fv_fields = make_fv_fields {| names: fvs |}
+        let new_node = {| tag: "closure_ref", lambda_name: lambda_name, free_vars: fv_fields |}
+        {| node: new_node, lambdas: new_lambdas, counter: new_counter |}
+      case "call" =>
+        -- Lift the argument expression
+        let ar = lift_expr {| node: node.arg, fn_names: fn_names, counter: counter |}
+        -- Check if the call target is a known function or builtin
+        let is_known = (list_contains_str {| list: fn_names, s: node.name |}) || (is_builtin_fn {| name: node.name |})
+        match is_known
+          case 1 =>
+            -- Direct call
+            {| node: {| tag: "call", name: node.name, arg: ar.node |}, lambdas: ar.lambdas, counter: ar.counter |}
+          case 0 =>
+            -- Closure call
+            {| node: {| tag: "closure_call", closure_var: node.name, arg: ar.node |}, lambdas: ar.lambdas, counter: ar.counter |}
+        end
+      case "binop" =>
+        let lr = lift_expr {| node: node.left, fn_names: fn_names, counter: counter |}
+        let rr = lift_expr {| node: node.right, fn_names: fn_names, counter: lr.counter |}
+        let new_lambdas = list_append {| a: lr.lambdas, b: rr.lambdas |}
+        {| node: {| tag: "binop", op: node.op, left: lr.node, right: rr.node |}, lambdas: new_lambdas, counter: rr.counter |}
+      case "unop" =>
+        let r = lift_expr {| node: node.operand, fn_names: fn_names, counter: counter |}
+        {| node: {| tag: "unop", op: node.op, operand: r.node |}, lambdas: r.lambdas, counter: r.counter |}
+      case "field_access" =>
+        let r = lift_expr {| node: node.obj, fn_names: fn_names, counter: counter |}
+        {| node: {| tag: "field_access", obj: r.node, field: node.field |}, lambdas: r.lambdas, counter: r.counter |}
+      case "record" =>
+        let r = lift_record_fields {| fields: node.fields, fn_names: fn_names, counter: counter |}
+        {| node: {| tag: "record", fields: r.fields |}, lambdas: r.lambdas, counter: r.counter |}
+      case "named_record" =>
+        let r = lift_record_fields {| fields: node.fields, fn_names: fn_names, counter: counter |}
+        {| node: {| tag: "named_record", name: node.name, fields: r.fields |}, lambdas: r.lambdas, counter: r.counter |}
+      case "let_in" =>
+        let vr = lift_expr {| node: node.value, fn_names: fn_names, counter: counter |}
+        let br = lift_expr {| node: node.body, fn_names: fn_names, counter: vr.counter |}
+        let new_lambdas = list_append {| a: vr.lambdas, b: br.lambdas |}
+        {| node: {| tag: "let_in", name: node.name, value: vr.node, body: br.node |}, lambdas: new_lambdas, counter: br.counter |}
+      case "match" =>
+        let sr = lift_expr {| node: node.scrutinee, fn_names: fn_names, counter: counter |}
+        let cr = lift_clauses {| clauses: node.clauses, fn_names: fn_names, counter: sr.counter |}
+        let new_lambdas = list_append {| a: sr.lambdas, b: cr.lambdas |}
+        {| node: {| tag: "match", scrutinee: sr.node, clauses: cr.clauses |}, lambdas: new_lambdas, counter: cr.counter |}
+      case _ =>
+        -- Leaf nodes: int_lit, str_lit, var, readln, readint
+        let empty = nil {| |}
+        {| node: node, lambdas: empty, counter: counter |}
+    end
+end
+
+fn lift_record_fields
+  case {| fields, fn_names, counter |} =>
+    match is_nil {| list: fields |}
+      case 1 =>
+        let empty = nil {| |}
+        {| fields: empty, lambdas: empty, counter: counter |}
+      case 0 =>
+        let head = list_head {| list: fields |}
+        let tail = list_tail {| list: fields |}
+        let r = lift_expr {| node: head.value, fn_names: fn_names, counter: counter |}
+        let rest = lift_record_fields {| fields: tail, fn_names: fn_names, counter: r.counter |}
+        let new_field = {| name: head.name, value: r.node |}
+        let new_fields = cons {| head: new_field, tail: rest.fields |}
+        let new_lambdas = list_append {| a: r.lambdas, b: rest.lambdas |}
+        {| fields: new_fields, lambdas: new_lambdas, counter: rest.counter |}
+    end
+end
+
+fn lift_clause
+  case {| clause, fn_names, counter |} =>
+    let r = lift_expr {| node: clause.body, fn_names: fn_names, counter: counter |}
+    {| clause: {| pat: clause.pat, body: r.node |}, lambdas: r.lambdas, counter: r.counter |}
+end
+
+fn lift_clauses
+  case {| clauses, fn_names, counter |} =>
+    match is_nil {| list: clauses |}
+      case 1 =>
+        let empty = nil {| |}
+        {| clauses: empty, lambdas: empty, counter: counter |}
+      case 0 =>
+        let head = list_head {| list: clauses |}
+        let tail = list_tail {| list: clauses |}
+        let r = lift_clause {| clause: head, fn_names: fn_names, counter: counter |}
+        let rest = lift_clauses {| clauses: tail, fn_names: fn_names, counter: r.counter |}
+        let new_clauses = cons {| head: r.clause, tail: rest.clauses |}
+        let new_lambdas = list_append {| a: r.lambdas, b: rest.lambdas |}
+        {| clauses: new_clauses, lambdas: new_lambdas, counter: rest.counter |}
+    end
+end
+
+-- Build free variable field list: [{| name: "x" |}, ...]
+fn make_fv_fields
+  case {| names |} =>
+    match is_nil {| list: names |}
+      case 1 => nil {| |}
+      case 0 =>
+        let head = list_head {| list: names |}
+        let tail = list_tail {| list: names |}
+        let field = {| name: head |}
+        cons {| head: field, tail: make_fv_fields {| names: tail |} |}
+    end
+end
+
+-- Filter out names that are known functions or builtins
+fn filter_non_fn_vars
+  case {| vars, fn_names |} =>
+    match is_nil {| list: vars |}
+      case 1 => nil {| |}
+      case 0 =>
+        let head = list_head {| list: vars |}
+        let tail = list_tail {| list: vars |}
+        let rest = filter_non_fn_vars {| vars: tail, fn_names: fn_names |}
+        let is_fn = (list_contains_str {| list: fn_names, s: head |}) || (is_builtin_fn {| name: head |})
+        match is_fn
+          case 1 => rest
+          case 0 => cons {| head: head, tail: rest |}
+        end
+    end
+end
+
+-- ============================================================
+-- Lambda Lifting: Statement Transformation
+-- ============================================================
+
+fn lift_stmt
+  case {| stmt, fn_names, counter |} =>
+    match stmt.tag
+      case "stmt_let" =>
+        let r = lift_expr {| node: stmt.value, fn_names: fn_names, counter: counter |}
+        {| stmt: {| tag: "stmt_let", name: stmt.name, value: r.node |}, lambdas: r.lambdas, counter: r.counter |}
+      case "stmt_stele_print" =>
+        let r = lift_expr {| node: stmt.value, fn_names: fn_names, counter: counter |}
+        {| stmt: {| tag: "stmt_stele_print", value: r.node |}, lambdas: r.lambdas, counter: r.counter |}
+      case "stmt_stele_write" =>
+        let r = lift_expr {| node: stmt.value, fn_names: fn_names, counter: counter |}
+        {| stmt: {| tag: "stmt_stele_write", value: r.node |}, lambdas: r.lambdas, counter: r.counter |}
+      case "stmt_expr" =>
+        let r = lift_expr {| node: stmt.value, fn_names: fn_names, counter: counter |}
+        {| stmt: {| tag: "stmt_expr", value: r.node |}, lambdas: r.lambdas, counter: r.counter |}
+    end
+end
+
+fn lift_stmts
+  case {| stmts, fn_names, counter |} =>
+    match is_nil {| list: stmts |}
+      case 1 =>
+        let empty = nil {| |}
+        {| stmts: empty, lambdas: empty, counter: counter |}
+      case 0 =>
+        let head = list_head {| list: stmts |}
+        let tail = list_tail {| list: stmts |}
+        let r = lift_stmt {| stmt: head, fn_names: fn_names, counter: counter |}
+        let rest = lift_stmts {| stmts: tail, fn_names: fn_names, counter: r.counter |}
+        let new_stmts = cons {| head: r.stmt, tail: rest.stmts |}
+        let new_lambdas = list_append {| a: r.lambdas, b: rest.lambdas |}
+        {| stmts: new_stmts, lambdas: new_lambdas, counter: rest.counter |}
+    end
+end
+
+-- ============================================================
+-- Lambda Lifting: Declaration Transformation
+-- ============================================================
+
+fn lift_decl
+  case {| decl, fn_names, counter |} =>
+    match decl.tag
+      case "decl_fn" =>
+        let r = lift_clauses {| clauses: decl.clauses, fn_names: fn_names, counter: counter |}
+        let new_decl = {| tag: "decl_fn", name: decl.name, clauses: r.clauses |}
+        {| decl: new_decl, lambdas: r.lambdas, counter: r.counter |}
+      case "decl_do" =>
+        let r = lift_stmts {| stmts: decl.stmts, fn_names: fn_names, counter: counter |}
+        let new_decl = {| tag: "decl_do", name: decl.name, stmts: r.stmts |}
+        {| decl: new_decl, lambdas: r.lambdas, counter: r.counter |}
+      case "decl_test" =>
+        let r = lift_stmts {| stmts: decl.stmts, fn_names: fn_names, counter: counter |}
+        let new_decl = {| tag: "decl_test", name: decl.name, stmts: r.stmts |}
+        {| decl: new_decl, lambdas: r.lambdas, counter: r.counter |}
+      case _ =>
+        let empty = nil {| |}
+        {| decl: decl, lambdas: empty, counter: counter |}
+    end
+end
+
+fn lift_decls_loop
+  case {| decls, fn_names, counter, decl_acc, lambda_acc |} =>
+    match is_nil {| list: decls |}
+      case 1 =>
+        let result_decls = list_reverse {| list: decl_acc |}
+        -- Append all accumulated lambdas to the declaration list
+        let all_lambdas = list_reverse {| list: lambda_acc |}
+        list_append {| a: result_decls, b: all_lambdas |}
+      case 0 =>
+        let head = list_head {| list: decls |}
+        let tail = list_tail {| list: decls |}
+        let r = lift_decl {| decl: head, fn_names: fn_names, counter: counter |}
+        let new_decl_acc = cons {| head: r.decl, tail: decl_acc |}
+        let new_lambda_acc = list_append {| a: r.lambdas, b: lambda_acc |}
+        -- Add lambda names to fn_names so they're known for subsequent decls
+        let new_fn_names = add_lambda_names_to_fns {| lambdas: r.lambdas, fn_names: fn_names |}
+        lift_decls_loop {| decls: tail, fn_names: new_fn_names, counter: r.counter, decl_acc: new_decl_acc, lambda_acc: new_lambda_acc |}
+    end
+end
+
+fn add_lambda_names_to_fns
+  case {| lambdas, fn_names |} =>
+    match is_nil {| list: lambdas |}
+      case 1 => fn_names
+      case 0 =>
+        let head = list_head {| list: lambdas |}
+        let tail = list_tail {| list: lambdas |}
+        let new_fns = cons {| head: head.name, tail: fn_names |}
+        add_lambda_names_to_fns {| lambdas: tail, fn_names: new_fns |}
+    end
+end
+
+-- Main entry point: transform a declaration list by lifting all closures
+fn lift_lambdas
+  case {| decls |} =>
+    let empty = nil {| |}
+    let fn_names = collect_fn_names {| decls: decls, acc: empty |}
+    lift_decls_loop {| decls: decls, fn_names: fn_names, counter: 0, decl_acc: empty, lambda_acc: empty |}
+end

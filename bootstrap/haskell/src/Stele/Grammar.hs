@@ -223,6 +223,7 @@ steleGrammar = Map.fromList
       </> rule "str_lit"
       </> rule "paren_expr"
       </> rule "match_expr"
+      </> rule "closure_expr"
       </> rule "readln_expr"
       </> rule "readint_expr"
       </> rule "record_lit"
@@ -230,6 +231,13 @@ steleGrammar = Map.fromList
       </> rule "fn_call_record_expr"
       </> rule "fn_call_paren_expr"
       </> rule "var_expr")
+
+  -- Closure expression: fn case ... end (anonymous function)
+  , ("closure_expr", seq_
+      [ kw "fn", ws
+      , label "clauses" (many1 (rule "case_clause" <.> ws))
+      , kw "end"
+      ])
 
   , ("int_lit", label "value" digits)
 
@@ -543,6 +551,9 @@ treeToExpr (PTNode "match_expr" children) = do
   scrutinee <- treeToExpr =<< find1 "scrutinee" children
   clauses <- mapM treeToCaseClause (findTyped "case_clause" (findAll "clauses" children >>= getChildren))
   return (Match scrutinee clauses)
+treeToExpr (PTNode "closure_expr" children) = do
+  clauses <- mapM treeToCaseClause (findTyped "case_clause" (findAll "clauses" children >>= getChildren))
+  return (Closure clauses)
 treeToExpr (PTNode "readln_expr" _) = return ReadLn
 treeToExpr (PTNode "readint_expr" _) = return ReadInt
 treeToExpr (PTNode "record_lit" children) = do
