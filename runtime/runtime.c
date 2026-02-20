@@ -5,9 +5,13 @@
 #include <unistd.h>
 #include <sys/wait.h>
 
-/* ── stele runtime for native backends ────────────────────────── */
-/* All functions have external linkage so they can be called from   */
-/* generated assembly.                                              */
+/* ── stele runtime (reference counted) ────────────────────────── */
+/* Define STELE_LINKAGE to static when embedding into generated C. */
+/* Leave it undefined (external linkage) for native backends.      */
+
+#ifndef STELE_LINKAGE
+#define STELE_LINKAGE
+#endif
 
 typedef enum { TAG_INT, TAG_STR, TAG_RECORD, TAG_VOID, TAG_CLOSURE } Tag;
 
@@ -27,7 +31,7 @@ typedef struct Value {
     };
 } Value;
 
-void rc_release(Value* v);
+STELE_LINKAGE void rc_release(Value* v);
 
 static void stele_runtime_null(const char* where) {
     fprintf(stderr, "stele: null value in %s\n", where);
@@ -46,12 +50,12 @@ static char* stele_strdup(const char* s) {
     return p;
 }
 
-void rc_retain(Value* v) {
+STELE_LINKAGE void rc_retain(Value* v) {
     if (!v) return;
     v->refcount++;
 }
 
-Value* make_int(int64_t n) {
+STELE_LINKAGE Value* make_int(int64_t n) {
     Value* v = (Value*)stele_malloc(sizeof(Value));
     v->tag = TAG_INT;
     v->refcount = 1;
@@ -59,7 +63,7 @@ Value* make_int(int64_t n) {
     return v;
 }
 
-Value* make_str(const char* s) {
+STELE_LINKAGE Value* make_str(const char* s) {
     Value* v = (Value*)stele_malloc(sizeof(Value));
     v->tag = TAG_STR;
     v->refcount = 1;
@@ -67,14 +71,14 @@ Value* make_str(const char* s) {
     return v;
 }
 
-Value* make_void(void) {
+STELE_LINKAGE Value* make_void(void) {
     Value* v = (Value*)stele_malloc(sizeof(Value));
     v->tag = TAG_VOID;
     v->refcount = 1;
     return v;
 }
 
-Value* make_record(int n, ...) {
+STELE_LINKAGE Value* make_record(int n, ...) {
     Value* v = (Value*)stele_malloc(sizeof(Value));
     v->tag = TAG_RECORD;
     v->refcount = 1;
@@ -89,7 +93,21 @@ Value* make_record(int n, ...) {
     __builtin_va_end(ap);
     return v;
 }
-Value* make_closure(Value* (*fn_ptr)(Value*), Value* env) {
+
+STELE_LINKAGE Value* make_record_with_fields(int n, const char** names, Value** values) {
+    Value* v = (Value*)stele_malloc(sizeof(Value));
+    v->tag = TAG_RECORD;
+    v->refcount = 1;
+    v->record.num_fields = n;
+    v->record.fields = (Field*)stele_malloc(sizeof(Field) * n);
+    for (int i = 0; i < n; i++) {
+        v->record.fields[i].name = names[i];
+        v->record.fields[i].value = values[i];
+    }
+    return v;
+}
+
+STELE_LINKAGE Value* make_closure(Value* (*fn_ptr)(Value*), Value* env) {
     Value* v = (Value*)stele_malloc(sizeof(Value));
     v->tag = TAG_CLOSURE;
     v->refcount = 1;
@@ -99,7 +117,7 @@ Value* make_closure(Value* (*fn_ptr)(Value*), Value* env) {
     return v;
 }
 
-Value* stele_call_closure(Value* clos, Value* arg) {
+STELE_LINKAGE Value* stele_call_closure(Value* clos, Value* arg) {
     if (!clos || clos->tag != TAG_CLOSURE) {
         fprintf(stderr, "stele: attempt to call non-closure value\n");
         exit(1);
@@ -128,19 +146,7 @@ Value* stele_call_closure(Value* clos, Value* arg) {
     return clos->closure.fn_ptr(arg);
 }
 
-Value* make_record_with_fields(int n, const char** names, Value** values) {
-    Value* v = (Value*)stele_malloc(sizeof(Value));
-    v->tag = TAG_RECORD;
-    v->refcount = 1;
-    v->record.num_fields = n;
-    v->record.fields = (Field*)stele_malloc(sizeof(Field) * n);
-    for (int i = 0; i < n; i++) {
-        v->record.fields[i].name = names[i];
-        v->record.fields[i].value = values[i];
-    }
-    return v;
-}
-void rc_release(Value* v) {
+STELE_LINKAGE void rc_release(Value* v) {
     Value* stack[64];
     int sp = 0;
     if (!v) return;
@@ -179,7 +185,7 @@ void rc_release(Value* v) {
     }
 }
 
-Value* record_field(Value* rec, const char* name) {
+STELE_LINKAGE Value* record_field(Value* rec, const char* name) {
     if (!rec || rec->tag != TAG_RECORD) return NULL;
     for (int i = 0; i < rec->record.num_fields; i++) {
         if (strcmp(rec->record.fields[i].name, name) == 0)
@@ -188,9 +194,9 @@ Value* record_field(Value* rec, const char* name) {
     return NULL;
 }
 
-void stele_write(Value* v);
+STELE_LINKAGE void stele_write(Value* v);
 
-int stele_value_eq(Value* a, Value* b) {
+STELE_LINKAGE int stele_value_eq(Value* a, Value* b) {
     if (a == b) return 1;
     if (!a || !b) return 0;
     if (a->tag != b->tag) return 0;
@@ -211,11 +217,11 @@ int stele_value_eq(Value* a, Value* b) {
     return 0;
 }
 
-int stele_value_neq(Value* a, Value* b) {
+STELE_LINKAGE int stele_value_neq(Value* a, Value* b) {
     return !stele_value_eq(a, b);
 }
 
-void stele_print(Value* v) {
+STELE_LINKAGE void stele_print(Value* v) {
     if (!v) stele_runtime_null("print");
     switch (v->tag) {
         case TAG_INT:     printf("%lld\n", (long long)v->int_val); break;
@@ -235,7 +241,7 @@ void stele_print(Value* v) {
     }
 }
 
-void stele_write(Value* v) {
+STELE_LINKAGE void stele_write(Value* v) {
     if (!v) stele_runtime_null("write");
     switch (v->tag) {
         case TAG_INT:     printf("%lld", (long long)v->int_val); break;
@@ -255,7 +261,7 @@ void stele_write(Value* v) {
     }
 }
 
-Value* runtime_readln(void) {
+STELE_LINKAGE Value* runtime_readln(void) {
     char* line = NULL;
     size_t cap = 0;
     ssize_t n = getline(&line, &cap, stdin);
@@ -269,7 +275,7 @@ Value* runtime_readln(void) {
     return result;
 }
 
-Value* runtime_readint(void) {
+STELE_LINKAGE Value* runtime_readint(void) {
     long long n = 0;
     if (scanf("%lld", &n) != 1) {
         fprintf(stderr, "stele: readint failed to read integer\n");
@@ -279,16 +285,17 @@ Value* runtime_readint(void) {
     return make_int((int64_t)n);
 }
 
-void stele_match_fail(const char* msg) {
+STELE_LINKAGE void stele_match_fail(const char* msg) {
     fprintf(stderr, "Pattern match failure in %s\n", msg);
     exit(1);
 }
+
 /* ── file IO and argv built-in functions ─────────────────────────── */
 
-int g_argc = 0;
-char** g_argv = NULL;
+STELE_LINKAGE int g_argc = 0;
+STELE_LINKAGE char** g_argv = NULL;
 
-Value* fn_read(Value* arg) {
+STELE_LINKAGE Value* fn_read(Value* arg) {
     Value* pathVal = record_field(arg, "path");
     if (!pathVal || pathVal->tag != TAG_STR) {
         fprintf(stderr, "stele: read requires path: String\n");
@@ -311,7 +318,7 @@ Value* fn_read(Value* arg) {
     return result;
 }
 
-Value* fn_write(Value* arg) {
+STELE_LINKAGE Value* fn_write(Value* arg) {
     Value* pathVal = record_field(arg, "path");
     Value* contentVal = record_field(arg, "content");
     if (pathVal && pathVal->tag == TAG_STR &&
@@ -329,12 +336,12 @@ Value* fn_write(Value* arg) {
     return make_void();
 }
 
-Value* fn_argc(Value* arg) {
+STELE_LINKAGE Value* fn_argc(Value* arg) {
     (void)arg;
     return make_int((int64_t)g_argc);
 }
 
-Value* fn_argv(Value* arg) {
+STELE_LINKAGE Value* fn_argv(Value* arg) {
     Value* nVal = record_field(arg, "n");
     if (!nVal || nVal->tag != TAG_INT) {
         fprintf(stderr, "stele: argv requires n: Int\n");
@@ -348,7 +355,7 @@ Value* fn_argv(Value* arg) {
     return make_str(g_argv[idx]);
 }
 
-Value* fn_sh(Value* arg) {
+STELE_LINKAGE Value* fn_sh(Value* arg) {
     Value* cmdVal = record_field(arg, "command");
     if (!cmdVal || cmdVal->tag != TAG_STR) {
         fprintf(stderr, "stele: sh requires command: String\n");
@@ -358,7 +365,7 @@ Value* fn_sh(Value* arg) {
     return make_int((int64_t)rc);
 }
 
-Value* fn_terminate(Value* arg) {
+STELE_LINKAGE Value* fn_terminate(Value* arg) {
     Value* codeVal = record_field(arg, "code");
     if (!codeVal || codeVal->tag != TAG_INT) {
         fprintf(stderr, "stele: terminate requires code: Int\n");
@@ -367,7 +374,7 @@ Value* fn_terminate(Value* arg) {
     exit((int)codeVal->int_val);
 }
 
-Value* fn_spawn(Value* arg) {
+STELE_LINKAGE Value* fn_spawn(Value* arg) {
     Value* cmdVal = record_field(arg, "command");
     if (!cmdVal || cmdVal->tag != TAG_STR) {
         fprintf(stderr, "stele: spawn requires command: String\n");
@@ -385,7 +392,7 @@ Value* fn_spawn(Value* arg) {
     return make_int((int64_t)pid);
 }
 
-Value* fn_await(Value* arg) {
+STELE_LINKAGE Value* fn_await(Value* arg) {
     Value* pidVal = record_field(arg, "pid");
     if (!pidVal || pidVal->tag != TAG_INT) {
         fprintf(stderr, "stele: await requires pid: Int\n");
@@ -406,7 +413,7 @@ Value* fn_await(Value* arg) {
     return make_int((int64_t)status);
 }
 
-Value* fn_sleep_ms(Value* arg) {
+STELE_LINKAGE Value* fn_sleep_ms(Value* arg) {
     Value* msVal = record_field(arg, "ms");
     if (!msVal || msVal->tag != TAG_INT) {
         fprintf(stderr, "stele: sleep_ms requires ms: Int\n");
@@ -420,7 +427,7 @@ Value* fn_sleep_ms(Value* arg) {
 
 /* ── string built-in functions ─────────────────────────────────── */
 
-Value* fn_strlen(Value* arg) {
+STELE_LINKAGE Value* fn_strlen(Value* arg) {
     Value* sVal = record_field(arg, "s");
     if (!sVal || sVal->tag != TAG_STR) {
         fprintf(stderr, "stele runtime bug: strlen requires s: String\n");
@@ -429,7 +436,7 @@ Value* fn_strlen(Value* arg) {
     return make_int((int64_t)strlen(sVal->str_val));
 }
 
-Value* fn_char_at(Value* arg) {
+STELE_LINKAGE Value* fn_char_at(Value* arg) {
     Value* sVal = record_field(arg, "s");
     Value* nVal = record_field(arg, "n");
     if (!sVal || sVal->tag != TAG_STR) {
@@ -446,7 +453,7 @@ Value* fn_char_at(Value* arg) {
     return make_int((int64_t)(unsigned char)sVal->str_val[idx]);
 }
 
-Value* fn_substr(Value* arg) {
+STELE_LINKAGE Value* fn_substr(Value* arg) {
     Value* sVal = record_field(arg, "s");
     Value* startVal = record_field(arg, "start");
     Value* lenVal = record_field(arg, "len");
@@ -476,7 +483,7 @@ Value* fn_substr(Value* arg) {
     return result;
 }
 
-Value* fn_concat(Value* arg) {
+STELE_LINKAGE Value* fn_concat(Value* arg) {
     Value* aVal = record_field(arg, "a");
     Value* bVal = record_field(arg, "b");
     if (!aVal || aVal->tag != TAG_STR) {
@@ -498,7 +505,7 @@ Value* fn_concat(Value* arg) {
     return result;
 }
 
-Value* fn_int_to_str(Value* arg) {
+STELE_LINKAGE Value* fn_int_to_str(Value* arg) {
     Value* nVal = record_field(arg, "n");
     if (!nVal || nVal->tag != TAG_INT) {
         fprintf(stderr, "stele runtime bug: int_to_str requires n: Int\n");
@@ -509,7 +516,7 @@ Value* fn_int_to_str(Value* arg) {
     return make_str(buf);
 }
 
-Value* fn_char_of_int(Value* arg) {
+STELE_LINKAGE Value* fn_char_of_int(Value* arg) {
     Value* nVal = record_field(arg, "n");
     if (!nVal || nVal->tag != TAG_INT) {
         fprintf(stderr, "stele runtime bug: char_of_int requires n: Int\n");
@@ -519,7 +526,7 @@ Value* fn_char_of_int(Value* arg) {
     return make_str(buf);
 }
 
-Value* fn_strcmp(Value* arg) {
+STELE_LINKAGE Value* fn_strcmp(Value* arg) {
     Value* aVal = record_field(arg, "a");
     Value* bVal = record_field(arg, "b");
     if (!aVal || aVal->tag != TAG_STR) {
@@ -536,7 +543,7 @@ Value* fn_strcmp(Value* arg) {
 
 /* ── checked arithmetic ──────────────────────────────────────── */
 
-Value* checked_add(Value* a, Value* b) {
+STELE_LINKAGE Value* checked_add(Value* a, Value* b) {
     int64_t x = a->int_val, y = b->int_val, r;
     if (__builtin_add_overflow(x, y, &r)) {
         fprintf(stderr, "stele runtime error: integer overflow in addition\n");
@@ -545,7 +552,7 @@ Value* checked_add(Value* a, Value* b) {
     return make_int(r);
 }
 
-Value* checked_sub(Value* a, Value* b) {
+STELE_LINKAGE Value* checked_sub(Value* a, Value* b) {
     int64_t x = a->int_val, y = b->int_val, r;
     if (__builtin_sub_overflow(x, y, &r)) {
         fprintf(stderr, "stele runtime error: integer overflow in subtraction\n");
@@ -554,7 +561,7 @@ Value* checked_sub(Value* a, Value* b) {
     return make_int(r);
 }
 
-Value* checked_mul(Value* a, Value* b) {
+STELE_LINKAGE Value* checked_mul(Value* a, Value* b) {
     int64_t x = a->int_val, y = b->int_val, r;
     if (__builtin_mul_overflow(x, y, &r)) {
         fprintf(stderr, "stele runtime error: integer overflow in multiplication\n");

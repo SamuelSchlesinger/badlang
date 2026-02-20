@@ -63,13 +63,6 @@ jobs:
             ${{ runner.os }}-cabal-
       - run: ./stdlib/tests/run.sh
 
-  runtime-sync:
-    name: runtime sync check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: ./ci/check-runtime-sync.sh
-
   examples:
     name: examples (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

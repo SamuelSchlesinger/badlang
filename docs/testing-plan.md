@@ -6,8 +6,7 @@
 1. **Compiler integration tests** (`ci/test-compiler.sh`): 8 positive + 4 negative tests run across Haskell C backend, Haskell native backends, and self-hosted C backend (28 total test runs)
 2. **Stdlib tests** (`stdlib/tests/run.sh`): 6 test files (assert, cli, math, concurrency, strings, path) run across all 5 backend modes via `stela test`
 3. **Bootstrap verification** (`bootstrap.sh`): Fixed-point test that compiles the compiler with itself 3 times and verifies output converges
-4. **Runtime sync check** (`ci/check-runtime-sync.sh`): Ensures 4 runtime copies stay synchronized
-5. **Example programs** (`ci/test-examples.sh`): Compiles and runs example programs
+4. **Example programs** (`ci/test-examples.sh`): Compiles and runs example programs
 
 ### Gaps
 - No **unit tests** for individual compiler modules (util, lexer, parser, codegen)
@@ -261,8 +260,7 @@ These should be run via `stela bench` and tracked over time, but are not blockin
 1. `build` — Build Haskell compiler
 2. `test-examples` — Run example programs
 3. `stdlib-tests` — Run stdlib test suite
-4. `runtime-sync` — Check runtime copies match
-5. `compiler-tests` — Run positive/negative integration tests
+4. `compiler-tests` — Run positive/negative integration tests
 
 ### Additional CI Jobs
 

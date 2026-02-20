@@ -1134,8 +1134,9 @@ end
 fn emit_c
   case {| decls |} =>
     let n = nl {| |}
-    -- Load the C runtime from file
-    let runtime = read {| path: "runtime.c" |}
+    -- Load the C runtime from file (static linkage for embedding)
+    let runtime_body = read {| path: "runtime/runtime.c" |}
+    let runtime = concat {| a: "#define STELE_LINKAGE static\n", b: runtime_body |}
     -- Forward declarations
     let fwd_decls = emit_forward_decls_loop {| decls: decls, acc: "" |}
     -- Rite definitions
