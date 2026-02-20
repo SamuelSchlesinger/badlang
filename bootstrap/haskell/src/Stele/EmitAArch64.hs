@@ -3,9 +3,9 @@
 -- Consumes the IR and emits a @.s@ file suitable for assembling and
 -- linking with the C runtime via @cc@.
 --
--- Strategy: all IR variables are stored on the stack. We use callee-saved
--- registers (x19-x28) as a small cache but primarily operate through
--- memory. This is simple, correct, and sufficient for the language's scope.
+-- Strategy: all IR variables are stored on the stack. Scratch registers
+-- (x8, x9, etc.) are used for temporary values within instruction sequences.
+-- This is simple, correct, and sufficient for the language's scope.
 --
 -- Supports macOS (Mach-O) and Linux (ELF) targets:
 -- * macOS: @_@ symbol prefix, @__TEXT@ sections, @L@ local labels
@@ -489,10 +489,9 @@ emitInstrAsm (IClosure v lambdaName envFields) = do
       line $ "  add x2, sp, #" ++ show namesSize
       callSym "make_record_with_fields"
       emitAddSp totalSize
-      -- x0 = env record, save to x19
-      line "  mov x19, x0"
+      -- x0 = env record, move to x1 first (emitLoadLabelAddr only touches x0)
+      line "  mov x1, x0"
       emitLoadLabelAddr "x0" (symPrefix tgt ++ "fn_" ++ lambdaName)
-      line "  mov x1, x19"
       callSym "make_closure"
       storeVar v "x0"
 
