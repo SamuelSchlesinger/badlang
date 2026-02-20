@@ -61,12 +61,7 @@ fn free_vars_expr
       case "named_record" =>
         free_vars_record_fields {| fields: node.fields, bound: bound |}
       case "call" =>
-        let arg_fvs = free_vars_expr {| node: node.arg, bound: bound |}
-        -- The call target name itself might be a free variable
-        match list_contains_str {| list: bound, s: node.name |}
-          case 1 => arg_fvs
-          case 0 => arg_fvs
-        end
+        free_vars_expr {| node: node.arg, bound: bound |}
       case "closure_call" =>
         let arg_fvs = free_vars_expr {| node: node.arg, bound: bound |}
         match list_contains_str {| list: bound, s: node.closure_var |}
