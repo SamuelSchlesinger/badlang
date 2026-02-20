@@ -715,6 +715,24 @@ fn emit_match_x86
     {| code: code, var: dvn.name, state: mf_sr.state |}
 end
 
+fn emit_retain_captures_x86
+  case {| fields, state, mode |} =>
+    match is_nil {| list: fields |}
+      case 1 => {| code: "", state: state |}
+      case 0 =>
+        let head = list_head {| list: fields |}
+        let tail = list_tail {| list: fields |}
+        let pfx = sym_prefix_x86 {| mode: mode |}
+        let cn = c_name {| name: head.name |}
+        let src_slot = lookup_slot {| name: cn, slots: state.slots |}
+        let load = emit_load_slot_x86 {| slot: src_slot, reg: "%rdi" |}
+        let bl = asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "rc_retain" |} |} |}
+        let code = concat {| a: load, b: bl |}
+        let rest = emit_retain_captures_x86 {| fields: tail, state: state, mode: mode |}
+        {| code: concat {| a: code, b: rest.code |}, state: rest.state |}
+    end
+end
+
 fn emit_closure_env_fields_x86
   case {| fields, state, entries |} =>
     match is_nil {| list: fields |}
@@ -749,8 +767,10 @@ fn emit_closure_ref_x86
         let s5 = concat {| a: s4, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "make_closure" |} |} |} |}
         {| code: concat {| a: s5, b: store |}, var: f.name, state: ar.state |}
       case 0 =>
+        -- Retain captured values so env record owns them
+        let retain_code = emit_retain_captures_x86 {| fields: node.free_vars, state: state, mode: mode |}
         -- Build env record from free vars, then make_closure
-        let er = emit_closure_env_fields_x86 {| fields: node.free_vars, state: state, entries: nil {| |} |}
+        let er = emit_closure_env_fields_x86 {| fields: node.free_vars, state: retain_code.state, entries: nil {| |} |}
         let entries = list_reverse {| list: er.entries |}
         let nf = num_fvs
         let total = ((nf * 16 + 15) / 16) * 16
@@ -765,7 +785,8 @@ fn emit_closure_ref_x86
           case 1 => ""
           case 0 => asm_ln {| s: concat {| a: "  addq $", b: concat {| a: tot_s, b: ", %rsp" |} |} |}
         end
-        let s1 = concat {| a: sub_sp, b: sr.code |}
+        let s1 = concat {| a: retain_code.code, b: sub_sp |}
+        let s1 = concat {| a: s1, b: sr.code |}
         let s2 = concat {| a: s1, b: emit_mov_imm_x86 {| reg: "%rdi", n: nf |} |}
         let s3 = concat {| a: s2, b: "  movq %rsp, %rsi" |}
         let s4 = concat {| a: s3, b: n |}

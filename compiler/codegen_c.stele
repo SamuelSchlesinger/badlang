@@ -682,13 +682,19 @@ fn emit_closure_env_fields
       case 0 =>
         let head = list_head {| list: fields |}
         let tail = list_tail {| list: fields |}
+        let n = nl {| |}
         let cn = c_name {| name: head.name |}
         let cs = c_string {| s: head.name |}
+        -- Retain captured value so env record owns it
+        let r1 = concat {| a: setup, b: "rc_retain(" |}
+        let r2 = concat {| a: r1, b: cn |}
+        let r3 = concat {| a: r2, b: ");" |}
+        let new_setup = concat {| a: r3, b: n |}
         let a1 = concat {| a: args, b: ", " |}
         let a2 = concat {| a: a1, b: cs |}
         let a3 = concat {| a: a2, b: ", " |}
         let new_args = concat {| a: a3, b: cn |}
-        emit_closure_env_fields {| fields: tail, counter: counter, setup: setup, args: new_args |}
+        emit_closure_env_fields {| fields: tail, counter: counter, setup: new_setup, args: new_args |}
     end
 end
 

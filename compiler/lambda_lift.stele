@@ -153,11 +153,13 @@ fn lift_expr
         -- Filter: only keep names that are NOT known functions and NOT builtins
         let fvs_filtered = filter_non_fn_vars {| vars: fvs_raw, fn_names: fn_names |}
         let fvs = list_dedup_str {| list: fvs_filtered |}
+        -- Wrap clause bodies with let bindings to extract captured vars from arg
+        let wrapped_clauses = wrap_clauses_with_captures {| clauses: lr.clauses, captures: fvs |}
         -- Assign a lambda name
         let lambda_name = concat {| a: "_lambda_", b: int_to_str {| n: lr.counter |} |}
         let new_counter = lr.counter + 1
         -- Create a top-level decl_fn for the lambda
-        let lambda_decl = {| tag: "decl_fn", name: lambda_name, clauses: lr.clauses |}
+        let lambda_decl = {| tag: "decl_fn", name: lambda_name, clauses: wrapped_clauses |}
         let new_lambdas = cons {| head: lambda_decl, tail: lr.lambdas |}
         -- Build list of free var field records for the closure_ref node
         let fv_fields = make_fv_fields {| names: fvs |}
@@ -261,6 +263,36 @@ fn make_fv_fields
         let tail = list_tail {| list: names |}
         let field = {| name: head |}
         cons {| head: field, tail: make_fv_fields {| names: tail |} |}
+    end
+end
+
+-- Wrap a clause body with let bindings extracting captured vars from arg.
+-- For each captured var "x": let x = arg.x in <body>
+fn wrap_body_with_captures
+  case {| body, captures |} =>
+    match is_nil {| list: captures |}
+      case 1 => body
+      case 0 =>
+        let head = list_head {| list: captures |}
+        let tail = list_tail {| list: captures |}
+        let inner = wrap_body_with_captures {| body: body, captures: tail |}
+        let arg_ref = {| tag: "var", name: "arg" |}
+        let field_access = {| tag: "field_access", obj: arg_ref, field: head |}
+        {| tag: "let_in", name: head, value: field_access, body: inner |}
+    end
+end
+
+-- Wrap all clauses with captured variable extractions
+fn wrap_clauses_with_captures
+  case {| clauses, captures |} =>
+    match is_nil {| list: clauses |}
+      case 1 => nil {| |}
+      case 0 =>
+        let head = list_head {| list: clauses |}
+        let tail = list_tail {| list: clauses |}
+        let new_body = wrap_body_with_captures {| body: head.body, captures: captures |}
+        let new_clause = {| pat: head.pat, body: new_body |}
+        cons {| head: new_clause, tail: wrap_clauses_with_captures {| clauses: tail, captures: captures |} |}
     end
 end
 
