@@ -1,0 +1,263 @@
+-- ============================================================
+-- Desugaring Pass: Rewrite oneof constructs into plain records
+-- ============================================================
+-- Sum type values become records with a __tag field.
+-- Circle {| radius: 5 |} => {| __tag: "Circle", radius: 5 |}
+-- Point => {| __tag: "Point" |}
+-- Pattern matching on variants becomes record pattern matching on __tag.
+
+open Util
+
+-- ============================================================
+-- Phase A: Collect variant info from declarations
+-- ============================================================
+
+fn collect_variant_info
+  case {| decls |} =>
+    collect_variant_info_loop {| decls: decls, all_variants: nil {| |}, nullary_variants: nil {| |} |}
+end
+
+fn collect_variant_info_loop
+  case {| decls, all_variants, nullary_variants |} =>
+    match is_nil {| list: decls |}
+      case 1 => {| all_variants: all_variants, nullary_variants: nullary_variants |}
+      case 0 =>
+        let head = list_head {| list: decls |}
+        let tail = list_tail {| list: decls |}
+        match str_eq {| a: head.tag, b: "decl_oneof" |}
+          case 1 =>
+            let r = collect_from_variants {| variants: head.variants, all_variants: all_variants, nullary_variants: nullary_variants |}
+            collect_variant_info_loop {| decls: tail, all_variants: r.all_variants, nullary_variants: r.nullary_variants |}
+          case 0 =>
+            collect_variant_info_loop {| decls: tail, all_variants: all_variants, nullary_variants: nullary_variants |}
+        end
+    end
+end
+
+fn collect_from_variants
+  case {| variants, all_variants, nullary_variants |} =>
+    match is_nil {| list: variants |}
+      case 1 => {| all_variants: all_variants, nullary_variants: nullary_variants |}
+      case 0 =>
+        let head = list_head {| list: variants |}
+        let tail = list_tail {| list: variants |}
+        let new_all = cons {| head: head.name, tail: all_variants |}
+        let new_nullary = match is_nil {| list: head.fields |}
+          case 1 => cons {| head: head.name, tail: nullary_variants |}
+          case 0 => nullary_variants
+        end
+        collect_from_variants {| variants: tail, all_variants: new_all, nullary_variants: new_nullary |}
+    end
+end
+
+-- ============================================================
+-- Phase B: Rewrite expressions
+-- ============================================================
+
+fn make_tag_field
+  case {| name |} =>
+    {| name: "__tag", value: {| tag: "str_lit", value: name |} |}
+end
+
+fn desugar_expr
+  case {| expr, info |} =>
+    match expr.tag
+      case "var" =>
+        -- Check if this is a nullary variant reference
+        match list_contains_str {| list: info.nullary_variants, s: expr.name |}
+          case 1 =>
+            let tag_field = make_tag_field {| name: expr.name |}
+            let fields = cons {| head: tag_field, tail: nil {| |} |}
+            {| tag: "record", fields: fields |}
+          case 0 => expr
+        end
+      case "named_record" =>
+        -- Check if this is a variant construction
+        match list_contains_str {| list: info.all_variants, s: expr.name |}
+          case 1 =>
+            -- Prepend __tag field
+            let tag_field = make_tag_field {| name: expr.name |}
+            let desugared_fields = desugar_record_fields {| fields: expr.fields, info: info |}
+            let new_fields = cons {| head: tag_field, tail: desugared_fields |}
+            {| tag: "record", fields: new_fields |}
+          case 0 =>
+            -- Regular named record (struct), desugar field values only
+            let desugared_fields = desugar_record_fields {| fields: expr.fields, info: info |}
+            {| tag: "named_record", name: expr.name, fields: desugared_fields |}
+        end
+      case "record" =>
+        let fields = desugar_record_fields {| fields: expr.fields, info: info |}
+        {| tag: "record", fields: fields |}
+      case "call" =>
+        let arg = desugar_expr {| expr: expr.arg, info: info |}
+        {| tag: "call", name: expr.name, arg: arg |}
+      case "closure_call" =>
+        let arg = desugar_expr {| expr: expr.arg, info: info |}
+        {| tag: "closure_call", closure_var: expr.closure_var, arg: arg |}
+      case "binop" =>
+        let left = desugar_expr {| expr: expr.left, info: info |}
+        let right = desugar_expr {| expr: expr.right, info: info |}
+        {| tag: "binop", op: expr.op, left: left, right: right |}
+      case "unop" =>
+        let operand = desugar_expr {| expr: expr.operand, info: info |}
+        {| tag: "unop", op: expr.op, operand: operand |}
+      case "field_access" =>
+        let obj = desugar_expr {| expr: expr.obj, info: info |}
+        {| tag: "field_access", obj: obj, field: expr.field |}
+      case "let_in" =>
+        let value = desugar_expr {| expr: expr.value, info: info |}
+        let body = desugar_expr {| expr: expr.body, info: info |}
+        {| tag: "let_in", name: expr.name, value: value, body: body |}
+      case "match" =>
+        let scrutinee = desugar_expr {| expr: expr.scrutinee, info: info |}
+        let clauses = desugar_clauses {| clauses: expr.clauses, info: info |}
+        {| tag: "match", scrutinee: scrutinee, clauses: clauses |}
+      case "closure" =>
+        let clauses = desugar_clauses {| clauses: expr.clauses, info: info |}
+        {| tag: "closure", clauses: clauses |}
+      case "closure_ref" => expr
+      case _ => expr
+    end
+end
+
+fn desugar_record_fields
+  case {| fields, info |} =>
+    match is_nil {| list: fields |}
+      case 1 => nil {| |}
+      case 0 =>
+        let head = list_head {| list: fields |}
+        let tail = list_tail {| list: fields |}
+        let new_value = desugar_expr {| expr: head.value, info: info |}
+        let new_field = {| name: head.name, value: new_value |}
+        cons {| head: new_field, tail: desugar_record_fields {| fields: tail, info: info |} |}
+    end
+end
+
+fn desugar_clauses
+  case {| clauses, info |} =>
+    match is_nil {| list: clauses |}
+      case 1 => nil {| |}
+      case 0 =>
+        let head = list_head {| list: clauses |}
+        let tail = list_tail {| list: clauses |}
+        let new_pat = desugar_pat {| pat: head.pat, info: info |}
+        let new_body = desugar_expr {| expr: head.body, info: info |}
+        let new_clause = {| pat: new_pat, body: new_body |}
+        cons {| head: new_clause, tail: desugar_clauses {| clauses: tail, info: info |} |}
+    end
+end
+
+-- ============================================================
+-- Phase C: Rewrite patterns
+-- ============================================================
+
+fn desugar_pat
+  case {| pat, info |} =>
+    match pat.tag
+      case "pat_variant" =>
+        -- Variant {| fields |} => {| __tag: "Variant", ...fields |}
+        let tag_pat = {| name: "__tag", pat: {| tag: "pat_str", value: pat.vname |} |}
+        let inner_fields = desugar_pat_fields {| fields: pat.inner.fields, info: info |}
+        let new_fields = cons {| head: tag_pat, tail: inner_fields |}
+        {| tag: "pat_rec", fields: new_fields |}
+      case "pat_var" =>
+        -- Check if this is a nullary variant used as a pattern
+        match list_contains_str {| list: info.nullary_variants, s: pat.name |}
+          case 1 =>
+            let tag_pat = {| name: "__tag", pat: {| tag: "pat_str", value: pat.name |} |}
+            let fields = cons {| head: tag_pat, tail: nil {| |} |}
+            {| tag: "pat_rec", fields: fields |}
+          case 0 => pat
+        end
+      case "pat_rec" =>
+        let fields = desugar_pat_fields {| fields: pat.fields, info: info |}
+        {| tag: "pat_rec", fields: fields |}
+      case _ => pat
+    end
+end
+
+fn desugar_pat_fields
+  case {| fields, info |} =>
+    match is_nil {| list: fields |}
+      case 1 => nil {| |}
+      case 0 =>
+        let head = list_head {| list: fields |}
+        let tail = list_tail {| list: fields |}
+        let new_pat = desugar_pat {| pat: head.pat, info: info |}
+        let new_field = {| name: head.name, pat: new_pat |}
+        cons {| head: new_field, tail: desugar_pat_fields {| fields: tail, info: info |} |}
+    end
+end
+
+-- ============================================================
+-- Phase D: Rewrite declarations and filter out decl_oneof
+-- ============================================================
+
+fn desugar_decl
+  case {| decl, info |} =>
+    match decl.tag
+      case "decl_fn" =>
+        let clauses = desugar_clauses {| clauses: decl.clauses, info: info |}
+        {| tag: "decl_fn", name: decl.name, clauses: clauses |}
+      case "decl_do" =>
+        let stmts = desugar_stmts {| stmts: decl.stmts, info: info |}
+        {| tag: "decl_do", name: decl.name, stmts: stmts |}
+      case "decl_test" =>
+        let stmts = desugar_stmts {| stmts: decl.stmts, info: info |}
+        {| tag: "decl_test", name: decl.name, stmts: stmts |}
+      case _ => decl
+    end
+end
+
+fn desugar_stmts
+  case {| stmts, info |} =>
+    match is_nil {| list: stmts |}
+      case 1 => nil {| |}
+      case 0 =>
+        let head = list_head {| list: stmts |}
+        let tail = list_tail {| list: stmts |}
+        let new_stmt = desugar_stmt {| stmt: head, info: info |}
+        cons {| head: new_stmt, tail: desugar_stmts {| stmts: tail, info: info |} |}
+    end
+end
+
+fn desugar_stmt
+  case {| stmt, info |} =>
+    match stmt.tag
+      case "stmt_let" =>
+        {| tag: "stmt_let", name: stmt.name, value: desugar_expr {| expr: stmt.value, info: info |} |}
+      case "stmt_stele_print" =>
+        {| tag: "stmt_stele_print", value: desugar_expr {| expr: stmt.value, info: info |} |}
+      case "stmt_expr" =>
+        {| tag: "stmt_expr", value: desugar_expr {| expr: stmt.value, info: info |} |}
+      case _ => stmt
+    end
+end
+
+fn desugar_decls
+  case {| decls, info |} =>
+    match is_nil {| list: decls |}
+      case 1 => nil {| |}
+      case 0 =>
+        let head = list_head {| list: decls |}
+        let tail = list_tail {| list: decls |}
+        match str_eq {| a: head.tag, b: "decl_oneof" |}
+          case 1 =>
+            -- Filter out oneof declarations (purely type-level)
+            desugar_decls {| decls: tail, info: info |}
+          case 0 =>
+            let desugared = desugar_decl {| decl: head, info: info |}
+            cons {| head: desugared, tail: desugar_decls {| decls: tail, info: info |} |}
+        end
+    end
+end
+
+-- ============================================================
+-- Entry Point
+-- ============================================================
+
+fn desugar_oneofs
+  case {| decls |} =>
+    let info = collect_variant_info {| decls: decls |}
+    desugar_decls {| decls: decls, info: info |}
+end

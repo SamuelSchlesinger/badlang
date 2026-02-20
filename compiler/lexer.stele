@@ -153,7 +153,8 @@ fn is_keyword
     (str_eq {| a: word, b: "readint" |}) ||
     (str_eq {| a: word, b: "test" |}) ||
     (str_eq {| a: word, b: "import" |}) ||
-    (str_eq {| a: word, b: "open" |})
+    (str_eq {| a: word, b: "open" |}) ||
+    (str_eq {| a: word, b: "oneof" |})
 end
 
 fn peek_char
@@ -202,11 +203,17 @@ fn lex_punct
   case {| src, pos, ch |} =>
     let next_ch = peek_char {| src: src, pos: pos |}
     match ch
-      case 123 => {| type: "{|", value: "{|", pos: pos + 2 |}
+      case 123 =>
+        match next_ch
+          case 124 => {| type: "{|", value: "{|", pos: pos + 2 |}
+          case _ => {| type: "{", value: "{", pos: pos + 1 |}
+        end
+      case 125 => {| type: "}", value: "}", pos: pos + 1 |}
       case 124 =>
         match next_ch
           case 125 => {| type: "|}", value: "|}", pos: pos + 2 |}
           case 124 => {| type: "||", value: "||", pos: pos + 2 |}
+          case _ => {| type: "|", value: "|", pos: pos + 1 |}
         end
       case 61 =>
         match next_ch

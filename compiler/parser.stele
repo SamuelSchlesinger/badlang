@@ -635,6 +635,76 @@ end
 -- Declaration Parsing
 -- ============================================================
 
+-- ============================================================
+-- Oneof (Sum Type) Declaration Parsing
+-- ============================================================
+
+fn parse_oneof_variant_fields
+  case {| tokens, acc |} =>
+    let tok = peek {| tokens: tokens |}
+    match str_eq {| a: tok.type, b: "}" |}
+      case 1 =>
+        let rest = advance {| tokens: tokens |}
+        let result = list_reverse {| list: acc |}
+        {| node: result, rest: rest |}
+      case 0 =>
+        let id = expect_ident {| tokens: tokens |}
+        let rest1 = expect {| tokens: id.rest, type: ":" |}
+        let type_id = expect_ident {| tokens: rest1 |}
+        let field = {| name: id.name, type_name: type_id.name |}
+        let new_acc = cons {| head: field, tail: acc |}
+        let tok2 = peek {| tokens: type_id.rest |}
+        match str_eq {| a: tok2.type, b: "," |}
+          case 1 =>
+            let rest2 = advance {| tokens: type_id.rest |}
+            parse_oneof_variant_fields {| tokens: rest2, acc: new_acc |}
+          case 0 =>
+            parse_oneof_variant_fields {| tokens: type_id.rest, acc: new_acc |}
+        end
+    end
+end
+
+fn parse_oneof_variants
+  case {| tokens, acc |} =>
+    let tok = peek {| tokens: tokens |}
+    match str_eq {| a: tok.type, b: "end" |}
+      case 1 =>
+        let result = list_reverse {| list: acc |}
+        {| node: result, rest: tokens |}
+      case 0 =>
+        let id = expect_ident {| tokens: tokens |}
+        let next = peek {| tokens: id.rest |}
+        match str_eq {| a: next.type, b: "{" |}
+          case 1 =>
+            let rest1 = advance {| tokens: id.rest |}
+            let empty = nil {| |}
+            let r = parse_oneof_variant_fields {| tokens: rest1, acc: empty |}
+            let variant = {| name: id.name, fields: r.node |}
+            let new_acc = cons {| head: variant, tail: acc |}
+            parse_oneof_variants {| tokens: r.rest, acc: new_acc |}
+          case 0 =>
+            let empty = nil {| |}
+            let variant = {| name: id.name, fields: empty |}
+            let new_acc = cons {| head: variant, tail: acc |}
+            parse_oneof_variants {| tokens: id.rest, acc: new_acc |}
+        end
+    end
+end
+
+fn parse_oneof_decl
+  case {| tokens |} =>
+    let rest1 = expect {| tokens: tokens, type: "oneof" |}
+    let id = expect_ident {| tokens: rest1 |}
+    let empty = nil {| |}
+    let r = parse_oneof_variants {| tokens: id.rest, acc: empty |}
+    let rest2 = expect {| tokens: r.rest, type: "end" |}
+    {| node: {| tag: "decl_oneof", name: id.name, variants: r.node |}, rest: rest2 |}
+end
+
+-- ============================================================
+-- Struct Declaration Parsing
+-- ============================================================
+
 fn parse_struct_fields
   case {| tokens, acc |} =>
     let tok = peek {| tokens: tokens |}
@@ -715,9 +785,10 @@ fn parse_decl
       case "fn" => parse_fn_decl {| tokens: tokens |}
       case "do" => parse_do_decl {| tokens: tokens |}
       case "struct" => parse_struct_decl {| tokens: tokens |}
+      case "oneof" => parse_oneof_decl {| tokens: tokens |}
       case "test" => parse_test_decl {| tokens: tokens |}
       case _ =>
-        let s1 = concat {| a: "expected 'import', 'open', 'fn', 'do', 'struct', or 'test' but got '", b: tok.type |}
+        let s1 = concat {| a: "expected 'import', 'open', 'fn', 'do', 'struct', 'oneof', or 'test' but got '", b: tok.type |}
         let s2 = concat {| a: s1, b: "'" |}
         let _ = parse_error {| msg: s2, line: tok.line, col: tok.col |}
         {| node: {| tag: "decl_fn", name: "", clauses: nil {| |} |}, rest: tokens |}
