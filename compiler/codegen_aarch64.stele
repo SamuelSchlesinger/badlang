@@ -1,4 +1,5 @@
 open Util
+open Ast
 open Parser
 open Codegen_c
 
@@ -1041,12 +1042,12 @@ end
 
 fn emit_stmt_asm
   case {| stmt, state, declared |} =>
-    match stmt.tag
-      case "stmt_let" =>
-        let r = emit_expr_asm {| node: stmt.value, state: state |}
-        let cn = c_name {| name: stmt.name |}
+    match stmt
+      case StmtLet {| name, value |} =>
+        let r = emit_expr_asm {| node: value, state: state |}
+        let cn = c_name {| name: name |}
         let vs = lookup_slot {| name: r.var, slots: r.state.slots |}
-        let already = list_contains_str {| list: declared, s: stmt.name |}
+        let already = list_contains_str {| list: declared, s: name |}
         -- If variable already declared, release old value before reassigning
         let release_old = match already
           case 1 =>
@@ -1058,11 +1059,11 @@ fn emit_stmt_asm
         let ns = cons {| head: {| name: cn, slot: vs |}, tail: r.state.slots |}
         let new_declared = match already
           case 1 => declared
-          case 0 => cons {| head: stmt.name, tail: declared |}
+          case 0 => cons {| head: name, tail: declared |}
         end
         {| code: concat {| a: r.code, b: release_old |}, state: {| counter: r.state.counter, slot_counter: r.state.slot_counter, slots: ns, strs: r.state.strs |}, declared: new_declared |}
-      case "stmt_stele_print" =>
-        let r = emit_expr_asm {| node: stmt.value, state: state |}
+      case StmtPrint {| value |} =>
+        let r = emit_expr_asm {| node: value, state: state |}
         let vs = lookup_slot {| name: r.var, slots: r.state.slots |}
         let load = emit_load_slot {| slot: vs, reg: "x0" |}
         let rload = emit_load_slot {| slot: vs, reg: "x0" |}
@@ -1070,8 +1071,8 @@ fn emit_stmt_asm
         let s2 = concat {| a: s1, b: asm_bl {| name: "stele_print" |} |}
         let s3 = concat {| a: s2, b: rload |}
         {| code: concat {| a: s3, b: asm_bl {| name: "rc_release" |} |}, state: r.state, declared: declared |}
-      case "stmt_stele_write" =>
-        let r = emit_expr_asm {| node: stmt.value, state: state |}
+      case StmtWrite {| value |} =>
+        let r = emit_expr_asm {| node: value, state: state |}
         let vs = lookup_slot {| name: r.var, slots: r.state.slots |}
         let load = emit_load_slot {| slot: vs, reg: "x0" |}
         let rload = emit_load_slot {| slot: vs, reg: "x0" |}
@@ -1079,8 +1080,8 @@ fn emit_stmt_asm
         let s2 = concat {| a: s1, b: asm_bl {| name: "stele_write" |} |}
         let s3 = concat {| a: s2, b: rload |}
         {| code: concat {| a: s3, b: asm_bl {| name: "rc_release" |} |}, state: r.state, declared: declared |}
-      case "stmt_expr" =>
-        let r = emit_expr_asm {| node: stmt.value, state: state |}
+      case StmtExpr {| value |} =>
+        let r = emit_expr_asm {| node: value, state: state |}
         let vs = lookup_slot {| name: r.var, slots: r.state.slots |}
         let load = emit_load_slot {| slot: vs, reg: "x0" |}
         let s1 = concat {| a: r.code, b: load |}
@@ -1151,13 +1152,13 @@ fn emit_decls_loop_asm
       case 0 =>
         let head = list_head {| list: decls |}
         let tail = list_tail {| list: decls |}
-        let r = match str_eq {| a: head.tag, b: "decl_fn" |}
-          case 1 =>
-            match is_builtin_fn {| name: head.name |}
+        let r = match head
+          case DeclFn {| name, clauses |} =>
+            match is_builtin_fn {| name: name |}
               case 1 => {| code: "", state: state |}
-              case 0 => emit_fn_asm {| name: head.name, clauses: head.clauses, state: state |}
+              case 0 => emit_fn_asm {| name: name, clauses: clauses, state: state |}
             end
-          case 0 => {| code: "", state: state |}
+          case _ => {| code: "", state: state |}
         end
         emit_decls_loop_asm {| decls: tail, state: r.state, acc: concat {| a: acc, b: r.code |} |}
     end

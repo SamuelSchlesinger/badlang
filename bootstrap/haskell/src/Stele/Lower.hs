@@ -77,8 +77,11 @@ collectBlocks = do
 -- ---------------------------------------------------------------------------
 
 cName :: String -> String
-cName "arg" = "arg"
-cName name  = "stele_" ++ name
+cName name = "stele_" ++ name
+
+startsUpper :: String -> Bool
+startsUpper (c:_) = isUpper c
+startsUpper []    = False
 
 -- | Deduplicate a list, keeping only the last occurrence of each element,
 -- then reverse the result.  Used for TCO release lists: when a variable
@@ -510,7 +513,7 @@ lowerPatternBindings scrut (PQualVariant modN vname innerPat) =
 
 lowerFieldBinding :: Var -> PatField -> Lower [Var]
 lowerFieldBinding scrut (PatField fname mPat) = do
-  let isTypeLike n = n `elem` ["Int", "String", "Void"] || (not (null n) && isUpper (head n))
+  let isTypeLike n = n `elem` ["Int", "String", "Void"] || startsUpper n
   let boundName = case mPat of
         Just (PVar n)
           | isTypeLike n -> Just fname
@@ -896,5 +899,4 @@ patFieldBoundNames (PatField name mPat) =
     Just PWild -> Set.empty
     Just _ -> Set.singleton name
   where
-    isTypeLike n = n `elem` ["Int", "String", "Void"] ||
-                   (not (null n) && isUpper (head n))
+    isTypeLike n = n `elem` ["Int", "String", "Void"] || startsUpper n

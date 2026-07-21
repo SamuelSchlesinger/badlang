@@ -1,4 +1,5 @@
 open Util
+open Ast
 open Parser
 open Codegen_c
 
@@ -962,12 +963,12 @@ end
 fn emit_stmt_x86
   case {| stmt, state, mode, declared |} =>
     let pfx = sym_prefix_x86 {| mode: mode |}
-    match stmt.tag
-      case "stmt_let" =>
-        let r = emit_expr_x86 {| node: stmt.value, state: state, mode: mode |}
-        let cn = c_name {| name: stmt.name |}
+    match stmt
+      case StmtLet {| name, value |} =>
+        let r = emit_expr_x86 {| node: value, state: state, mode: mode |}
+        let cn = c_name {| name: name |}
         let vs = lookup_slot {| name: r.var, slots: r.state.slots |}
-        let already = list_contains_str {| list: declared, s: stmt.name |}
+        let already = list_contains_str {| list: declared, s: name |}
         -- If variable already declared, release old value before reassigning
         let release_old = match already
           case 1 =>
@@ -979,11 +980,11 @@ fn emit_stmt_x86
         let ns = cons {| head: {| name: cn, slot: vs |}, tail: r.state.slots |}
         let new_declared = match already
           case 1 => declared
-          case 0 => cons {| head: stmt.name, tail: declared |}
+          case 0 => cons {| head: name, tail: declared |}
         end
         {| code: concat {| a: r.code, b: release_old |}, state: {| counter: r.state.counter, slot_counter: r.state.slot_counter, slots: ns, strs: r.state.strs |}, declared: new_declared |}
-      case "stmt_stele_print" =>
-        let r = emit_expr_x86 {| node: stmt.value, state: state, mode: mode |}
+      case StmtPrint {| value |} =>
+        let r = emit_expr_x86 {| node: value, state: state, mode: mode |}
         let vs = lookup_slot {| name: r.var, slots: r.state.slots |}
         let load = emit_load_slot_x86 {| slot: vs, reg: "%rdi" |}
         let rload = emit_load_slot_x86 {| slot: vs, reg: "%rdi" |}
@@ -991,8 +992,8 @@ fn emit_stmt_x86
         let s2 = concat {| a: s1, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "stele_print" |} |} |} |}
         let s3 = concat {| a: s2, b: rload |}
         {| code: concat {| a: s3, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "rc_release" |} |} |} |}, state: r.state, declared: declared |}
-      case "stmt_stele_write" =>
-        let r = emit_expr_x86 {| node: stmt.value, state: state, mode: mode |}
+      case StmtWrite {| value |} =>
+        let r = emit_expr_x86 {| node: value, state: state, mode: mode |}
         let vs = lookup_slot {| name: r.var, slots: r.state.slots |}
         let load = emit_load_slot_x86 {| slot: vs, reg: "%rdi" |}
         let rload = emit_load_slot_x86 {| slot: vs, reg: "%rdi" |}
@@ -1000,8 +1001,8 @@ fn emit_stmt_x86
         let s2 = concat {| a: s1, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "stele_write" |} |} |} |}
         let s3 = concat {| a: s2, b: rload |}
         {| code: concat {| a: s3, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "rc_release" |} |} |} |}, state: r.state, declared: declared |}
-      case "stmt_expr" =>
-        let r = emit_expr_x86 {| node: stmt.value, state: state, mode: mode |}
+      case StmtExpr {| value |} =>
+        let r = emit_expr_x86 {| node: value, state: state, mode: mode |}
         let vs = lookup_slot {| name: r.var, slots: r.state.slots |}
         let load = emit_load_slot_x86 {| slot: vs, reg: "%rdi" |}
         let s1 = concat {| a: r.code, b: load |}
@@ -1077,13 +1078,13 @@ fn emit_decls_loop_x86
       case 0 =>
         let head = list_head {| list: decls |}
         let tail = list_tail {| list: decls |}
-        let r = match str_eq {| a: head.tag, b: "decl_fn" |}
-          case 1 =>
-            match is_builtin_fn {| name: head.name |}
+        let r = match head
+          case DeclFn {| name, clauses |} =>
+            match is_builtin_fn {| name: name |}
               case 1 => {| code: "", state: state |}
-              case 0 => emit_fn_x86 {| name: head.name, clauses: head.clauses, state: state, mode: mode |}
+              case 0 => emit_fn_x86 {| name: name, clauses: clauses, state: state, mode: mode |}
             end
-          case 0 => {| code: "", state: state |}
+          case _ => {| code: "", state: state |}
         end
         emit_decls_loop_x86 {| decls: tail, state: r.state, acc: concat {| a: acc, b: r.code |}, mode: mode |}
     end

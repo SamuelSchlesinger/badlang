@@ -1,0 +1,20 @@
+-- ============================================================
+-- AST Type Declarations
+-- ============================================================
+
+oneof Decl
+  DeclFn { name, clauses }
+  DeclDo { name, stmts }
+  DeclTest { name, stmts }
+  DeclStruct { name, fields }
+  DeclOneof { name, variants }
+  DeclImport { name }
+  DeclOpen { name }
+end
+
+oneof Stmt
+  StmtLet { name, value }
+  StmtPrint { value }
+  StmtWrite { value }
+  StmtExpr { value }
+end

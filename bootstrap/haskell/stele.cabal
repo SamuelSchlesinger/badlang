@@ -26,7 +26,7 @@ library
         Stele.Signature
         Stele.Resolve
     build-depends:
-        base       ^>=4.18.3.0,
+        base       >=4.18.3.0 && <5,
         containers >= 0.6,
         array      >= 0.5,
         transformers >= 0.5,
@@ -39,7 +39,7 @@ executable stele
     import:           warnings
     main-is:          Main.hs
     build-depends:
-        base       ^>=4.18.3.0,
+        base       >=4.18.3.0 && <5,
         stele,
         process    >= 1.6
     hs-source-dirs:   app

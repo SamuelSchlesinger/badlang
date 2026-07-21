@@ -115,12 +115,16 @@ steleGrammar = Map.fromList
       , label "vfields" (opt (seq_
           [ lit "{", ws
           , opt (seq_
-              [ rule "field_decl"
-              , many (seq_ [ws, lit ",", ws, rule "field_decl"])
+              [ rule "variant_field"
+              , many (seq_ [ws, lit ",", ws, rule "variant_field"])
               ])
           , ws, lit "}"
           ]))
       ])
+
+  -- Variant fields: typed (name : Type) or untyped (just name)
+  , ("variant_field", rule "field_decl" </> rule "untyped_field")
+  , ("untyped_field", label "fname" (rule "ident"))
 
   -- ── Type annotations ─────────────────────────────────────────────────
   , ("type_ann", rule "type_name")  -- v0.1: just names
@@ -484,10 +488,17 @@ treeToVariantDef :: ParseTree -> Either String (String, [Field])
 treeToVariantDef (PTNode "variant_def" children) = do
   name <- getText =<< find1 "vname" children
   let fieldsNodes = findAll "vfields" children >>= getChildren
-      fieldDecls = findTyped "field_decl" fieldsNodes
-  fields <- mapM treeToField fieldDecls
-  return (name, fields)
+      variantFields = findTyped "variant_field" fieldsNodes
+  allFields <- mapM treeToVariantField (variantFields >>= getChildren)
+  return (name, allFields)
 treeToVariantDef t = Left $ "Expected variant def, got: " ++ take 100 (show t)
+
+treeToVariantField :: ParseTree -> Either String Field
+treeToVariantField n@(PTNode "field_decl" _) = treeToField n
+treeToVariantField (PTNode "untyped_field" children) = do
+  name <- getText =<< find1 "fname" children
+  return (Field name (TAName "_"))
+treeToVariantField t = Left $ "Expected variant field, got: " ++ take 100 (show t)
 
 treeToField :: ParseTree -> Either String Field
 treeToField (PTNode "field_decl" children) = do

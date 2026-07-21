@@ -1,4 +1,5 @@
 open Util
+open Ast
 open Codegen_c
 
 -- ============================================================
@@ -137,9 +138,9 @@ fn collect_fn_names
       case 0 =>
         let head = list_head {| list: decls |}
         let tail = list_tail {| list: decls |}
-        let new_acc = match str_eq {| a: head.tag, b: "decl_fn" |}
-          case 1 => cons {| head: head.name, tail: acc |}
-          case 0 => acc
+        let new_acc = match head
+          case DeclFn {| name |} => cons {| head: name, tail: acc |}
+          case _ => acc
         end
         collect_fn_names {| decls: tail, acc: new_acc |}
     end
@@ -167,7 +168,7 @@ fn lift_expr
         let lambda_name = concat {| a: "_lambda_", b: int_to_str {| n: lr.counter |} |}
         let new_counter = lr.counter + 1
         -- Create a top-level decl_fn for the lambda
-        let lambda_decl = {| tag: "decl_fn", name: lambda_name, clauses: wrapped_clauses |}
+        let lambda_decl = DeclFn {| name: lambda_name, clauses: wrapped_clauses |}
         let new_lambdas = cons {| head: lambda_decl, tail: lr.lambdas |}
         -- Build list of free var field records for the closure_ref node
         let fv_fields = make_fv_fields {| names: fvs |}
@@ -333,19 +334,19 @@ end
 
 fn lift_stmt
   case {| stmt, fn_names, counter |} =>
-    match stmt.tag
-      case "stmt_let" =>
-        let r = lift_expr {| node: stmt.value, fn_names: fn_names, counter: counter |}
-        {| stmt: {| tag: "stmt_let", name: stmt.name, value: r.node |}, lambdas: r.lambdas, counter: r.counter |}
-      case "stmt_stele_print" =>
-        let r = lift_expr {| node: stmt.value, fn_names: fn_names, counter: counter |}
-        {| stmt: {| tag: "stmt_stele_print", value: r.node |}, lambdas: r.lambdas, counter: r.counter |}
-      case "stmt_stele_write" =>
-        let r = lift_expr {| node: stmt.value, fn_names: fn_names, counter: counter |}
-        {| stmt: {| tag: "stmt_stele_write", value: r.node |}, lambdas: r.lambdas, counter: r.counter |}
-      case "stmt_expr" =>
-        let r = lift_expr {| node: stmt.value, fn_names: fn_names, counter: counter |}
-        {| stmt: {| tag: "stmt_expr", value: r.node |}, lambdas: r.lambdas, counter: r.counter |}
+    match stmt
+      case StmtLet {| name, value |} =>
+        let r = lift_expr {| node: value, fn_names: fn_names, counter: counter |}
+        {| stmt: StmtLet {| name: name, value: r.node |}, lambdas: r.lambdas, counter: r.counter |}
+      case StmtPrint {| value |} =>
+        let r = lift_expr {| node: value, fn_names: fn_names, counter: counter |}
+        {| stmt: StmtPrint {| value: r.node |}, lambdas: r.lambdas, counter: r.counter |}
+      case StmtWrite {| value |} =>
+        let r = lift_expr {| node: value, fn_names: fn_names, counter: counter |}
+        {| stmt: StmtWrite {| value: r.node |}, lambdas: r.lambdas, counter: r.counter |}
+      case StmtExpr {| value |} =>
+        let r = lift_expr {| node: value, fn_names: fn_names, counter: counter |}
+        {| stmt: StmtExpr {| value: r.node |}, lambdas: r.lambdas, counter: r.counter |}
     end
 end
 
@@ -372,25 +373,19 @@ end
 
 fn lift_decl
   case {| decl, fn_names, counter |} =>
-    match decl.tag
-      case "decl_fn" =>
-        let r = lift_clauses {| clauses: decl.clauses, fn_names: fn_names, counter: counter |}
-        let new_decl = {| tag: "decl_fn", name: decl.name, clauses: r.clauses |}
+    match decl
+      case DeclFn {| name, clauses |} =>
+        let r = lift_clauses {| clauses: clauses, fn_names: fn_names, counter: counter |}
+        let new_decl = DeclFn {| name: name, clauses: r.clauses |}
         {| decl: new_decl, lambdas: r.lambdas, counter: r.counter |}
-      case "decl_do" =>
-        let r = lift_stmts {| stmts: decl.stmts, fn_names: fn_names, counter: counter |}
-        let new_decl = {| tag: "decl_do", name: decl.name, stmts: r.stmts |}
+      case DeclDo {| name, stmts |} =>
+        let r = lift_stmts {| stmts: stmts, fn_names: fn_names, counter: counter |}
+        let new_decl = DeclDo {| name: name, stmts: r.stmts |}
         {| decl: new_decl, lambdas: r.lambdas, counter: r.counter |}
-      case "decl_test" =>
-        let r = lift_stmts {| stmts: decl.stmts, fn_names: fn_names, counter: counter |}
-        let new_decl = {| tag: "decl_test", name: decl.name, stmts: r.stmts |}
+      case DeclTest {| name, stmts |} =>
+        let r = lift_stmts {| stmts: stmts, fn_names: fn_names, counter: counter |}
+        let new_decl = DeclTest {| name: name, stmts: r.stmts |}
         {| decl: new_decl, lambdas: r.lambdas, counter: r.counter |}
-      case "decl_import" =>
-        let empty = nil {| |}
-        {| decl: decl, lambdas: empty, counter: counter |}
-      case "decl_open" =>
-        let empty = nil {| |}
-        {| decl: decl, lambdas: empty, counter: counter |}
       case _ =>
         let empty = nil {| |}
         {| decl: decl, lambdas: empty, counter: counter |}

@@ -1,0 +1,27 @@
+-- Sum types with typed payloads, recursive annotations, and nullary variants.
+oneof Tree
+  Leaf { value : Int }
+  Branch { left : Tree, right : Tree }
+  Empty
+end
+
+fn total
+  case Leaf {| value |} => value
+  case Branch {| left, right |} => total(left) + total(right)
+  case Empty => 0
+end
+
+fn kind
+  case Leaf {| value |} => "leaf"
+  case Branch {| left, right |} => "branch"
+  case Empty => "empty"
+end
+
+do main
+  let tree = Branch {| left: Leaf {| value: 2 |}, right: Leaf {| value: 4 |} |}
+  print total(tree)
+  print total(Empty)
+  print kind(Leaf {| value: 1 |})
+  print kind(tree)
+  print kind(Empty)
+end

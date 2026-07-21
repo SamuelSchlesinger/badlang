@@ -212,6 +212,9 @@ unify' :: Type -> Type -> IO (Either TypeError ())
 unify' TInt TInt = return (Right ())
 unify' TStr TStr = return (Right ())
 unify' TVoid TVoid = return (Right ())
+-- Void acts as a bottom type: it unifies with anything (expressions that never return)
+unify' TVoid _ = return (Right ())
+unify' _ TVoid = return (Right ())
 unify' (TFun a1 r1) (TFun a2 r2) = do
   e1 <- unify a1 a2
   case e1 of
@@ -408,9 +411,12 @@ infer env (NamedRecord typeName fields) = do
         case row of
           Left err -> return (Left err)
           Right r -> do
-            case traverse (\(Field n t) -> do
-                              ty <- resolveTypeAnnInEnv env t
-                              return (n, ty)) expectedFieldDecls of
+            resolvedFields <- mapM (\(Field n t) -> do
+                                      result <- resolveTypeAnnIO env t
+                                      case result of
+                                        Right ty -> return (Right (n, ty))
+                                        Left err -> return (Left err)) expectedFieldDecls
+            case sequence resolvedFields of
               Left err -> return (Left err)
               Right expectedFields -> do
                 let expectedRow = foldr (\(n, t) acc -> RExtend n t acc) REmpty expectedFields
@@ -799,10 +805,12 @@ addDecl env (StructDecl name fields) = do
       else if Map.member name (envFns env)
         then return (Left $ "Name '" ++ name ++ "' already used by fn")
         else do
-          let resolveField (Field n t) = do
-                ty <- resolveTypeAnnInEnv env t
-                return (n, ty)
-          case traverse resolveField fields of
+          resolvedFields <- mapM (\(Field n t) -> do
+                                    result <- resolveTypeAnnIO env t
+                                    case result of
+                                      Right ty -> return (Right (n, ty))
+                                      Left err -> return (Left err)) fields
+          case sequence resolvedFields of
             Left err -> return (Left err)
             Right fieldTypes ->
               return (Right env { envStructs = Map.insert name fieldTypes (envStructs env) })
@@ -815,19 +823,20 @@ addDecl env (OneofDecl name variants) = do
           clashes = filter (`Map.member` envVariants env) variantNames
       if not (null dupVariantNames)
         then return (Left $ "Duplicate variant declarations in oneof '" ++ name ++ "': " ++ unwords dupVariantNames)
-        else if not (null clashes)
-          then return (Left $ "Variant name already declared: " ++ head clashes)
-          else do
-            let validateField (Field _ t) = case resolveTypeAnnInEnv env t of
+        else case clashes of
+          clash : _ -> return (Left $ "Variant name already declared: " ++ clash)
+          [] -> do
+            -- Register the oneof before validating fields (allows self-referential type annotations)
+            let variantMap = Map.fromList [(vname, (name, vfields)) | (vname, vfields) <- variants]
+                env' = env { envOneofs = Map.insert name variants (envOneofs env)
+                           , envVariants = Map.union variantMap (envVariants env) }
+            let validateField (Field _ t) = case resolveTypeAnnInEnv env' t of
                   Left err -> Left err
                   Right _  -> Right ()
                 validateVariant (_vname, vfields) = traverse validateField vfields
             case traverse validateVariant variants of
               Left err -> return (Left err)
-              Right _ -> do
-                let variantMap = Map.fromList [(vname, (name, vfields)) | (vname, vfields) <- variants]
-                return (Right env { envOneofs = Map.insert name variants (envOneofs env)
-                                  , envVariants = Map.union variantMap (envVariants env) })
+              Right _ -> return (Right env')
 addDecl env (FnDecl name _clauses) = do
   if Map.member name (envFns env)
     then return (Left $ "Duplicate fn declaration: " ++ name)
@@ -850,17 +859,30 @@ resolveTypeAnnInEnv :: Env -> TypeAnn -> Either TypeError Type
 resolveTypeAnnInEnv _ (TAName "Int")    = Right TInt
 resolveTypeAnnInEnv _ (TAName "String") = Right TStr
 resolveTypeAnnInEnv _ (TAName "Void")   = Right TVoid
+resolveTypeAnnInEnv _ (TAName "_")      = Right TVoid  -- placeholder; use resolveTypeAnnIO for actual fresh vars
 resolveTypeAnnInEnv env (TAName name) =
   case Map.lookup name (envStructs env) of
     Just fields ->
       let row = foldr (\(n, t) acc -> RExtend n t acc) REmpty fields
       in Right (TRec (RExtend "__tag" TStr row))
     Nothing ->
-      Left $ "Unknown type annotation: " ++ name
+      case Map.lookup name (envOneofs env) of
+        Just _  -> Right TVoid  -- placeholder; use resolveTypeAnnIO for actual fresh vars
+        Nothing -> Left $ "Unknown type annotation: " ++ name
 resolveTypeAnnInEnv _ (TARecord _) =
   Left "Record type annotations are not supported yet"
 resolveTypeAnnInEnv _ (TAFun _ _) =
   Left "Function type annotations are not supported yet"
+
+-- | Like resolveTypeAnnInEnv but in IO, so fresh type variables are unique.
+-- Use this instead of resolveTypeAnnInEnv whenever you need actual type variables
+-- (not just validation).
+resolveTypeAnnIO :: Env -> TypeAnn -> IO (Either TypeError Type)
+resolveTypeAnnIO env (TAName "_") = Right <$> freshTVar (envLevel env)
+resolveTypeAnnIO env (TAName name)
+  | Map.member name (envOneofs env) = Right <$> freshTVar (envLevel env)
+  | otherwise = return (resolveTypeAnnInEnv env (TAName name))
+resolveTypeAnnIO env ta = return (resolveTypeAnnInEnv env ta)
 
 duplicateNames :: [String] -> [String]
 duplicateNames = reverse . fst . foldl go ([], Set.empty)

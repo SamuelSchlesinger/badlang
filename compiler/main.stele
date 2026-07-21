@@ -3,8 +3,10 @@
 -- ============================================================
 
 open Lexer
+open Ast
 open Parser
 open Resolve
+open Typecheck
 open Desugar
 open Lambda_lift
 open Codegen_c
@@ -17,7 +19,8 @@ do main
   let parsed_decls = parse_program {| tokens: tokens |}
   let base_path = extract_base_path {| filepath: argv {| n: 1 |} |}
   let resolved_decls = resolve_modules {| decls: parsed_decls, base_path: base_path |}
-  let desugared_decls = desugar_oneofs {| decls: resolved_decls |}
+  let checked_decls = type_check {| decls: resolved_decls |}
+  let desugared_decls = desugar_oneofs {| decls: checked_decls |}
   let decls = lift_lambdas {| decls: desugared_decls |}
   let mode = get_mode {| |}
   let output = match mode

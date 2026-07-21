@@ -1,0 +1,1183 @@
+-- ============================================================
+-- Type Checker: Algorithm W with Row Polymorphism
+-- ============================================================
+-- Ported from bootstrap/haskell/src/Stele/Types.hs.
+-- Uses immutable substitution maps instead of IORef-based union-find.
+--
+-- Type representation uses oneofs:
+--   Type: TInt, TStr, TVoid, TFun {arg, ret}, TRec {row}, TVar {id, level}
+--   Row:  REmpty, RExtend {name, ty, rest}, RVar {id, level}
+--
+-- State threaded through all functions:
+--   {| subst: <assoc list>, counter: Int |}
+
+import Ast
+open Ast
+open Util
+
+-- ============================================================
+-- Type Representation
+-- ============================================================
+
+oneof Type
+  TInt
+  TStr
+  TVoid
+  TFun { arg: Type, ret: Type }
+  TRec { row: Type }
+  TVar { id: Int, level: Int }
+end
+
+oneof Row
+  REmpty
+  RExtend { name: String, ty: Type, rest: Row }
+  RVar { id: Int, level: Int }
+end
+
+oneof SubstEntry
+  SubstType { ty: Type }
+  SubstRow { row: Row }
+end
+
+-- ============================================================
+-- Error Handling
+-- ============================================================
+
+fn type_error
+  case {| msg |} =>
+    let full = cat3 {| a: "type error: ", b: msg, c: char_of_int {| n: 10 |} |}
+    let _ = write {| path: "/dev/stderr", content: full |}
+    terminate {| code: 1 |}
+end
+
+-- ============================================================
+-- Association List Helpers
+-- ============================================================
+
+fn assoc_lookup
+  case {| list, key |} =>
+    match is_nil {| list: list |}
+      case 1 => {| tag: "none" |}
+      case 0 =>
+        let head = list_head {| list: list |}
+        let tail = list_tail {| list: list |}
+        match head.key == key
+          case 1 => {| tag: "some", value: head.value |}
+          case 0 => assoc_lookup {| list: tail, key: key |}
+        end
+    end
+end
+
+fn assoc_lookup_str
+  case {| list, key |} =>
+    match is_nil {| list: list |}
+      case 1 => {| tag: "none" |}
+      case 0 =>
+        let head = list_head {| list: list |}
+        let tail = list_tail {| list: list |}
+        match str_eq {| a: head.key, b: key |}
+          case 1 => {| tag: "some", value: head.value |}
+          case 0 => assoc_lookup_str {| list: tail, key: key |}
+        end
+    end
+end
+
+fn assoc_insert
+  case {| list, key, value |} =>
+    cons {| head: {| key: key, value: value |}, tail: list |}
+end
+
+-- ============================================================
+-- Fresh Variables
+-- ============================================================
+
+fn fresh_tvar
+  case {| level, state |} =>
+    let id = state.counter
+    let new_state = {| subst: state.subst, counter: id + 1 |}
+    {| result: TVar {| id: id, level: level |}, state: new_state |}
+end
+
+fn fresh_rvar
+  case {| level, state |} =>
+    let id = state.counter
+    let new_state = {| subst: state.subst, counter: id + 1 |}
+    {| result: RVar {| id: id, level: level |}, state: new_state |}
+end
+
+-- ============================================================
+-- Resolution (follow substitution chains)
+-- ============================================================
+
+fn resolve_type
+  case {| ty, subst |} =>
+    match ty
+      case TVar {| id |} =>
+        let found = assoc_lookup {| list: subst, key: id |}
+        match found.tag
+          case "some" =>
+            match found.value
+              case SubstType {| ty: linked |} =>
+                resolve_type {| ty: linked, subst: subst |}
+              case _ => ty
+            end
+          case "none" => ty
+        end
+      case _ => ty
+    end
+end
+
+fn resolve_row
+  case {| row, subst |} =>
+    match row
+      case RVar {| id |} =>
+        let found = assoc_lookup {| list: subst, key: id |}
+        match found.tag
+          case "some" =>
+            match found.value
+              case SubstRow {| row: linked |} =>
+                resolve_row {| row: linked, subst: subst |}
+              case _ => row
+            end
+          case "none" => row
+        end
+      case _ => row
+    end
+end
+
+-- ============================================================
+-- Occurs Check
+-- ============================================================
+
+fn occurs_check
+  case {| id, ty, subst |} =>
+    let resolved = resolve_type {| ty: ty, subst: subst |}
+    match resolved
+      case TVar {| id: other_id |} => id == other_id
+      case TFun {| arg, ret |} =>
+        match occurs_check {| id: id, ty: arg, subst: subst |}
+          case 1 => 1
+          case 0 => occurs_check {| id: id, ty: ret, subst: subst |}
+        end
+      case TRec {| row |} =>
+        occurs_check_row {| id: id, row: row, subst: subst |}
+      case _ => 0
+    end
+end
+
+fn occurs_check_row
+  case {| id, row, subst |} =>
+    let resolved = resolve_row {| row: row, subst: subst |}
+    match resolved
+      case REmpty => 0
+      case RExtend {| ty, rest |} =>
+        match occurs_check {| id: id, ty: ty, subst: subst |}
+          case 1 => 1
+          case 0 => occurs_check_row {| id: id, row: rest, subst: subst |}
+        end
+      case RVar {| id: other_id |} => id == other_id
+    end
+end
+
+-- ============================================================
+-- Unification
+-- ============================================================
+
+fn unify
+  case {| t1, t2, state |} =>
+    let r1 = resolve_type {| ty: t1, subst: state.subst |}
+    let r2 = resolve_type {| ty: t2, subst: state.subst |}
+    unify_resolved {| t1: r1, t2: r2, state: state |}
+end
+
+fn unify_resolved
+  case {| t1, t2, state |} =>
+    match t1
+      case TInt =>
+        match t2
+          case TInt => state
+          case TVoid => state
+          case TVar {| |} => bind_tvar {| id: t2.id, ty: t1, state: state |}
+          case _ => type_error {| msg: cat3 {| a: "Cannot unify Int with ", b: show_type {| ty: t2, subst: state.subst |}, c: "" |} |}
+        end
+      case TStr =>
+        match t2
+          case TStr => state
+          case TVoid => state
+          case TVar {| |} => bind_tvar {| id: t2.id, ty: t1, state: state |}
+          case _ => type_error {| msg: cat3 {| a: "Cannot unify String with ", b: show_type {| ty: t2, subst: state.subst |}, c: "" |} |}
+        end
+      case TVoid => state
+      case TFun {| arg: a1, ret: r1 |} =>
+        match t2
+          case TFun {| arg: a2, ret: r2 |} =>
+            let s1 = unify {| t1: a1, t2: a2, state: state |}
+            unify {| t1: r1, t2: r2, state: s1 |}
+          case TVoid => state
+          case TVar {| |} => bind_tvar {| id: t2.id, ty: t1, state: state |}
+          case _ => type_error {| msg: cat3 {| a: "Cannot unify function with ", b: show_type {| ty: t2, subst: state.subst |}, c: "" |} |}
+        end
+      case TRec {| row: row1 |} =>
+        match t2
+          case TRec {| row: row2 |} =>
+            unify_row {| r1: row1, r2: row2, state: state |}
+          case TVoid => state
+          case TVar {| |} => bind_tvar {| id: t2.id, ty: t1, state: state |}
+          case _ => type_error {| msg: cat3 {| a: "Cannot unify record with ", b: show_type {| ty: t2, subst: state.subst |}, c: "" |} |}
+        end
+      case TVar {| id: id1 |} =>
+        match t2
+          case TVoid => state
+          case TVar {| id: id2 |} =>
+            match id1 == id2
+              case 1 => state
+              case 0 => bind_tvar {| id: id1, ty: t2, state: state |}
+            end
+          case _ => bind_tvar {| id: id1, ty: t2, state: state |}
+        end
+    end
+end
+
+fn bind_tvar
+  case {| id, ty, state |} =>
+    match occurs_check {| id: id, ty: ty, subst: state.subst |}
+      case 1 => type_error {| msg: "Infinite type (occurs check)" |}
+      case 0 =>
+        let new_subst = assoc_insert {| list: state.subst, key: id, value: SubstType {| ty: ty |} |}
+        {| subst: new_subst, counter: state.counter |}
+    end
+end
+
+-- ============================================================
+-- Row Unification (Remy's algorithm)
+-- ============================================================
+
+fn unify_row
+  case {| r1, r2, state |} =>
+    let rr1 = resolve_row {| row: r1, subst: state.subst |}
+    let rr2 = resolve_row {| row: r2, subst: state.subst |}
+    unify_row_resolved {| r1: rr1, r2: rr2, state: state |}
+end
+
+fn unify_row_resolved
+  case {| r1, r2, state |} =>
+    match r1
+      case REmpty =>
+        match r2
+          case REmpty => state
+          case RVar {| id |} =>
+            let new_subst = assoc_insert {| list: state.subst, key: id, value: SubstRow {| row: REmpty |} |}
+            {| subst: new_subst, counter: state.counter |}
+          case RExtend {| name |} =>
+            type_error {| msg: cat3 {| a: "Record has extra field '", b: name, c: "'" |} |}
+        end
+      case RVar {| id: id1 |} =>
+        match r2
+          case RVar {| id: id2 |} =>
+            match id1 == id2
+              case 1 => state
+              case 0 =>
+                let new_subst = assoc_insert {| list: state.subst, key: id1, value: SubstRow {| row: r2 |} |}
+                {| subst: new_subst, counter: state.counter |}
+            end
+          case _ =>
+            let new_subst = assoc_insert {| list: state.subst, key: id1, value: SubstRow {| row: r2 |} |}
+            {| subst: new_subst, counter: state.counter |}
+        end
+      case RExtend {| name: name1, ty: ty1, rest: rest1 |} =>
+        let extracted = row_extract {| name: name1, row: r2, state: state |}
+        let s1 = unify {| t1: ty1, t2: extracted.ty, state: extracted.state |}
+        unify_row {| r1: rest1, r2: extracted.rest, state: s1 |}
+    end
+end
+
+fn row_extract
+  case {| name, row, state |} =>
+    let resolved = resolve_row {| row: row, subst: state.subst |}
+    match resolved
+      case REmpty =>
+        type_error {| msg: cat3 {| a: "Field '", b: name, c: "' not found in record" |} |}
+      case RExtend {| name: n, ty: t, rest: r |} =>
+        match str_eq {| a: n, b: name |}
+          case 1 => {| ty: t, rest: r, state: state |}
+          case 0 =>
+            let inner = row_extract {| name: name, row: r, state: state |}
+            {| ty: inner.ty, rest: RExtend {| name: n, ty: t, rest: inner.rest |}, state: inner.state |}
+        end
+      case RVar {| id |} =>
+        let fv = fresh_tvar {| level: 0, state: state |}
+        let rv = fresh_rvar {| level: 0, state: fv.state |}
+        let new_row = RExtend {| name: name, ty: fv.result, rest: rv.result |}
+        let new_subst = assoc_insert {| list: rv.state.subst, key: id, value: SubstRow {| row: new_row |} |}
+        let new_state = {| subst: new_subst, counter: rv.state.counter |}
+        {| ty: fv.result, rest: rv.result, state: new_state |}
+    end
+end
+
+-- ============================================================
+-- Instantiation (fresh copy for per-call-site polymorphism)
+-- ============================================================
+
+fn instantiate_type
+  case {| level, ty, state |} =>
+    let resolved = resolve_type {| ty: ty, subst: state.subst |}
+    let empty = nil {| |}
+    inst_type_go {| level: level, ty: resolved, tv_sub: empty, rv_sub: empty, state: state |}
+end
+
+fn inst_type_go
+  case {| level, ty, tv_sub, rv_sub, state |} =>
+    let resolved = resolve_type {| ty: ty, subst: state.subst |}
+    match resolved
+      case TInt => {| result: TInt, tv_sub: tv_sub, rv_sub: rv_sub, state: state |}
+      case TStr => {| result: TStr, tv_sub: tv_sub, rv_sub: rv_sub, state: state |}
+      case TVoid => {| result: TVoid, tv_sub: tv_sub, rv_sub: rv_sub, state: state |}
+      case TFun {| arg, ret |} =>
+        let r1 = inst_type_go {| level: level, ty: arg, tv_sub: tv_sub, rv_sub: rv_sub, state: state |}
+        let r2 = inst_type_go {| level: level, ty: ret, tv_sub: r1.tv_sub, rv_sub: r1.rv_sub, state: r1.state |}
+        {| result: TFun {| arg: r1.result, ret: r2.result |}, tv_sub: r2.tv_sub, rv_sub: r2.rv_sub, state: r2.state |}
+      case TRec {| row |} =>
+        let r = inst_row_go {| level: level, row: row, tv_sub: tv_sub, rv_sub: rv_sub, state: state |}
+        {| result: TRec {| row: r.result |}, tv_sub: r.tv_sub, rv_sub: r.rv_sub, state: r.state |}
+      case TVar {| id |} =>
+        let found = assoc_lookup {| list: tv_sub, key: id |}
+        match found.tag
+          case "some" => {| result: found.value, tv_sub: tv_sub, rv_sub: rv_sub, state: state |}
+          case "none" =>
+            let fv = fresh_tvar {| level: level, state: state |}
+            let new_tv_sub = assoc_insert {| list: tv_sub, key: id, value: fv.result |}
+            {| result: fv.result, tv_sub: new_tv_sub, rv_sub: rv_sub, state: fv.state |}
+        end
+    end
+end
+
+fn inst_row_go
+  case {| level, row, tv_sub, rv_sub, state |} =>
+    let resolved = resolve_row {| row: row, subst: state.subst |}
+    match resolved
+      case REmpty => {| result: REmpty, tv_sub: tv_sub, rv_sub: rv_sub, state: state |}
+      case RExtend {| name, ty, rest |} =>
+        let r1 = inst_type_go {| level: level, ty: ty, tv_sub: tv_sub, rv_sub: rv_sub, state: state |}
+        let r2 = inst_row_go {| level: level, row: rest, tv_sub: r1.tv_sub, rv_sub: r1.rv_sub, state: r1.state |}
+        {| result: RExtend {| name: name, ty: r1.result, rest: r2.result |}, tv_sub: r2.tv_sub, rv_sub: r2.rv_sub, state: r2.state |}
+      case RVar {| id |} =>
+        let found = assoc_lookup {| list: rv_sub, key: id |}
+        match found.tag
+          case "some" => {| result: found.value, tv_sub: tv_sub, rv_sub: rv_sub, state: state |}
+          case "none" =>
+            let fv = fresh_rvar {| level: level, state: state |}
+            let new_rv_sub = assoc_insert {| list: rv_sub, key: id, value: fv.result |}
+            {| result: fv.result, tv_sub: tv_sub, rv_sub: new_rv_sub, state: fv.state |}
+        end
+    end
+end
+
+-- ============================================================
+-- Type Environment
+-- ============================================================
+
+fn make_empty_env
+  case {| |} =>
+    {| vars: nil {| |},
+       fns: nil {| |},
+       structs: nil {| |},
+       oneofs: nil {| |},
+       variants: nil {| |},
+       level: 0 |}
+end
+
+fn env_extend_var
+  case {| env, name, ty |} =>
+    {| vars: assoc_insert {| list: env.vars, key: name, value: ty |},
+       fns: env.fns,
+       structs: env.structs,
+       oneofs: env.oneofs,
+       variants: env.variants,
+       level: env.level |}
+end
+
+fn env_lookup_var
+  case {| env, name |} =>
+    assoc_lookup_str {| list: env.vars, key: name |}
+end
+
+fn env_lookup_fn
+  case {| env, name |} =>
+    assoc_lookup_str {| list: env.fns, key: name |}
+end
+
+fn env_lookup_variant
+  case {| env, name |} =>
+    assoc_lookup_str {| list: env.variants, key: name |}
+end
+
+fn env_lookup_struct
+  case {| env, name |} =>
+    assoc_lookup_str {| list: env.structs, key: name |}
+end
+
+fn env_lookup_oneof
+  case {| env, name |} =>
+    assoc_lookup_str {| list: env.oneofs, key: name |}
+end
+
+-- ============================================================
+-- Builtin Registration
+-- ============================================================
+
+fn register_builtins
+  case {| env, state |} =>
+    -- read : {| path: String |} -> String
+    let e = register_builtin {| env: env, name: "read", arg_row: RExtend {| name: "path", ty: TStr, rest: REmpty |}, ret: TStr |}
+    -- write : {| path: String, content: String |} -> Void
+    let e = register_builtin {| env: e, name: "write", arg_row: RExtend {| name: "path", ty: TStr, rest: RExtend {| name: "content", ty: TStr, rest: REmpty |} |}, ret: TVoid |}
+    -- argc : {| |} -> Int
+    let e = register_builtin {| env: e, name: "argc", arg_row: REmpty, ret: TInt |}
+    -- argv : {| n: Int |} -> String
+    let e = register_builtin {| env: e, name: "argv", arg_row: RExtend {| name: "n", ty: TInt, rest: REmpty |}, ret: TStr |}
+    -- sh : {| command: String |} -> Int
+    let e = register_builtin {| env: e, name: "sh", arg_row: RExtend {| name: "command", ty: TStr, rest: REmpty |}, ret: TInt |}
+    -- terminate : {| code: Int |} -> Void
+    let e = register_builtin {| env: e, name: "terminate", arg_row: RExtend {| name: "code", ty: TInt, rest: REmpty |}, ret: TVoid |}
+    -- spawn : {| command: String |} -> Int
+    let e = register_builtin {| env: e, name: "spawn", arg_row: RExtend {| name: "command", ty: TStr, rest: REmpty |}, ret: TInt |}
+    -- await : {| pid: Int |} -> Int
+    let e = register_builtin {| env: e, name: "await", arg_row: RExtend {| name: "pid", ty: TInt, rest: REmpty |}, ret: TInt |}
+    -- sleep_ms : {| ms: Int |} -> Void
+    let e = register_builtin {| env: e, name: "sleep_ms", arg_row: RExtend {| name: "ms", ty: TInt, rest: REmpty |}, ret: TVoid |}
+    -- strlen : {| s: String |} -> Int
+    let e = register_builtin {| env: e, name: "strlen", arg_row: RExtend {| name: "s", ty: TStr, rest: REmpty |}, ret: TInt |}
+    -- char_at : {| s: String, n: Int |} -> Int
+    let e = register_builtin {| env: e, name: "char_at", arg_row: RExtend {| name: "s", ty: TStr, rest: RExtend {| name: "n", ty: TInt, rest: REmpty |} |}, ret: TInt |}
+    -- substr : {| s: String, start: Int, len: Int |} -> String
+    let e = register_builtin {| env: e, name: "substr", arg_row: RExtend {| name: "s", ty: TStr, rest: RExtend {| name: "start", ty: TInt, rest: RExtend {| name: "len", ty: TInt, rest: REmpty |} |} |}, ret: TStr |}
+    -- concat : {| a: String, b: String |} -> String
+    let e = register_builtin {| env: e, name: "concat", arg_row: RExtend {| name: "a", ty: TStr, rest: RExtend {| name: "b", ty: TStr, rest: REmpty |} |}, ret: TStr |}
+    -- int_to_str : {| n: Int |} -> String
+    let e = register_builtin {| env: e, name: "int_to_str", arg_row: RExtend {| name: "n", ty: TInt, rest: REmpty |}, ret: TStr |}
+    -- char_of_int : {| n: Int |} -> String
+    let e = register_builtin {| env: e, name: "char_of_int", arg_row: RExtend {| name: "n", ty: TInt, rest: REmpty |}, ret: TStr |}
+    -- strcmp : {| a: String, b: String |} -> Int
+    let e = register_builtin {| env: e, name: "strcmp", arg_row: RExtend {| name: "a", ty: TStr, rest: RExtend {| name: "b", ty: TStr, rest: REmpty |} |}, ret: TInt |}
+    {| env: e, state: state |}
+end
+
+fn register_builtin
+  case {| env, name, arg_row, ret |} =>
+    let fn_ty = TFun {| arg: TRec {| row: arg_row |}, ret: ret |}
+    {| vars: env.vars,
+       fns: assoc_insert {| list: env.fns, key: name, value: fn_ty |},
+       structs: env.structs,
+       oneofs: env.oneofs,
+       variants: env.variants,
+       level: env.level |}
+end
+
+fn is_builtin_fn
+  case {| name |} =>
+    (str_eq {| a: name, b: "read" |}) ||
+    (str_eq {| a: name, b: "write" |}) ||
+    (str_eq {| a: name, b: "argc" |}) ||
+    (str_eq {| a: name, b: "argv" |}) ||
+    (str_eq {| a: name, b: "sh" |}) ||
+    (str_eq {| a: name, b: "terminate" |}) ||
+    (str_eq {| a: name, b: "spawn" |}) ||
+    (str_eq {| a: name, b: "await" |}) ||
+    (str_eq {| a: name, b: "sleep_ms" |}) ||
+    (str_eq {| a: name, b: "strlen" |}) ||
+    (str_eq {| a: name, b: "char_at" |}) ||
+    (str_eq {| a: name, b: "substr" |}) ||
+    (str_eq {| a: name, b: "concat" |}) ||
+    (str_eq {| a: name, b: "int_to_str" |}) ||
+    (str_eq {| a: name, b: "char_of_int" |}) ||
+    (str_eq {| a: name, b: "strcmp" |})
+end
+
+-- ============================================================
+-- Type Display (for error messages)
+-- ============================================================
+
+fn show_type
+  case {| ty, subst |} =>
+    let resolved = resolve_type {| ty: ty, subst: subst |}
+    match resolved
+      case TInt => "Int"
+      case TStr => "String"
+      case TVoid => "Void"
+      case TFun {| arg, ret |} =>
+        cat3 {| a: show_type {| ty: arg, subst: subst |}, b: " -> ", c: show_type {| ty: ret, subst: subst |} |}
+      case TRec {| row |} =>
+        cat3 {| a: "{| ", b: show_row {| row: row, subst: subst |}, c: " |}" |}
+      case TVar {| id |} =>
+        concat {| a: "t", b: int_to_str {| n: id |} |}
+    end
+end
+
+fn show_row
+  case {| row, subst |} =>
+    let resolved = resolve_row {| row: row, subst: subst |}
+    match resolved
+      case REmpty => ""
+      case RExtend {| name, ty, rest |} =>
+        let field_str = cat3 {| a: name, b: ": ", c: show_type {| ty: ty, subst: subst |} |}
+        let rest_resolved = resolve_row {| row: rest, subst: subst |}
+        match rest_resolved
+          case REmpty => field_str
+          case _ => cat3 {| a: field_str, b: ", ", c: show_row {| row: rest, subst: subst |} |}
+        end
+      case RVar {| id |} =>
+        concat {| a: "| r", b: int_to_str {| n: id |} |}
+    end
+end
+
+-- ============================================================
+-- Resolve Type Annotation
+-- ============================================================
+
+fn resolve_type_ann
+  case {| env, name |} =>
+    match str_eq {| a: name, b: "Int" |}
+      case 1 => TInt
+      case 0 =>
+        match str_eq {| a: name, b: "String" |}
+          case 1 => TStr
+          case 0 =>
+            match str_eq {| a: name, b: "Void" |}
+              case 1 => TVoid
+              case 0 =>
+                let found = env_lookup_struct {| env: env, name: name |}
+                match found.tag
+                  case "some" =>
+                    -- Build record type from struct fields
+                    let row = build_struct_row {| fields: found.value, env: env |}
+                    TRec {| row: RExtend {| name: "__tag", ty: TStr, rest: row |} |}
+                  case "none" =>
+                    type_error {| msg: cat3 {| a: "Unknown type annotation: ", b: name, c: "" |} |}
+                end
+            end
+        end
+    end
+end
+
+fn build_struct_row
+  case {| fields, env |} =>
+    match is_nil {| list: fields |}
+      case 1 => REmpty
+      case 0 =>
+        let head = list_head {| list: fields |}
+        let tail = list_tail {| list: fields |}
+        let field_ty = resolve_type_ann {| env: env, name: head.type_name |}
+        RExtend {| name: head.name, ty: field_ty, rest: build_struct_row {| fields: tail, env: env |} |}
+    end
+end
+
+-- ============================================================
+-- Type Inference
+-- ============================================================
+
+fn infer
+  case {| env, expr, state |} =>
+    match expr.tag
+      case "int_lit" => {| ty: TInt, state: state |}
+      case "str_lit" => {| ty: TStr, state: state |}
+      case "readln" => {| ty: TStr, state: state |}
+      case "readint" => {| ty: TInt, state: state |}
+      case "var" => infer_var {| env: env, name: expr.name, state: state |}
+      case "binop" => infer_binop_expr {| env: env, expr: expr, state: state |}
+      case "unop" => infer_unop_expr {| env: env, expr: expr, state: state |}
+      case "call" => infer_call {| env: env, name: expr.name, call_arg: expr.arg, state: state |}
+      case "record" => infer_record {| env: env, fields: expr.fields, state: state |}
+      case "named_record" => infer_named_record {| env: env, name: expr.name, fields: expr.fields, state: state |}
+      case "field_access" => infer_field_access {| env: env, obj: expr.obj, field: expr.field, state: state |}
+      case "let_in" => infer_let_in {| env: env, name: expr.name, value: expr.value, body: expr.body, state: state |}
+      case "match" => infer_match {| env: env, scrutinee: expr.scrutinee, clauses: expr.clauses, state: state |}
+      case "closure" => infer_closure {| env: env, clauses: expr.clauses, state: state |}
+      case _ =>
+        -- Unknown expression type, return fresh variable
+        let fv = fresh_tvar {| level: env.level, state: state |}
+        {| ty: fv.result, state: fv.state |}
+    end
+end
+
+fn infer_var
+  case {| env, name, state |} =>
+    -- Check local variables first
+    let var_found = env_lookup_var {| env: env, name: name |}
+    match var_found.tag
+      case "some" => {| ty: var_found.value, state: state |}
+      case "none" =>
+        -- Check if it's a nullary variant
+        let variant_found = env_lookup_variant {| env: env, name: name |}
+        match variant_found.tag
+          case "some" =>
+            -- Check if nullary (no fields)
+            match is_nil {| list: variant_found.value.fields |}
+              case 1 =>
+                {| ty: TRec {| row: RExtend {| name: "__tag", ty: TStr, rest: REmpty |} |}, state: state |}
+              case 0 =>
+                type_error {| msg: cat3 {| a: "Variant '", b: name, c: "' requires fields" |} |}
+            end
+          case "none" =>
+            -- Check functions
+            let fn_found = env_lookup_fn {| env: env, name: name |}
+            match fn_found.tag
+              case "some" =>
+                let inst = instantiate_type {| level: env.level, ty: fn_found.value, state: state |}
+                {| ty: inst.result, state: inst.state |}
+              case "none" =>
+                type_error {| msg: cat3 {| a: "Unbound variable: ", b: name, c: "" |} |}
+            end
+        end
+    end
+end
+
+fn infer_binop_expr
+  case {| env, expr, state |} =>
+    let r1 = infer {| env: env, expr: expr.left, state: state |}
+    let r2 = infer {| env: env, expr: expr.right, state: r1.state |}
+    infer_binop {| op: expr.op, ty1: r1.ty, ty2: r2.ty, state: r2.state |}
+end
+
+fn infer_binop
+  case {| op, ty1, ty2, state |} =>
+    match str_eq {| a: op, b: "+" |} || str_eq {| a: op, b: "-" |} || str_eq {| a: op, b: "*" |} || str_eq {| a: op, b: "/" |} || str_eq {| a: op, b: "%" |}
+      case 1 =>
+        let s1 = unify {| t1: ty1, t2: TInt, state: state |}
+        let s2 = unify {| t1: ty2, t2: TInt, state: s1 |}
+        {| ty: TInt, state: s2 |}
+      case 0 =>
+        match str_eq {| a: op, b: "==" |} || str_eq {| a: op, b: "!=" |}
+          case 1 =>
+            let s1 = unify {| t1: ty1, t2: ty2, state: state |}
+            {| ty: TInt, state: s1 |}
+          case 0 =>
+            match str_eq {| a: op, b: "<" |} || str_eq {| a: op, b: ">" |} || str_eq {| a: op, b: "<=" |} || str_eq {| a: op, b: ">=" |}
+              case 1 =>
+                let s1 = unify {| t1: ty1, t2: TInt, state: state |}
+                let s2 = unify {| t1: ty2, t2: TInt, state: s1 |}
+                {| ty: TInt, state: s2 |}
+              case 0 =>
+                match str_eq {| a: op, b: "&&" |} || str_eq {| a: op, b: "||" |}
+                  case 1 =>
+                    let s1 = unify {| t1: ty1, t2: TInt, state: state |}
+                    let s2 = unify {| t1: ty2, t2: TInt, state: s1 |}
+                    {| ty: TInt, state: s2 |}
+                  case 0 =>
+                    type_error {| msg: cat3 {| a: "Unknown operator: ", b: op, c: "" |} |}
+                end
+            end
+        end
+    end
+end
+
+fn infer_unop_expr
+  case {| env, expr, state |} =>
+    let r = infer {| env: env, expr: expr.operand, state: state |}
+    let s = unify {| t1: r.ty, t2: TInt, state: r.state |}
+    {| ty: TInt, state: s |}
+end
+
+fn infer_call
+  case {| env, name, call_arg, state |} =>
+    -- Check if it's a local variable (closure call) first
+    let var_found = env_lookup_var {| env: env, name: name |}
+    match var_found.tag
+      case "some" =>
+        let arg_r = infer {| env: env, expr: call_arg, state: state |}
+        let ret_fv = fresh_tvar {| level: env.level, state: arg_r.state |}
+        let resolved_var = resolve_type {| ty: var_found.value, subst: ret_fv.state.subst |}
+        match resolved_var
+          case TFun {| ret |} => {| ty: ret, state: ret_fv.state |}
+          case TVar {| |} =>
+            let s = unify {| t1: resolved_var, t2: TFun {| arg: arg_r.ty, ret: ret_fv.result |}, state: ret_fv.state |}
+            {| ty: ret_fv.result, state: s |}
+          case _ =>
+            type_error {| msg: cat3 {| a: "Cannot call non-function variable '", b: name, c: "'" |} |}
+        end
+      case "none" =>
+        let fn_found = env_lookup_fn {| env: env, name: name |}
+        match fn_found.tag
+          case "none" =>
+            type_error {| msg: cat3 {| a: "Unknown fn: ", b: name, c: "" |} |}
+          case "some" =>
+            let arg_r = infer {| env: env, expr: call_arg, state: state |}
+            let inst = instantiate_type {| level: env.level, ty: fn_found.value, state: arg_r.state |}
+            match is_builtin_fn {| name: name |}
+              case 1 =>
+                let ret_fv = fresh_tvar {| level: env.level, state: inst.state |}
+                let s = unify {| t1: inst.result, t2: TFun {| arg: arg_r.ty, ret: ret_fv.result |}, state: ret_fv.state |}
+                {| ty: ret_fv.result, state: s |}
+              case 0 =>
+                match inst.result
+                  case TFun {| ret |} => {| ty: ret, state: inst.state |}
+                  case _ =>
+                    let ret_fv = fresh_tvar {| level: env.level, state: inst.state |}
+                    {| ty: ret_fv.result, state: ret_fv.state |}
+                end
+            end
+        end
+    end
+end
+
+fn infer_record
+  case {| env, fields, state |} =>
+    let r = infer_record_fields {| env: env, fields: fields, state: state |}
+    {| ty: TRec {| row: r.row |}, state: r.state |}
+end
+
+fn infer_record_fields
+  case {| env, fields, state |} =>
+    match is_nil {| list: fields |}
+      case 1 => {| row: REmpty, state: state |}
+      case 0 =>
+        let head = list_head {| list: fields |}
+        let tail = list_tail {| list: fields |}
+        let r = infer {| env: env, expr: head.value, state: state |}
+        let rest = infer_record_fields {| env: env, fields: tail, state: r.state |}
+        {| row: RExtend {| name: head.name, ty: r.ty, rest: rest.row |}, state: rest.state |}
+    end
+end
+
+fn infer_named_record
+  case {| env, name, fields, state |} =>
+    -- Check structs first, then variants
+    let struct_found = env_lookup_struct {| env: env, name: name |}
+    match struct_found.tag
+      case "some" =>
+        let r = infer_record_fields {| env: env, fields: fields, state: state |}
+        let expected_row = build_struct_row {| fields: struct_found.value, env: env |}
+        let s = unify_row {| r1: r.row, r2: expected_row, state: r.state |}
+        {| ty: TRec {| row: RExtend {| name: "__tag", ty: TStr, rest: expected_row |} |}, state: s |}
+      case "none" =>
+        let variant_found = env_lookup_variant {| env: env, name: name |}
+        match variant_found.tag
+          case "some" =>
+            let r = infer_record_fields {| env: env, fields: fields, state: state |}
+            let expected_row = build_variant_field_row {| fields: variant_found.value.fields, env: env, state: r.state |}
+            let s = unify_row {| r1: r.row, r2: expected_row.row, state: expected_row.state |}
+            {| ty: TRec {| row: RExtend {| name: "__tag", ty: TStr, rest: expected_row.row |} |}, state: s |}
+          case "none" =>
+            type_error {| msg: cat3 {| a: "Unknown type: ", b: name, c: "" |} |}
+        end
+    end
+end
+
+fn build_variant_field_row
+  case {| fields, env, state |} =>
+    match is_nil {| list: fields |}
+      case 1 => {| row: REmpty, state: state |}
+      case 0 =>
+        let head = list_head {| list: fields |}
+        let tail = list_tail {| list: fields |}
+        let resolved = resolve_variant_field_type {| env: env, name: head.type_name, state: state |}
+        let rest = build_variant_field_row {| fields: tail, env: env, state: resolved.state |}
+        {| row: RExtend {| name: head.name, ty: resolved.ty, rest: rest.row |}, state: rest.state |}
+    end
+end
+
+fn resolve_variant_field_type
+  case {| env, name, state |} =>
+    match str_eq {| a: name, b: "_" |}
+      case 1 =>
+        let fv = fresh_tvar {| level: env.level, state: state |}
+        {| ty: fv.result, state: fv.state |}
+      case 0 =>
+        let oneof_found = env_lookup_oneof {| env: env, name: name |}
+        match oneof_found.tag
+          case "some" =>
+            let fv = fresh_tvar {| level: env.level, state: state |}
+            {| ty: fv.result, state: fv.state |}
+          case "none" =>
+            {| ty: resolve_type_ann {| env: env, name: name |}, state: state |}
+        end
+    end
+end
+
+fn infer_field_access
+  case {| env, obj, field, state |} =>
+    let r = infer {| env: env, expr: obj, state: state |}
+    let resolved = resolve_type {| ty: r.ty, subst: r.state.subst |}
+    let field_fv = fresh_tvar {| level: env.level, state: r.state |}
+    let rest_rv = fresh_rvar {| level: env.level, state: field_fv.state |}
+    let expected = TRec {| row: RExtend {| name: field, ty: field_fv.result, rest: rest_rv.result |} |}
+    match resolved
+      case TRec {| row |} =>
+        let found = find_field_in_row {| name: field, row: row, state: rest_rv.state |}
+        match found.tag
+          case "some" =>
+            let s = unify {| t1: field_fv.result, t2: found.ty, state: found.state |}
+            {| ty: field_fv.result, state: s |}
+          -- Match the reference checker: a missing field on an already-known
+          -- record is tolerated and receives a fresh type.
+          case "missing" => {| ty: field_fv.result, state: found.state |}
+        end
+      case _ =>
+        let s = unify {| t1: resolved, t2: expected, state: rest_rv.state |}
+        {| ty: field_fv.result, state: s |}
+    end
+end
+
+fn find_field_in_row
+  case {| name, row, state |} =>
+    let resolved = resolve_row {| row: row, subst: state.subst |}
+    match resolved
+      case REmpty => {| tag: "missing", state: state |}
+      case RExtend {| name: field_name, ty, rest |} =>
+        match str_eq {| a: field_name, b: name |}
+          case 1 => {| tag: "some", ty: ty, state: state |}
+          case 0 => find_field_in_row {| name: name, row: rest, state: state |}
+        end
+      case RVar {| |} =>
+        let extracted = row_extract {| name: name, row: resolved, state: state |}
+        {| tag: "some", ty: extracted.ty, state: extracted.state |}
+    end
+end
+
+fn infer_let_in
+  case {| env, name, value, body, state |} =>
+    let r = infer {| env: env, expr: value, state: state |}
+    let new_env = env_extend_var {| env: env, name: name, ty: r.ty |}
+    infer {| env: new_env, expr: body, state: r.state |}
+end
+
+fn infer_match
+  case {| env, scrutinee, clauses, state |} =>
+    let scr_r = infer {| env: env, expr: scrutinee, state: state |}
+    infer_clauses {| env: env, scr_ty: scr_r.ty, clauses: clauses, state: scr_r.state |}
+end
+
+fn infer_closure
+  case {| env, clauses, state |} =>
+    let arg_fv = fresh_tvar {| level: env.level, state: state |}
+    let ret_fv = fresh_tvar {| level: env.level, state: arg_fv.state |}
+    let r = infer_clauses {| env: env, scr_ty: arg_fv.result, clauses: clauses, state: ret_fv.state |}
+    let s = unify {| t1: r.ty, t2: ret_fv.result, state: r.state |}
+    {| ty: TFun {| arg: arg_fv.result, ret: ret_fv.result |}, state: s |}
+end
+
+-- ============================================================
+-- Pattern Inference
+-- ============================================================
+
+fn infer_pattern
+  case {| env, pat, ty, state |} =>
+    match pat.tag
+      case "pat_var" =>
+        -- Check if this is a nullary variant
+        let variant_found = env_lookup_variant {| env: env, name: pat.name |}
+        match variant_found.tag
+          case "some" =>
+            match is_nil {| list: variant_found.value.fields |}
+              case 1 =>
+                let tail_rv = fresh_rvar {| level: env.level, state: state |}
+                let s = unify {| t1: ty, t2: TRec {| row: RExtend {| name: "__tag", ty: TStr, rest: tail_rv.result |} |}, state: tail_rv.state |}
+                {| env: env, state: s |}
+              case 0 =>
+                type_error {| msg: cat3 {| a: "Variant '", b: pat.name, c: "' is not nullary" |} |}
+            end
+          case "none" =>
+            -- Regular variable binding
+            {| env: env_extend_var {| env: env, name: pat.name, ty: ty |}, state: state |}
+        end
+      case "pat_wild" =>
+        {| env: env, state: state |}
+      case "pat_int" =>
+        let s = unify {| t1: ty, t2: TInt, state: state |}
+        {| env: env, state: s |}
+      case "pat_str" =>
+        let s = unify {| t1: ty, t2: TStr, state: state |}
+        {| env: env, state: s |}
+      case "pat_rec" =>
+        infer_pattern_rec {| env: env, pat: pat, ty: ty, state: state |}
+      case "pat_variant" =>
+        let tail_rv = fresh_rvar {| level: env.level, state: state |}
+        let s = unify {| t1: ty, t2: TRec {| row: RExtend {| name: "__tag", ty: TStr, rest: tail_rv.result |} |}, state: tail_rv.state |}
+        let fresh_v = fresh_tvar {| level: env.level, state: s |}
+        infer_pattern {| env: env, pat: pat.inner, ty: fresh_v.result, state: fresh_v.state |}
+      case "pat_none" =>
+        {| env: env, state: state |}
+      case _ =>
+        {| env: env, state: state |}
+    end
+end
+
+fn infer_pattern_rec
+  case {| env, pat, ty, state |} =>
+    let r = infer_pat_fields {| env: env, fields: pat.fields, level: env.level, state: state |}
+    let pat_ty = TRec {| row: r.row |}
+    let s = unify {| t1: ty, t2: pat_ty, state: r.state |}
+    {| env: r.env, state: s |}
+end
+
+fn infer_pat_fields
+  case {| env, fields, level, state |} =>
+    match is_nil {| list: fields |}
+      case 1 =>
+        -- Open row: allow extra fields
+        let rv = fresh_rvar {| level: level, state: state |}
+        {| row: rv.result, env: env, state: rv.state |}
+      case 0 =>
+        let head = list_head {| list: fields |}
+        let tail = list_tail {| list: fields |}
+        let field_fv = fresh_tvar {| level: level, state: state |}
+        let bind_env = env_extend_var {| env: env, name: head.name, ty: field_fv.result |}
+        -- Handle sub-pattern constraint
+        let pat_result = match head.pat.tag
+          case "pat_none" => {| env: bind_env, state: field_fv.state |}
+          case "pat_int" =>
+            let s = unify {| t1: field_fv.result, t2: TInt, state: field_fv.state |}
+            {| env: bind_env, state: s |}
+          case "pat_str" =>
+            let s = unify {| t1: field_fv.result, t2: TStr, state: field_fv.state |}
+            {| env: bind_env, state: s |}
+          case "pat_var" =>
+            -- Could be a type annotation or variable binding
+            let ann_ty = try_resolve_type_ann {| env: env, name: head.pat.name |}
+            match ann_ty.tag
+              case "some" =>
+                let s = unify {| t1: field_fv.result, t2: ann_ty.value, state: field_fv.state |}
+                {| env: bind_env, state: s |}
+              case "none" =>
+                -- Bind as variable
+                let var_env = env_extend_var {| env: bind_env, name: head.pat.name, ty: field_fv.result |}
+                {| env: var_env, state: field_fv.state |}
+            end
+          case "pat_wild" => {| env: env, state: field_fv.state |}
+          case _ => {| env: bind_env, state: field_fv.state |}
+        end
+        let rest = infer_pat_fields {| env: pat_result.env, fields: tail, level: level, state: pat_result.state |}
+        {| row: RExtend {| name: head.name, ty: field_fv.result, rest: rest.row |}, env: rest.env, state: rest.state |}
+    end
+end
+
+fn try_resolve_type_ann
+  case {| env, name |} =>
+    match str_eq {| a: name, b: "Int" |}
+      case 1 => {| tag: "some", value: TInt |}
+      case 0 =>
+        match str_eq {| a: name, b: "String" |}
+          case 1 => {| tag: "some", value: TStr |}
+          case 0 =>
+            match str_eq {| a: name, b: "Void" |}
+              case 1 => {| tag: "some", value: TVoid |}
+              case 0 =>
+                let found = env_lookup_struct {| env: env, name: name |}
+                match found.tag
+                  case "some" =>
+                    let row = build_struct_row {| fields: found.value, env: env |}
+                    {| tag: "some", value: TRec {| row: RExtend {| name: "__tag", ty: TStr, rest: row |} |} |}
+                  case "none" => {| tag: "none" |}
+                end
+            end
+        end
+    end
+end
+
+fn infer_clauses
+  case {| env, scr_ty, clauses, state |} =>
+    match is_nil {| list: clauses |}
+      case 1 =>
+        let fv = fresh_tvar {| level: env.level, state: state |}
+        {| ty: fv.result, state: fv.state |}
+      case 0 =>
+        let result_fv = fresh_tvar {| level: env.level, state: state |}
+        let s = infer_clauses_loop {| env: env, scr_ty: scr_ty, result_ty: result_fv.result, clauses: clauses, state: result_fv.state |}
+        {| ty: result_fv.result, state: s |}
+    end
+end
+
+fn infer_clauses_loop
+  case {| env, scr_ty, result_ty, clauses, state |} =>
+    match is_nil {| list: clauses |}
+      case 1 => state
+      case 0 =>
+        let head = list_head {| list: clauses |}
+        let tail = list_tail {| list: clauses |}
+        let s = infer_clause {| env: env, scr_ty: scr_ty, result_ty: result_ty, clause: head, state: state |}
+        infer_clauses_loop {| env: env, scr_ty: scr_ty, result_ty: result_ty, clauses: tail, state: s |}
+    end
+end
+
+fn infer_clause
+  case {| env, scr_ty, result_ty, clause, state |} =>
+    let pat_r = infer_pattern {| env: env, pat: clause.pat, ty: scr_ty, state: state |}
+    let body_r = infer {| env: pat_r.env, expr: clause.body, state: pat_r.state |}
+    unify_clause_result {| body_ty: body_r.ty, result_ty: result_ty, state: body_r.state |}
+end
+
+-- The reference checker permits heterogeneous record-valued branches. The
+-- runtime AST uses this intentionally for expression nodes, so once both sides
+-- are known records their differing fields must not reject the whole match.
+fn unify_clause_result
+  case {| body_ty, result_ty, state |} =>
+    let body_resolved = resolve_type {| ty: body_ty, subst: state.subst |}
+    let result_resolved = resolve_type {| ty: result_ty, subst: state.subst |}
+    match body_resolved
+      case TRec {| |} =>
+        match result_resolved
+          case TRec {| |} => state
+          case _ => unify {| t1: body_ty, t2: result_ty, state: state |}
+        end
+      case _ => unify {| t1: body_ty, t2: result_ty, state: state |}
+    end
+end
+
+-- ============================================================
+-- Statement Checking
+-- ============================================================
+
+fn infer_stmt
+  case {| env, stmt, state |} =>
+    match stmt
+      case StmtLet {| name, value |} =>
+        let r = infer {| env: env, expr: value, state: state |}
+        {| env: env_extend_var {| env: env, name: name, ty: r.ty |}, ty: TVoid, state: r.state |}
+      case StmtPrint {| value |} =>
+        let r = infer {| env: env, expr: value, state: state |}
+        {| env: env, ty: TVoid, state: r.state |}
+      case StmtWrite {| value |} =>
+        let r = infer {| env: env, expr: value, state: state |}
+        {| env: env, ty: TVoid, state: r.state |}
+      case StmtExpr {| value |} =>
+        let r = infer {| env: env, expr: value, state: state |}
+        {| env: env, ty: r.ty, state: r.state |}
+    end
+end
+
+fn infer_stmts
+  case {| env, stmts, state |} =>
+    match is_nil {| list: stmts |}
+      case 1 => {| ty: TVoid, state: state |}
+      case 0 =>
+        let head = list_head {| list: stmts |}
+        let tail = list_tail {| list: stmts |}
+        let r = infer_stmt {| env: env, stmt: head, state: state |}
+        match is_nil {| list: tail |}
+          case 1 => {| ty: r.ty, state: r.state |}
+          case 0 => infer_stmts {| env: r.env, stmts: tail, state: r.state |}
+        end
+    end
+end
+
+-- ============================================================
+-- Top-Level: Build Environment
+-- ============================================================
+
+fn build_env
+  case {| env, decls, state |} =>
+    match is_nil {| list: decls |}
+      case 1 => {| env: env, state: state |}
+      case 0 =>
+        let head = list_head {| list: decls |}
+        let tail = list_tail {| list: decls |}
+        let r = add_decl {| env: env, decl: head, state: state |}
+        build_env {| env: r.env, decls: tail, state: r.state |}
+    end
+end
+
+fn add_decl
+  case {| env, decl, state |} =>
+    match decl
+      case DeclStruct {| name, fields |} =>
+        let new_structs = assoc_insert {| list: env.structs, key: name, value: fields |}
+        {| env: {| vars: env.vars, fns: env.fns, structs: new_structs, oneofs: env.oneofs, variants: env.variants, level: env.level |}, state: state |}
+      case DeclOneof {| name, variants |} =>
+        let new_oneofs = assoc_insert {| list: env.oneofs, key: name, value: variants |}
+        let new_variants = register_variants {| variants: variants, oneofs_name: name, acc: env.variants |}
+        {| env: {| vars: env.vars, fns: env.fns, structs: env.structs, oneofs: new_oneofs, variants: new_variants, level: env.level |}, state: state |}
+      case DeclFn {| name |} =>
+        let arg_fv = fresh_tvar {| level: env.level, state: state |}
+        let ret_fv = fresh_tvar {| level: env.level, state: arg_fv.state |}
+        let fn_ty = TFun {| arg: arg_fv.result, ret: ret_fv.result |}
+        let new_fns = assoc_insert {| list: env.fns, key: name, value: fn_ty |}
+        {| env: {| vars: env.vars, fns: new_fns, structs: env.structs, oneofs: env.oneofs, variants: env.variants, level: env.level |}, state: ret_fv.state |}
+      case DeclDo {| |} => {| env: env, state: state |}
+      case DeclTest {| |} => {| env: env, state: state |}
+      case DeclImport {| |} => {| env: env, state: state |}
+      case DeclOpen {| |} => {| env: env, state: state |}
+    end
+end
+
+fn register_variants
+  case {| variants, oneofs_name, acc |} =>
+    match is_nil {| list: variants |}
+      case 1 => acc
+      case 0 =>
+        let head = list_head {| list: variants |}
+        let tail = list_tail {| list: variants |}
+        let entry = {| oneofs_name: oneofs_name, fields: head.fields |}
+        let new_acc = assoc_insert {| list: acc, key: head.name, value: entry |}
+        register_variants {| variants: tail, oneofs_name: oneofs_name, acc: new_acc |}
+    end
+end
+
+-- ============================================================
+-- Top-Level: Check Declarations (Pass 2)
+-- ============================================================
+
+fn check_decls
+  case {| env, decls, state |} =>
+    match is_nil {| list: decls |}
+      case 1 => state
+      case 0 =>
+        let head = list_head {| list: decls |}
+        let tail = list_tail {| list: decls |}
+        let s = check_decl {| env: env, decl: head, state: state |}
+        check_decls {| env: env, decls: tail, state: s |}
+    end
+end
+
+fn check_decl
+  case {| env, decl, state |} =>
+    match decl
+      case DeclFn {| name, clauses |} =>
+        let fn_found = env_lookup_fn {| env: env, name: name |}
+        match fn_found.tag
+          case "none" => state
+          case "some" =>
+            let resolved = resolve_type {| ty: fn_found.value, subst: state.subst |}
+            match resolved
+              case TFun {| arg: arg_ty, ret: ret_ty |} =>
+                check_fn_clauses {| env: env, arg_ty: arg_ty, ret_ty: ret_ty, clauses: clauses, state: state |}
+              case _ =>
+                let arg_fv = fresh_tvar {| level: env.level, state: state |}
+                let ret_fv = fresh_tvar {| level: env.level, state: arg_fv.state |}
+                let s = unify {| t1: resolved, t2: TFun {| arg: arg_fv.result, ret: ret_fv.result |}, state: ret_fv.state |}
+                check_fn_clauses {| env: env, arg_ty: arg_fv.result, ret_ty: ret_fv.result, clauses: clauses, state: s |}
+            end
+        end
+      case DeclDo {| name, stmts |} =>
+        let r = infer_stmts {| env: env, stmts: stmts, state: state |}
+        r.state
+      case DeclTest {| name, stmts |} =>
+        let r = infer_stmts {| env: env, stmts: stmts, state: state |}
+        r.state
+      case _ => state
+    end
+end
+
+fn check_fn_clauses
+  case {| env, arg_ty, ret_ty, clauses, state |} =>
+    match is_nil {| list: clauses |}
+      case 1 => state
+      case 0 =>
+        let head = list_head {| list: clauses |}
+        let tail = list_tail {| list: clauses |}
+        let s = infer_clause {| env: env, scr_ty: arg_ty, result_ty: ret_ty, clause: head, state: state |}
+        check_fn_clauses {| env: env, arg_ty: arg_ty, ret_ty: ret_ty, clauses: tail, state: s |}
+    end
+end
+
+-- ============================================================
+-- Entry Point
+-- ============================================================
+
+fn type_check
+  case {| decls |} =>
+    let init_state = {| subst: nil {| |}, counter: 0 |}
+    let empty_env = make_empty_env {| |}
+    let r = register_builtins {| env: empty_env, state: init_state |}
+    let env_r = build_env {| env: r.env, decls: decls, state: r.state |}
+    let _ = check_decls {| env: env_r.env, decls: decls, state: env_r.state |}
+    decls
+end

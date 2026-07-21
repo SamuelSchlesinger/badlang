@@ -7,6 +7,7 @@
 -- Pattern matching on variants becomes record pattern matching on __tag.
 
 open Util
+open Ast
 
 -- ============================================================
 -- Phase A: Collect variant info from declarations
@@ -24,11 +25,11 @@ fn collect_variant_info_loop
       case 0 =>
         let head = list_head {| list: decls |}
         let tail = list_tail {| list: decls |}
-        match str_eq {| a: head.tag, b: "decl_oneof" |}
-          case 1 =>
-            let r = collect_from_variants {| variants: head.variants, all_variants: all_variants, nullary_variants: nullary_variants |}
+        match head
+          case DeclOneof {| variants |} =>
+            let r = collect_from_variants {| variants: variants, all_variants: all_variants, nullary_variants: nullary_variants |}
             collect_variant_info_loop {| decls: tail, all_variants: r.all_variants, nullary_variants: r.nullary_variants |}
-          case 0 =>
+          case _ =>
             collect_variant_info_loop {| decls: tail, all_variants: all_variants, nullary_variants: nullary_variants |}
         end
     end
@@ -195,16 +196,16 @@ end
 
 fn desugar_decl
   case {| decl, info |} =>
-    match decl.tag
-      case "decl_fn" =>
-        let clauses = desugar_clauses {| clauses: decl.clauses, info: info |}
-        {| tag: "decl_fn", name: decl.name, clauses: clauses |}
-      case "decl_do" =>
-        let stmts = desugar_stmts {| stmts: decl.stmts, info: info |}
-        {| tag: "decl_do", name: decl.name, stmts: stmts |}
-      case "decl_test" =>
-        let stmts = desugar_stmts {| stmts: decl.stmts, info: info |}
-        {| tag: "decl_test", name: decl.name, stmts: stmts |}
+    match decl
+      case DeclFn {| name, clauses |} =>
+        let desugared_clauses = desugar_clauses {| clauses: clauses, info: info |}
+        DeclFn {| name: name, clauses: desugared_clauses |}
+      case DeclDo {| name, stmts |} =>
+        let desugared_stmts = desugar_stmts {| stmts: stmts, info: info |}
+        DeclDo {| name: name, stmts: desugared_stmts |}
+      case DeclTest {| name, stmts |} =>
+        let desugared_stmts = desugar_stmts {| stmts: stmts, info: info |}
+        DeclTest {| name: name, stmts: desugared_stmts |}
       case _ => decl
     end
 end
@@ -223,13 +224,13 @@ end
 
 fn desugar_stmt
   case {| stmt, info |} =>
-    match stmt.tag
-      case "stmt_let" =>
-        {| tag: "stmt_let", name: stmt.name, value: desugar_expr {| expr: stmt.value, info: info |} |}
-      case "stmt_stele_print" =>
-        {| tag: "stmt_stele_print", value: desugar_expr {| expr: stmt.value, info: info |} |}
-      case "stmt_expr" =>
-        {| tag: "stmt_expr", value: desugar_expr {| expr: stmt.value, info: info |} |}
+    match stmt
+      case StmtLet {| name, value |} =>
+        StmtLet {| name: name, value: desugar_expr {| expr: value, info: info |} |}
+      case StmtPrint {| value |} =>
+        StmtPrint {| value: desugar_expr {| expr: value, info: info |} |}
+      case StmtExpr {| value |} =>
+        StmtExpr {| value: desugar_expr {| expr: value, info: info |} |}
       case _ => stmt
     end
 end
@@ -241,11 +242,11 @@ fn desugar_decls
       case 0 =>
         let head = list_head {| list: decls |}
         let tail = list_tail {| list: decls |}
-        match str_eq {| a: head.tag, b: "decl_oneof" |}
-          case 1 =>
+        match head
+          case DeclOneof {| |} =>
             -- Filter out oneof declarations (purely type-level)
             desugar_decls {| decls: tail, info: info |}
-          case 0 =>
+          case _ =>
             let desugared = desugar_decl {| decl: head, info: info |}
             cons {| head: desugared, tail: desugar_decls {| decls: tail, info: info |} |}
         end

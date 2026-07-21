@@ -1,4 +1,5 @@
 open Util
+open Ast
 
 -- ============================================================
 -- Parser Infrastructure
@@ -606,14 +607,14 @@ fn parse_stmt
         end
         let rest2 = expect {| tokens: id.rest, type: "=" |}
         let r = parse_expr {| tokens: rest2 |}
-        {| node: {| tag: "stmt_let", name: id.name, value: r.node |}, rest: r.rest |}
+        {| node: StmtLet {| name: id.name, value: r.node |}, rest: r.rest |}
       case "print" =>
         let rest1 = advance {| tokens: tokens |}
         let r = parse_expr {| tokens: rest1 |}
-        {| node: {| tag: "stmt_stele_print", value: r.node |}, rest: r.rest |}
+        {| node: StmtPrint {| value: r.node |}, rest: r.rest |}
       case _ =>
         let r = parse_expr {| tokens: tokens |}
-        {| node: {| tag: "stmt_expr", value: r.node |}, rest: r.rest |}
+        {| node: StmtExpr {| value: r.node |}, rest: r.rest |}
     end
 end
 
@@ -649,17 +650,33 @@ fn parse_oneof_variant_fields
         {| node: result, rest: rest |}
       case 0 =>
         let id = expect_ident {| tokens: tokens |}
-        let rest1 = expect {| tokens: id.rest, type: ":" |}
-        let type_id = expect_ident {| tokens: rest1 |}
-        let field = {| name: id.name, type_name: type_id.name |}
-        let new_acc = cons {| head: field, tail: acc |}
-        let tok2 = peek {| tokens: type_id.rest |}
-        match str_eq {| a: tok2.type, b: "," |}
+        let next_tok = peek {| tokens: id.rest |}
+        -- Check if there's a type annotation (name: Type) or just a name
+        match str_eq {| a: next_tok.type, b: ":" |}
           case 1 =>
-            let rest2 = advance {| tokens: type_id.rest |}
-            parse_oneof_variant_fields {| tokens: rest2, acc: new_acc |}
+            let rest1 = advance {| tokens: id.rest |}
+            let type_id = expect_ident {| tokens: rest1 |}
+            let field = {| name: id.name, type_name: type_id.name |}
+            let new_acc = cons {| head: field, tail: acc |}
+            let tok2 = peek {| tokens: type_id.rest |}
+            match str_eq {| a: tok2.type, b: "," |}
+              case 1 =>
+                let rest2 = advance {| tokens: type_id.rest |}
+                parse_oneof_variant_fields {| tokens: rest2, acc: new_acc |}
+              case 0 =>
+                parse_oneof_variant_fields {| tokens: type_id.rest, acc: new_acc |}
+            end
           case 0 =>
-            parse_oneof_variant_fields {| tokens: type_id.rest, acc: new_acc |}
+            -- Untyped field
+            let field = {| name: id.name, type_name: "_" |}
+            let new_acc = cons {| head: field, tail: acc |}
+            match str_eq {| a: next_tok.type, b: "," |}
+              case 1 =>
+                let rest1 = advance {| tokens: id.rest |}
+                parse_oneof_variant_fields {| tokens: rest1, acc: new_acc |}
+              case 0 =>
+                parse_oneof_variant_fields {| tokens: id.rest, acc: new_acc |}
+            end
         end
     end
 end
@@ -698,7 +715,7 @@ fn parse_oneof_decl
     let empty = nil {| |}
     let r = parse_oneof_variants {| tokens: id.rest, acc: empty |}
     let rest2 = expect {| tokens: r.rest, type: "end" |}
-    {| node: {| tag: "decl_oneof", name: id.name, variants: r.node |}, rest: rest2 |}
+    {| node: DeclOneof {| name: id.name, variants: r.node |}, rest: rest2 |}
 end
 
 -- ============================================================
@@ -729,7 +746,7 @@ fn parse_fn_decl
     let empty = nil {| |}
     let r = parse_case_clauses {| tokens: id.rest, acc: empty |}
     let rest2 = expect {| tokens: r.rest, type: "end" |}
-    {| node: {| tag: "decl_fn", name: id.name, clauses: r.node |}, rest: rest2 |}
+    {| node: DeclFn {| name: id.name, clauses: r.node |}, rest: rest2 |}
 end
 
 fn parse_do_decl
@@ -739,7 +756,7 @@ fn parse_do_decl
     let empty = nil {| |}
     let r = parse_stmts {| tokens: id.rest, acc: empty |}
     let rest2 = expect {| tokens: r.rest, type: "end" |}
-    {| node: {| tag: "decl_do", name: id.name, stmts: r.node |}, rest: rest2 |}
+    {| node: DeclDo {| name: id.name, stmts: r.node |}, rest: rest2 |}
 end
 
 fn parse_struct_decl
@@ -749,7 +766,7 @@ fn parse_struct_decl
     let empty = nil {| |}
     let r = parse_struct_fields {| tokens: id.rest, acc: empty |}
     let rest2 = expect {| tokens: r.rest, type: "end" |}
-    {| node: {| tag: "decl_struct", name: id.name, fields: r.node |}, rest: rest2 |}
+    {| node: DeclStruct {| name: id.name, fields: r.node |}, rest: rest2 |}
 end
 
 fn parse_test_decl
@@ -763,10 +780,10 @@ fn parse_test_decl
         let empty = nil {| |}
         let r = parse_stmts {| tokens: rest2, acc: empty |}
         let rest3 = expect {| tokens: r.rest, type: "end" |}
-        {| node: {| tag: "decl_test", name: name, stmts: r.node |}, rest: rest3 |}
+        {| node: DeclTest {| name: name, stmts: r.node |}, rest: rest3 |}
       case 0 =>
         let _ = parse_error {| msg: cat3 {| a: "expected test name string but got '", b: tok.type, c: "'" |}, line: tok.line, col: tok.col |}
-        {| node: {| tag: "decl_test", name: "", stmts: nil {| |} |}, rest: tokens |}
+        {| node: DeclTest {| name: "", stmts: nil {| |} |}, rest: tokens |}
     end
 end
 
@@ -777,11 +794,11 @@ fn parse_decl
       case "import" =>
         let rest1 = advance {| tokens: tokens |}
         let id = expect_ident {| tokens: rest1 |}
-        {| node: {| tag: "decl_import", name: id.name |}, rest: id.rest |}
+        {| node: DeclImport {| name: id.name |}, rest: id.rest |}
       case "open" =>
         let rest1 = advance {| tokens: tokens |}
         let id = expect_ident {| tokens: rest1 |}
-        {| node: {| tag: "decl_open", name: id.name |}, rest: id.rest |}
+        {| node: DeclOpen {| name: id.name |}, rest: id.rest |}
       case "fn" => parse_fn_decl {| tokens: tokens |}
       case "do" => parse_do_decl {| tokens: tokens |}
       case "struct" => parse_struct_decl {| tokens: tokens |}
@@ -791,7 +808,7 @@ fn parse_decl
         let s1 = concat {| a: "expected 'import', 'open', 'fn', 'do', 'struct', 'oneof', or 'test' but got '", b: tok.type |}
         let s2 = concat {| a: s1, b: "'" |}
         let _ = parse_error {| msg: s2, line: tok.line, col: tok.col |}
-        {| node: {| tag: "decl_fn", name: "", clauses: nil {| |} |}, rest: tokens |}
+        {| node: DeclFn {| name: "", clauses: nil {| |} |}, rest: tokens |}
     end
 end
 

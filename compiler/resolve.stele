@@ -6,6 +6,7 @@
 -- references (qualified and opened) to their mangled forms.
 
 open Util
+open Ast
 open Lexer
 open Parser
 
@@ -115,13 +116,10 @@ end
 
 fn decl_name
   case {| decl |} =>
-    match str_eq {| a: decl.tag, b: "decl_import" |}
-      case 1 => ""
-      case 0 =>
-        match str_eq {| a: decl.tag, b: "decl_open" |}
-          case 1 => ""
-          case 0 => decl.name
-        end
+    match decl
+      case DeclImport {| |} => ""
+      case DeclOpen {| |} => ""
+      case _ => decl.name
     end
 end
 
@@ -149,12 +147,12 @@ fn all_decl_names_loop
       case 0 =>
         let head = list_head {| list: decls |}
         let tail = list_tail {| list: decls |}
-        let new_acc = match str_eq {| a: head.tag, b: "decl_oneof" |}
-          case 1 =>
+        let new_acc = match head
+          case DeclOneof {| name, variants |} =>
             -- Export both the oneof name and all variant names
-            let with_name = cons {| head: head.name, tail: acc |}
-            collect_variant_names {| variants: head.variants, acc: with_name |}
-          case 0 =>
+            let with_name = cons {| head: name, tail: acc |}
+            collect_variant_names {| variants: variants, acc: with_name |}
+          case _ =>
             let name = decl_name {| decl: head |}
             match str_eq {| a: name, b: "" |}
               case 1 => acc
@@ -182,11 +180,11 @@ fn partition_decls_loop
       case 0 =>
         let head = list_head {| list: decls |}
         let tail = list_tail {| list: decls |}
-        match head.tag
-          case "decl_import" =>
-            partition_decls_loop {| decls: tail, imports: cons {| head: head.name, tail: imports |}, opens: opens, locals: locals |}
-          case "decl_open" =>
-            partition_decls_loop {| decls: tail, imports: imports, opens: cons {| head: head.name, tail: opens |}, locals: locals |}
+        match head
+          case DeclImport {| name |} =>
+            partition_decls_loop {| decls: tail, imports: cons {| head: name, tail: imports |}, opens: opens, locals: locals |}
+          case DeclOpen {| name |} =>
+            partition_decls_loop {| decls: tail, imports: imports, opens: cons {| head: name, tail: opens |}, locals: locals |}
           case _ =>
             partition_decls_loop {| decls: tail, imports: imports, opens: opens, locals: cons {| head: head, tail: locals |} |}
         end
@@ -290,24 +288,45 @@ fn mangle_oneof_variants
       case 0 =>
         let head = list_head {| list: variants |}
         let tail = list_tail {| list: variants |}
-        let mangled = {| name: mangle {| mod_name: mod_name, name: head.name |}, fields: head.fields |}
+        let fields = mangle_decl_fields {| fields: head.fields, mod_name: mod_name |}
+        let mangled = {| name: mangle {| mod_name: mod_name, name: head.name |}, fields: fields |}
         cons {| head: mangled, tail: mangle_oneof_variants {| variants: tail, mod_name: mod_name |} |}
+    end
+end
+
+fn mangle_decl_fields
+  case {| fields, mod_name |} =>
+    match is_nil {| list: fields |}
+      case 1 => nil {| |}
+      case 0 =>
+        let head = list_head {| list: fields |}
+        let tail = list_tail {| list: fields |}
+        let type_name = match str_eq {| a: head.type_name, b: "Int" |} ||
+                              str_eq {| a: head.type_name, b: "String" |} ||
+                              str_eq {| a: head.type_name, b: "Void" |} ||
+                              str_eq {| a: head.type_name, b: "_" |}
+          case 1 => head.type_name
+          case 0 => mangle {| mod_name: mod_name, name: head.type_name |}
+        end
+        let field = {| name: head.name, type_name: type_name |}
+        cons {| head: field, tail: mangle_decl_fields {| fields: tail, mod_name: mod_name |} |}
     end
 end
 
 fn mangle_decl
   case {| decl, mod_name |} =>
-    match decl.tag
-      case "decl_fn" =>
-        {| tag: "decl_fn", name: mangle {| mod_name: mod_name, name: decl.name |}, clauses: decl.clauses |}
-      case "decl_do" =>
-        {| tag: "decl_do", name: mangle {| mod_name: mod_name, name: decl.name |}, stmts: decl.stmts |}
-      case "decl_struct" =>
-        {| tag: "decl_struct", name: mangle {| mod_name: mod_name, name: decl.name |}, fields: decl.fields |}
-      case "decl_oneof" =>
-        let mangled_variants = mangle_oneof_variants {| variants: decl.variants, mod_name: mod_name |}
-        {| tag: "decl_oneof", name: mangle {| mod_name: mod_name, name: decl.name |}, variants: mangled_variants |}
-      case "decl_test" =>
+    match decl
+      case DeclFn {| name, clauses |} =>
+        DeclFn {| name: mangle {| mod_name: mod_name, name: name |}, clauses: clauses |}
+      case DeclDo {| name, stmts |} =>
+        DeclDo {| name: mangle {| mod_name: mod_name, name: name |}, stmts: stmts |}
+      case DeclStruct {| name, fields |} =>
+        let mangled_fields = mangle_decl_fields {| fields: fields, mod_name: mod_name |}
+        DeclStruct {| name: mangle {| mod_name: mod_name, name: name |}, fields: mangled_fields |}
+      case DeclOneof {| name, variants |} =>
+        let mangled_variants = mangle_oneof_variants {| variants: variants, mod_name: mod_name |}
+        DeclOneof {| name: mangle {| mod_name: mod_name, name: name |}, variants: mangled_variants |}
+      case DeclTest {| |} =>
         decl
       case _ => decl
     end
@@ -360,16 +379,16 @@ end
 
 fn resolve_decl_internal
   case {| decl, ctx |} =>
-    match decl.tag
-      case "decl_fn" =>
-        let clauses = resolve_clauses_internal {| clauses: decl.clauses, ctx: ctx |}
-        {| tag: "decl_fn", name: decl.name, clauses: clauses |}
-      case "decl_do" =>
-        let stmts = resolve_stmts_internal {| stmts: decl.stmts, ctx: ctx |}
-        {| tag: "decl_do", name: decl.name, stmts: stmts |}
-      case "decl_test" =>
-        let stmts = resolve_stmts_internal {| stmts: decl.stmts, ctx: ctx |}
-        {| tag: "decl_test", name: decl.name, stmts: stmts |}
+    match decl
+      case DeclFn {| name, clauses |} =>
+        let resolved_clauses = resolve_clauses_internal {| clauses: clauses, ctx: ctx |}
+        DeclFn {| name: name, clauses: resolved_clauses |}
+      case DeclDo {| name, stmts |} =>
+        let resolved_stmts = resolve_stmts_internal {| stmts: stmts, ctx: ctx |}
+        DeclDo {| name: name, stmts: resolved_stmts |}
+      case DeclTest {| name, stmts |} =>
+        let resolved_stmts = resolve_stmts_internal {| stmts: stmts, ctx: ctx |}
+        DeclTest {| name: name, stmts: resolved_stmts |}
       case _ => decl
     end
 end
@@ -417,13 +436,13 @@ end
 
 fn resolve_stmt_internal
   case {| stmt, ctx |} =>
-    match stmt.tag
-      case "stmt_let" =>
-        {| tag: "stmt_let", name: stmt.name, value: resolve_expr_internal {| expr: stmt.value, ctx: ctx |} |}
-      case "stmt_stele_print" =>
-        {| tag: "stmt_stele_print", value: resolve_expr_internal {| expr: stmt.value, ctx: ctx |} |}
-      case "stmt_expr" =>
-        {| tag: "stmt_expr", value: resolve_expr_internal {| expr: stmt.value, ctx: ctx |} |}
+    match stmt
+      case StmtLet {| name, value |} =>
+        StmtLet {| name: name, value: resolve_expr_internal {| expr: value, ctx: ctx |} |}
+      case StmtPrint {| value |} =>
+        StmtPrint {| value: resolve_expr_internal {| expr: value, ctx: ctx |} |}
+      case StmtExpr {| value |} =>
+        StmtExpr {| value: resolve_expr_internal {| expr: value, ctx: ctx |} |}
       case _ => stmt
     end
 end
@@ -507,7 +526,13 @@ end
 fn resolve_pat_internal
   case {| pat, ctx |} =>
     match pat.tag
-      case "pat_var" => pat
+      case "pat_var" =>
+        let first = char_at {| s: pat.name, n: 0 |}
+        let is_upper = (first >= 65) && (first <= 90)
+        match is_upper
+          case 1 => {| tag: "pat_var", name: resolve_type_name_internal {| name: pat.name, ctx: ctx |} |}
+          case 0 => pat
+        end
       case "pat_int" => pat
       case "pat_str" => pat
       case "pat_wild" => pat
@@ -649,16 +674,16 @@ end
 
 fn resolve_decl_local
   case {| decl, ctx |} =>
-    match decl.tag
-      case "decl_fn" =>
-        let clauses = resolve_clauses_local {| clauses: decl.clauses, ctx: ctx |}
-        {| tag: "decl_fn", name: decl.name, clauses: clauses |}
-      case "decl_do" =>
-        let stmts = resolve_stmts_local {| stmts: decl.stmts, ctx: ctx |}
-        {| tag: "decl_do", name: decl.name, stmts: stmts |}
-      case "decl_test" =>
-        let stmts = resolve_stmts_local {| stmts: decl.stmts, ctx: ctx |}
-        {| tag: "decl_test", name: decl.name, stmts: stmts |}
+    match decl
+      case DeclFn {| name, clauses |} =>
+        let resolved_clauses = resolve_clauses_local {| clauses: clauses, ctx: ctx |}
+        DeclFn {| name: name, clauses: resolved_clauses |}
+      case DeclDo {| name, stmts |} =>
+        let resolved_stmts = resolve_stmts_local {| stmts: stmts, ctx: ctx |}
+        DeclDo {| name: name, stmts: resolved_stmts |}
+      case DeclTest {| name, stmts |} =>
+        let resolved_stmts = resolve_stmts_local {| stmts: stmts, ctx: ctx |}
+        DeclTest {| name: name, stmts: resolved_stmts |}
       case _ => decl
     end
 end
@@ -706,13 +731,13 @@ end
 
 fn resolve_stmt_local
   case {| stmt, ctx |} =>
-    match stmt.tag
-      case "stmt_let" =>
-        {| tag: "stmt_let", name: stmt.name, value: resolve_expr_local {| expr: stmt.value, ctx: ctx |} |}
-      case "stmt_stele_print" =>
-        {| tag: "stmt_stele_print", value: resolve_expr_local {| expr: stmt.value, ctx: ctx |} |}
-      case "stmt_expr" =>
-        {| tag: "stmt_expr", value: resolve_expr_local {| expr: stmt.value, ctx: ctx |} |}
+    match stmt
+      case StmtLet {| name, value |} =>
+        StmtLet {| name: name, value: resolve_expr_local {| expr: value, ctx: ctx |} |}
+      case StmtPrint {| value |} =>
+        StmtPrint {| value: resolve_expr_local {| expr: value, ctx: ctx |} |}
+      case StmtExpr {| value |} =>
+        StmtExpr {| value: resolve_expr_local {| expr: value, ctx: ctx |} |}
       case _ => stmt
     end
 end
@@ -793,7 +818,13 @@ end
 fn resolve_pat_local
   case {| pat, ctx |} =>
     match pat.tag
-      case "pat_var" => pat
+      case "pat_var" =>
+        let first = char_at {| s: pat.name, n: 0 |}
+        let is_upper = (first >= 65) && (first <= 90)
+        match is_upper
+          case 1 => {| tag: "pat_var", name: resolve_type_name_local {| name: pat.name, ctx: ctx |} |}
+          case 0 => pat
+        end
       case "pat_int" => pat
       case "pat_str" => pat
       case "pat_wild" => pat

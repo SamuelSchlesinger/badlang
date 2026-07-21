@@ -16,7 +16,7 @@ module Stele.Resolve
 import           Stele.AST
 import           Stele.Grammar (parseProgram)
 import           Stele.Signature (parseSignature)
-import           Data.Char (toLower)
+import           Data.Char (isUpper, toLower)
 import           Data.List (isInfixOf, intercalate)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -205,14 +205,21 @@ allDeclNames = foldl addNames Set.empty
 
 -- | Mangle a declaration's name with the module prefix.
 mangleDecl :: String -> Decl -> Decl
-mangleDecl modName (StructDecl n fields)  = StructDecl (mangle modName n) fields
+mangleDecl modName (StructDecl n fields)  = StructDecl (mangle modName n) (map (mangleField modName) fields)
 mangleDecl modName (FnDecl n clauses)     = FnDecl (mangle modName n) clauses
 mangleDecl modName (DoDecl n stmts)       = DoDecl (mangle modName n) stmts
 mangleDecl modName (OneofDecl n variants) =
-  OneofDecl (mangle modName n) [(mangle modName vn, fs) | (vn, fs) <- variants]
+  OneofDecl (mangle modName n) [(mangle modName vn, map (mangleField modName) fs) | (vn, fs) <- variants]
 mangleDecl _       (TestDecl n stmts)     = TestDecl n stmts
 mangleDecl _       d@(ImportDecl _)       = d
 mangleDecl _       d@(OpenDecl _)         = d
+
+-- | Mangle type annotations in struct/oneof field declarations.
+mangleField :: String -> Field -> Field
+mangleField modName (Field n (TAName tn))
+  | tn `elem` ["Int", "String", "Void", "_"] = Field n (TAName tn)
+  | otherwise = Field n (TAName (mangle modName tn))
+mangleField _ f = f
 
 -- | Produce the mangled name: "Module__name".
 mangle :: String -> String -> String
@@ -313,7 +320,9 @@ resolveExpr ctx (QualRecord modN typN fields) = do
   Right (NamedRecord (mangle modN typN) fields')
 
 resolvePat :: ResolveCtx -> Pattern -> Either String Pattern
-resolvePat _   p@(PVar _)      = Right p
+resolvePat ctx p@(PVar name)
+  | startsUpper name = Right (PVar (resolveTypeName ctx name))
+  | otherwise = Right p
 resolvePat _   p@(PLit _)      = Right p
 resolvePat ctx (PRec fields)   = PRec <$> mapM (resolvePatField ctx) fields
 resolvePat _   PWild           = Right PWild
@@ -447,7 +456,9 @@ resolveExprLocal ctx (QualRecord modN typN fields) = do
   Right (NamedRecord (mangle modN typN) fields')
 
 resolvePatLocal :: LocalCtx -> Pattern -> Either String Pattern
-resolvePatLocal _   p@(PVar _)      = Right p
+resolvePatLocal ctx p@(PVar name)
+  | startsUpper name = Right (PVar (resolveTypeNameLocal ctx name))
+  | otherwise = Right p
 resolvePatLocal _   p@(PLit _)      = Right p
 resolvePatLocal ctx (PRec fields)   = PRec <$> mapM (resolvePatFieldLocal ctx) fields
 resolvePatLocal _   PWild           = Right PWild
@@ -461,6 +472,10 @@ resolvePatLocal ctx (PQualVariant modN name pat) = do
 resolvePatFieldLocal :: LocalCtx -> PatField -> Either String PatField
 resolvePatFieldLocal ctx (PatField n mp) =
   PatField n <$> traverse (resolvePatLocal ctx) mp
+
+startsUpper :: String -> Bool
+startsUpper (c:_) = isUpper c
+startsUpper []    = False
 
 resolveVarLocal :: LocalCtx -> String -> Either String Expr
 resolveVarLocal ctx name =
