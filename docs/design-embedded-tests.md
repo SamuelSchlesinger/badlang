@@ -1,5 +1,16 @@
 # Design: Embedded Tests in Stele
 
+## Status
+
+Implemented in both compilers. The Haskell bootstrap exposes test mode through
+its C backend; the self-hosted compiler supports test mode in C, AArch64, and
+x86-64. Normal builds omit `test` declarations, and test mode executes them in
+source order. C test runners print a successful summary, while native runners
+currently rely on the process exit status. Files without embedded tests fall
+back to `do main`, preserving the stdlib's older test style. Failures remain
+fail-fast because `terminate` exits the runner. The remainder of this document
+records the original design and implementation rationale.
+
 ## Motivation
 
 Currently, Stele tests are either:

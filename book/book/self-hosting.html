@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-bebaa2d8.js";
+            window.path_to_searchindex_js = "searchindex-49372bdb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-29fcd749.js"></script>
@@ -175,10 +175,10 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="the-self-hosting-compiler"><a class="header" href="#the-self-hosting-compiler">The Self-Hosting Compiler</a></h1>
-<p>Stele is <strong>self-hosting</strong>: the file <code>compiler.stele</code> (at the repo root) is a
-complete Stele compiler written in Stele itself. It implements the full
-compilation pipeline — tokenizer, parser, C code emitter, and AArch64 native
-code generator — and can compile itself.</p>
+<p>Stele is <strong>self-hosting</strong>: the modular program rooted at
+<code>compiler/main.stele</code> is a complete Stele compiler written in Stele itself. It
+implements module resolution, type checking, lambda lifting, and the C,
+AArch64, and x86-64 backends, and can compile itself.</p>
 <h2 id="why-self-hosting"><a class="header" href="#why-self-hosting">Why Self-Hosting?</a></h2>
 <p>A self-hosting compiler is the ultimate test of a language’s expressiveness. If
 a language can implement its own compiler, it demonstrates that the language is
@@ -190,37 +190,38 @@ recursion, structural subtyping, and I/O all get a serious workout.</li>
 <li><strong>A correctness proof</strong> via bootstrapping: when the compiler compiles itself
 and produces identical output across generations, we know it faithfully
 implements its own semantics.</li>
-<li><strong>The largest Stele program</strong>, exercising the compiler at scale (~3000
-lines).</li>
+<li><strong>The largest Stele program</strong>, exercising the compiler at scale (more than
+8,000 lines across its modules).</li>
 </ul>
 <h2 id="architecture-at-a-glance"><a class="header" href="#architecture-at-a-glance">Architecture at a Glance</a></h2>
-<p>The self-hosting compiler follows the same pipeline as the Haskell reference
-compiler, minus the type checker:</p>
-<pre><code>Source (.stele) → Tokenize → Parse → Emit C or AArch64 → Write File
+<p>The self-hosting compiler follows the same pipeline as the Haskell bootstrap
+compiler:</p>
+<pre><code>Source → Tokenize → Parse → Resolve modules → Type check → Desugar
+       → Lift closures → Emit C/AArch64/x86-64 → Write file
 </code></pre>
-<p>The compiler reads a source file, tokenizes it, parses the token stream into
-an AST, and generates either C code or AArch64 assembly depending on the mode.
-It relies on a shared <code>runtime.c</code> (or <code>runtime/runtime.c</code> for native mode)
-that provides the value representation, reference counting, and built-in
-functions for file I/O and string manipulation.</p>
+<p>The compiler reads a source file, recursively loads its modules, checks the
+flattened program, and emits C or native assembly depending on the mode. The C
+backend embeds <code>runtime/runtime.c</code>; native outputs link against it.</p>
 <p>The compiler selects its output mode via command-line arguments:</p>
 <ul>
-<li><code>compiler source.stele output.c</code> — emit C (default)</li>
-<li><code>compiler source.stele output.s asm</code> — emit AArch64 assembly</li>
+<li><code>build/compiler source.stele output.c</code> — emit C (default)</li>
+<li><code>build/compiler source.stele output.s asm</code> — emit AArch64 assembly</li>
+<li><code>build/compiler source.stele output.s x86</code> — emit x86-64 assembly</li>
 </ul>
-<p>The entire compiler is a single file organized into clear sections:</p>
+<p>The compiler is split into focused modules:</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Section</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td>Utility library</td><td>Character classification, string helpers, linked lists</td></tr>
-<tr><td>Tokenizer</td><td>Lexical analysis into tokens</td></tr>
-<tr><td>Parser</td><td>Recursive descent into AST nodes</td></tr>
-<tr><td>C code emitter</td><td>AST to C translation</td></tr>
-<tr><td>AArch64 code emitter</td><td>AST to native assembly translation</td></tr>
-<tr><td>Driver</td><td>Main do selecting mode and tying it all together</td></tr>
+<tr><td><code>util</code>, <code>lexer</code>, <code>parser</code>, <code>ast</code></td><td>Front end and shared data structures</td></tr>
+<tr><td><code>resolve</code></td><td>Recursive imports, signatures, and name mangling</td></tr>
+<tr><td><code>typecheck</code></td><td>Inference, row unification, and nominal sums</td></tr>
+<tr><td><code>desugar</code>, <code>lambda_lift</code></td><td>Variant lowering and closure conversion</td></tr>
+<tr><td><code>codegen_c</code></td><td>C translation</td></tr>
+<tr><td><code>codegen_aarch64</code>, <code>codegen_x86</code></td><td>Native assembly translation</td></tr>
+<tr><td><code>main</code></td><td>Driver selecting mode and tying the pipeline together</td></tr>
 </tbody>
 </table>
 </div>

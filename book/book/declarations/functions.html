@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-bebaa2d8.js";
+            window.path_to_searchindex_js = "../searchindex-49372bdb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-29fcd749.js"></script>
@@ -175,7 +175,9 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="functions"><a class="header" href="#functions">Functions</a></h1>
-<p>A <code>fn</code> is a pure function defined by one or more pattern-matching clauses.</p>
+<p>A <code>fn</code> is a function defined by one or more pattern-matching clauses. Stele
+does not currently track effects, so <code>fn</code> communicates structure rather than a
+statically enforced purity guarantee.</p>
 <h2 id="syntax"><a class="header" href="#syntax">Syntax</a></h2>
 <pre><code>fn name
   case pattern1 =&gt; body1

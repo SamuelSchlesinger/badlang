@@ -23,8 +23,10 @@ oneof Type
   TInt
   TStr
   TVoid
+  TNever
+  TOneof { name: String }
   TFun { arg: Type, ret: Type }
-  TRec { row: Type }
+  TRec { row: Row }
   TVar { id: Int, level: Int }
 end
 
@@ -196,44 +198,79 @@ fn unify_resolved
       case TInt =>
         match t2
           case TInt => state
-          case TVoid => state
-          case TVar {| |} => bind_tvar {| id: t2.id, ty: t1, state: state |}
+          case TNever => state
+          case TVar {| id |} => bind_tvar {| id: id, ty: t1, state: state |}
           case _ => type_error {| msg: cat3 {| a: "Cannot unify Int with ", b: show_type {| ty: t2, subst: state.subst |}, c: "" |} |}
         end
       case TStr =>
         match t2
           case TStr => state
-          case TVoid => state
-          case TVar {| |} => bind_tvar {| id: t2.id, ty: t1, state: state |}
+          case TNever => state
+          case TVar {| id |} => bind_tvar {| id: id, ty: t1, state: state |}
           case _ => type_error {| msg: cat3 {| a: "Cannot unify String with ", b: show_type {| ty: t2, subst: state.subst |}, c: "" |} |}
         end
-      case TVoid => state
+      case TVoid =>
+        match t2
+          case TVoid => state
+          case TNever => state
+          case TVar {| id |} => bind_tvar {| id: id, ty: t1, state: state |}
+          case _ => type_error {| msg: cat3 {| a: "Cannot unify Void with ", b: show_type {| ty: t2, subst: state.subst |}, c: "" |} |}
+        end
+      case TNever => state
+      case TOneof {| name: name1 |} =>
+        match t2
+          case TOneof {| name: name2 |} =>
+            match str_eq {| a: name1, b: name2 |}
+              case 1 => state
+              case 0 => type_error {| msg: cat3 {| a: "Cannot unify oneof ", b: name1, c: cat3 {| a: " with oneof ", b: name2, c: "" |} |} |}
+            end
+          case TNever => state
+          case TVar {| id |} => bind_tvar {| id: id, ty: t1, state: state |}
+          case _ => type_error {| msg: cat3 {| a: "Cannot unify oneof ", b: name1, c: cat3 {| a: " with ", b: show_type {| ty: t2, subst: state.subst |}, c: "" |} |} |}
+        end
       case TFun {| arg: a1, ret: r1 |} =>
         match t2
           case TFun {| arg: a2, ret: r2 |} =>
             let s1 = unify {| t1: a1, t2: a2, state: state |}
             unify {| t1: r1, t2: r2, state: s1 |}
-          case TVoid => state
-          case TVar {| |} => bind_tvar {| id: t2.id, ty: t1, state: state |}
+          case TNever => state
+          case TVar {| id |} => bind_tvar {| id: id, ty: t1, state: state |}
           case _ => type_error {| msg: cat3 {| a: "Cannot unify function with ", b: show_type {| ty: t2, subst: state.subst |}, c: "" |} |}
         end
       case TRec {| row: row1 |} =>
         match t2
           case TRec {| row: row2 |} =>
-            unify_row {| r1: row1, r2: row2, state: state |}
-          case TVoid => state
-          case TVar {| |} => bind_tvar {| id: t2.id, ty: t1, state: state |}
+            match (row_has_field {| name: "tag", row: row1, subst: state.subst |}) && (row_has_field {| name: "tag", row: row2, subst: state.subst |})
+              case 1 => state
+              case 0 => unify_row {| r1: row1, r2: row2, state: state |}
+            end
+          case TNever => state
+          case TVar {| id |} => bind_tvar {| id: id, ty: t1, state: state |}
           case _ => type_error {| msg: cat3 {| a: "Cannot unify record with ", b: show_type {| ty: t2, subst: state.subst |}, c: "" |} |}
         end
       case TVar {| id: id1 |} =>
         match t2
-          case TVoid => state
+          case TNever => state
           case TVar {| id: id2 |} =>
             match id1 == id2
               case 1 => state
               case 0 => bind_tvar {| id: id1, ty: t2, state: state |}
             end
           case _ => bind_tvar {| id: id1, ty: t2, state: state |}
+        end
+    end
+end
+
+fn row_has_field
+  case {| name, row, subst |} =>
+    let resolved = resolve_row {| row: row, subst: subst |}
+    match resolved
+      case REmpty => 0
+      case RVar {| |} => 0
+      case RExtend {| name: field_name, rest |} =>
+        match str_eq {| a: name, b: field_name |}
+          case 1 => 1
+          case 0 => row_has_field {| name: name, row: rest, subst: subst |}
         end
     end
 end
@@ -332,6 +369,8 @@ fn inst_type_go
       case TInt => {| result: TInt, tv_sub: tv_sub, rv_sub: rv_sub, state: state |}
       case TStr => {| result: TStr, tv_sub: tv_sub, rv_sub: rv_sub, state: state |}
       case TVoid => {| result: TVoid, tv_sub: tv_sub, rv_sub: rv_sub, state: state |}
+      case TNever => {| result: TNever, tv_sub: tv_sub, rv_sub: rv_sub, state: state |}
+      case TOneof {| name |} => {| result: TOneof {| name: name |}, tv_sub: tv_sub, rv_sub: rv_sub, state: state |}
       case TFun {| arg, ret |} =>
         let r1 = inst_type_go {| level: level, ty: arg, tv_sub: tv_sub, rv_sub: rv_sub, state: state |}
         let r2 = inst_type_go {| level: level, ty: ret, tv_sub: r1.tv_sub, rv_sub: r1.rv_sub, state: r1.state |}
@@ -431,14 +470,16 @@ fn register_builtins
     let e = register_builtin {| env: env, name: "read", arg_row: RExtend {| name: "path", ty: TStr, rest: REmpty |}, ret: TStr |}
     -- write : {| path: String, content: String |} -> Void
     let e = register_builtin {| env: e, name: "write", arg_row: RExtend {| name: "path", ty: TStr, rest: RExtend {| name: "content", ty: TStr, rest: REmpty |} |}, ret: TVoid |}
+    -- file_exists : {| path: String |} -> Int
+    let e = register_builtin {| env: e, name: "file_exists", arg_row: RExtend {| name: "path", ty: TStr, rest: REmpty |}, ret: TInt |}
     -- argc : {| |} -> Int
     let e = register_builtin {| env: e, name: "argc", arg_row: REmpty, ret: TInt |}
     -- argv : {| n: Int |} -> String
     let e = register_builtin {| env: e, name: "argv", arg_row: RExtend {| name: "n", ty: TInt, rest: REmpty |}, ret: TStr |}
     -- sh : {| command: String |} -> Int
     let e = register_builtin {| env: e, name: "sh", arg_row: RExtend {| name: "command", ty: TStr, rest: REmpty |}, ret: TInt |}
-    -- terminate : {| code: Int |} -> Void
-    let e = register_builtin {| env: e, name: "terminate", arg_row: RExtend {| name: "code", ty: TInt, rest: REmpty |}, ret: TVoid |}
+    -- terminate : {| code: Int |} -> Never
+    let e = register_builtin {| env: e, name: "terminate", arg_row: RExtend {| name: "code", ty: TInt, rest: REmpty |}, ret: TNever |}
     -- spawn : {| command: String |} -> Int
     let e = register_builtin {| env: e, name: "spawn", arg_row: RExtend {| name: "command", ty: TStr, rest: REmpty |}, ret: TInt |}
     -- await : {| pid: Int |} -> Int
@@ -477,6 +518,7 @@ fn is_builtin_fn
   case {| name |} =>
     (str_eq {| a: name, b: "read" |}) ||
     (str_eq {| a: name, b: "write" |}) ||
+    (str_eq {| a: name, b: "file_exists" |}) ||
     (str_eq {| a: name, b: "argc" |}) ||
     (str_eq {| a: name, b: "argv" |}) ||
     (str_eq {| a: name, b: "sh" |}) ||
@@ -504,6 +546,8 @@ fn show_type
       case TInt => "Int"
       case TStr => "String"
       case TVoid => "Void"
+      case TNever => "Never"
+      case TOneof {| name |} => name
       case TFun {| arg, ret |} =>
         cat3 {| a: show_type {| ty: arg, subst: subst |}, b: " -> ", c: show_type {| ty: ret, subst: subst |} |}
       case TRec {| row |} =>
@@ -552,7 +596,11 @@ fn resolve_type_ann
                     let row = build_struct_row {| fields: found.value, env: env |}
                     TRec {| row: RExtend {| name: "__tag", ty: TStr, rest: row |} |}
                   case "none" =>
-                    type_error {| msg: cat3 {| a: "Unknown type annotation: ", b: name, c: "" |} |}
+                    let oneof_found = env_lookup_oneof {| env: env, name: name |}
+                    match oneof_found.tag
+                      case "some" => TOneof {| name: name |}
+                      case "none" => type_error {| msg: cat3 {| a: "Unknown type annotation: ", b: name, c: "" |} |}
+                    end
                 end
             end
         end
@@ -613,7 +661,7 @@ fn infer_var
             -- Check if nullary (no fields)
             match is_nil {| list: variant_found.value.fields |}
               case 1 =>
-                {| ty: TRec {| row: RExtend {| name: "__tag", ty: TStr, rest: REmpty |} |}, state: state |}
+                {| ty: TOneof {| name: variant_found.value.oneofs_name |}, state: state |}
               case 0 =>
                 type_error {| msg: cat3 {| a: "Variant '", b: name, c: "' requires fields" |} |}
             end
@@ -686,14 +734,8 @@ fn infer_call
         let arg_r = infer {| env: env, expr: call_arg, state: state |}
         let ret_fv = fresh_tvar {| level: env.level, state: arg_r.state |}
         let resolved_var = resolve_type {| ty: var_found.value, subst: ret_fv.state.subst |}
-        match resolved_var
-          case TFun {| ret |} => {| ty: ret, state: ret_fv.state |}
-          case TVar {| |} =>
-            let s = unify {| t1: resolved_var, t2: TFun {| arg: arg_r.ty, ret: ret_fv.result |}, state: ret_fv.state |}
-            {| ty: ret_fv.result, state: s |}
-          case _ =>
-            type_error {| msg: cat3 {| a: "Cannot call non-function variable '", b: name, c: "'" |} |}
-        end
+        let s = unify {| t1: resolved_var, t2: TFun {| arg: arg_r.ty, ret: ret_fv.result |}, state: ret_fv.state |}
+        {| ty: ret_fv.result, state: s |}
       case "none" =>
         let fn_found = env_lookup_fn {| env: env, name: name |}
         match fn_found.tag
@@ -702,19 +744,9 @@ fn infer_call
           case "some" =>
             let arg_r = infer {| env: env, expr: call_arg, state: state |}
             let inst = instantiate_type {| level: env.level, ty: fn_found.value, state: arg_r.state |}
-            match is_builtin_fn {| name: name |}
-              case 1 =>
-                let ret_fv = fresh_tvar {| level: env.level, state: inst.state |}
-                let s = unify {| t1: inst.result, t2: TFun {| arg: arg_r.ty, ret: ret_fv.result |}, state: ret_fv.state |}
-                {| ty: ret_fv.result, state: s |}
-              case 0 =>
-                match inst.result
-                  case TFun {| ret |} => {| ty: ret, state: inst.state |}
-                  case _ =>
-                    let ret_fv = fresh_tvar {| level: env.level, state: inst.state |}
-                    {| ty: ret_fv.result, state: ret_fv.state |}
-                end
-            end
+            let ret_fv = fresh_tvar {| level: env.level, state: inst.state |}
+            let s = unify {| t1: inst.result, t2: TFun {| arg: arg_r.ty, ret: ret_fv.result |}, state: ret_fv.state |}
+            {| ty: ret_fv.result, state: s |}
         end
     end
 end
@@ -755,7 +787,7 @@ fn infer_named_record
             let r = infer_record_fields {| env: env, fields: fields, state: state |}
             let expected_row = build_variant_field_row {| fields: variant_found.value.fields, env: env, state: r.state |}
             let s = unify_row {| r1: r.row, r2: expected_row.row, state: expected_row.state |}
-            {| ty: TRec {| row: RExtend {| name: "__tag", ty: TStr, rest: expected_row.row |} |}, state: s |}
+            {| ty: TOneof {| name: variant_found.value.oneofs_name |}, state: s |}
           case "none" =>
             type_error {| msg: cat3 {| a: "Unknown type: ", b: name, c: "" |} |}
         end
@@ -785,8 +817,7 @@ fn resolve_variant_field_type
         let oneof_found = env_lookup_oneof {| env: env, name: name |}
         match oneof_found.tag
           case "some" =>
-            let fv = fresh_tvar {| level: env.level, state: state |}
-            {| ty: fv.result, state: fv.state |}
+            {| ty: TOneof {| name: name |}, state: state |}
           case "none" =>
             {| ty: resolve_type_ann {| env: env, name: name |}, state: state |}
         end
@@ -797,7 +828,16 @@ fn infer_field_access
   case {| env, obj, field, state |} =>
     let r = infer {| env: env, expr: obj, state: state |}
     let resolved = resolve_type {| ty: r.ty, subst: r.state.subst |}
-    let field_fv = fresh_tvar {| level: env.level, state: r.state |}
+    match resolved
+      case TOneof {| name |} =>
+        infer_oneof_field {| env: env, oneof_name: name, field: field, state: r.state |}
+      case _ => infer_record_field_access {| env: env, resolved: resolved, field: field, state: r.state |}
+    end
+end
+
+fn infer_record_field_access
+  case {| env, resolved, field, state |} =>
+    let field_fv = fresh_tvar {| level: env.level, state: state |}
     let rest_rv = fresh_rvar {| level: env.level, state: field_fv.state |}
     let expected = TRec {| row: RExtend {| name: field, ty: field_fv.result, rest: rest_rv.result |} |}
     match resolved
@@ -807,13 +847,59 @@ fn infer_field_access
           case "some" =>
             let s = unify {| t1: field_fv.result, t2: found.ty, state: found.state |}
             {| ty: field_fv.result, state: s |}
-          -- Match the reference checker: a missing field on an already-known
-          -- record is tolerated and receives a fresh type.
-          case "missing" => {| ty: field_fv.result, state: found.state |}
+          case "missing" =>
+            match row_has_field {| name: "tag", row: row, subst: found.state.subst |}
+              case 1 => {| ty: field_fv.result, state: found.state |}
+              case 0 => type_error {| msg: cat3 {| a: "Field '", b: field, c: "' not found in record" |} |}
+            end
         end
       case _ =>
         let s = unify {| t1: resolved, t2: expected, state: rest_rv.state |}
         {| ty: field_fv.result, state: s |}
+    end
+end
+
+fn find_decl_field
+  case {| fields, name |} =>
+    match is_nil {| list: fields |}
+      case 1 => {| tag: "none" |}
+      case 0 =>
+        let head = list_head {| list: fields |}
+        let tail = list_tail {| list: fields |}
+        match str_eq {| a: head.name, b: name |}
+          case 1 => {| tag: "some", field: head |}
+          case 0 => find_decl_field {| fields: tail, name: name |}
+        end
+    end
+end
+
+fn infer_oneof_field
+  case {| env, oneof_name, field, state |} =>
+    let oneof_found = env_lookup_oneof {| env: env, name: oneof_name |}
+    match oneof_found.tag
+      case "none" => type_error {| msg: cat3 {| a: "Unknown oneof: ", b: oneof_name, c: "" |} |}
+      case "some" =>
+        let fv = fresh_tvar {| level: env.level, state: state |}
+        infer_oneof_field_loop {| env: env, oneof_name: oneof_name, variants: oneof_found.value, field: field, field_ty: fv.result, state: fv.state |}
+    end
+end
+
+fn infer_oneof_field_loop
+  case {| env, oneof_name, variants, field, field_ty, state |} =>
+    match is_nil {| list: variants |}
+      case 1 => {| ty: field_ty, state: state |}
+      case 0 =>
+        let head = list_head {| list: variants |}
+        let tail = list_tail {| list: variants |}
+        let found = find_decl_field {| fields: head.fields, name: field |}
+        match found.tag
+          case "none" =>
+            type_error {| msg: cat3 {| a: "Field '", b: field, c: cat3 {| a: "' is not present in variant '", b: head.name, c: "'" |} |} |}
+          case "some" =>
+            let resolved = resolve_variant_field_type {| env: env, name: found.field.type_name, state: state |}
+            let s = unify {| t1: field_ty, t2: resolved.ty, state: resolved.state |}
+            infer_oneof_field_loop {| env: env, oneof_name: oneof_name, variants: tail, field: field, field_ty: field_ty, state: s |}
+        end
     end
 end
 
@@ -869,8 +955,7 @@ fn infer_pattern
           case "some" =>
             match is_nil {| list: variant_found.value.fields |}
               case 1 =>
-                let tail_rv = fresh_rvar {| level: env.level, state: state |}
-                let s = unify {| t1: ty, t2: TRec {| row: RExtend {| name: "__tag", ty: TStr, rest: tail_rv.result |} |}, state: tail_rv.state |}
+                let s = unify {| t1: ty, t2: TOneof {| name: variant_found.value.oneofs_name |}, state: state |}
                 {| env: env, state: s |}
               case 0 =>
                 type_error {| msg: cat3 {| a: "Variant '", b: pat.name, c: "' is not nullary" |} |}
@@ -890,10 +975,14 @@ fn infer_pattern
       case "pat_rec" =>
         infer_pattern_rec {| env: env, pat: pat, ty: ty, state: state |}
       case "pat_variant" =>
-        let tail_rv = fresh_rvar {| level: env.level, state: state |}
-        let s = unify {| t1: ty, t2: TRec {| row: RExtend {| name: "__tag", ty: TStr, rest: tail_rv.result |} |}, state: tail_rv.state |}
-        let fresh_v = fresh_tvar {| level: env.level, state: s |}
-        infer_pattern {| env: env, pat: pat.inner, ty: fresh_v.result, state: fresh_v.state |}
+        let variant_found = env_lookup_variant {| env: env, name: pat.vname |}
+        match variant_found.tag
+          case "none" => type_error {| msg: cat3 {| a: "Unknown variant in pattern: ", b: pat.vname, c: "" |} |}
+          case "some" =>
+            let s = unify {| t1: ty, t2: TOneof {| name: variant_found.value.oneofs_name |}, state: state |}
+            let payload = build_variant_field_row {| fields: variant_found.value.fields, env: env, state: s |}
+            infer_pattern {| env: env, pat: pat.inner, ty: TRec {| row: payload.row |}, state: payload.state |}
+        end
       case "pat_none" =>
         {| env: env, state: state |}
       case _ =>
@@ -966,7 +1055,12 @@ fn try_resolve_type_ann
                   case "some" =>
                     let row = build_struct_row {| fields: found.value, env: env |}
                     {| tag: "some", value: TRec {| row: RExtend {| name: "__tag", ty: TStr, rest: row |} |} |}
-                  case "none" => {| tag: "none" |}
+                  case "none" =>
+                    let oneof_found = env_lookup_oneof {| env: env, name: name |}
+                    match oneof_found.tag
+                      case "some" => {| tag: "some", value: TOneof {| name: name |} |}
+                      case "none" => {| tag: "none" |}
+                    end
                 end
             end
         end
@@ -1005,17 +1099,20 @@ fn infer_clause
     unify_clause_result {| body_ty: body_r.ty, result_ty: result_ty, state: body_r.state |}
 end
 
--- The reference checker permits heterogeneous record-valued branches. The
--- runtime AST uses this intentionally for expression nodes, so once both sides
--- are known records their differing fields must not reject the whole match.
+-- Explicitly tagged structural records are the dynamic-union escape hatch used
+-- by the compiler AST. Ordinary records and nominal oneofs remain strict.
 fn unify_clause_result
   case {| body_ty, result_ty, state |} =>
     let body_resolved = resolve_type {| ty: body_ty, subst: state.subst |}
     let result_resolved = resolve_type {| ty: result_ty, subst: state.subst |}
     match body_resolved
-      case TRec {| |} =>
+      case TRec {| row: body_row |} =>
         match result_resolved
-          case TRec {| |} => state
+          case TRec {| row: result_row |} =>
+            match (row_has_field {| name: "tag", row: body_row, subst: state.subst |}) && (row_has_field {| name: "tag", row: result_row, subst: state.subst |})
+              case 1 => state
+              case 0 => unify {| t1: body_ty, t2: result_ty, state: state |}
+            end
           case _ => unify {| t1: body_ty, t2: result_ty, state: state |}
         end
       case _ => unify {| t1: body_ty, t2: result_ty, state: state |}

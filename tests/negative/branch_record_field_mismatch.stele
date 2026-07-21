@@ -1,0 +1,7 @@
+do main
+  let value = match 1
+    case 1 => {| payload: 10 |}
+    case _ => {| payload: "wrong" |}
+  end
+  print value.payload
+end

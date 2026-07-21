@@ -7,8 +7,12 @@ All reserved keywords in Stele.
 | Keyword | Syntax | Description |
 |---------|--------|-------------|
 | `struct` | `struct Name ... end` | Declare a named record type with typed fields |
-| `fn` | `fn name case ... end` | Define a pure function by pattern matching |
+| `oneof` | `oneof Name ... end` | Declare a nominal sum type and variants |
+| `fn` | `fn name case ... end` | Define a function by pattern matching |
 | `do` | `do name ... end` | Define an effectful entry point |
+| `test` | `test "name" ... end` | Define an embedded test body |
+| `import` | `import Module` | Load a module for qualified access |
+| `open` | `open Module` | Load a module and expose its public names |
 | `end` | (closing delimiter) | Close a struct, fn, do, or match block |
 
 ## Pattern Matching Keywords

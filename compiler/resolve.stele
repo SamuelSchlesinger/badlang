@@ -30,6 +30,7 @@ fn make_builtins
     let e = nil {| |}
     let b = cons {| head: "read", tail: e |}
     let b = cons {| head: "write", tail: b |}
+    let b = cons {| head: "file_exists", tail: b |}
     let b = cons {| head: "argc", tail: b |}
     let b = cons {| head: "argv", tail: b |}
     let b = cons {| head: "sh", tail: b |}
@@ -216,9 +217,151 @@ fn find_loaded
     end
 end
 
+fn require_export
+  case {| mod_name, name, loaded |} =>
+    let found = find_loaded {| name: mod_name, loaded: loaded |}
+    match found.tag
+      case "none" =>
+        let _ = resolve_error {| msg: cat3 {| a: "module ", b: mod_name, c: " is not imported" |} |}
+        0
+      case "some" =>
+        match list_contains_str {| list: found.module.exports, s: name |}
+          case 1 => 0
+          case 0 =>
+            let m1 = cat3 {| a: "name '", b: name, c: "' is not exported from module " |}
+            let _ = resolve_error {| msg: concat {| a: m1, b: mod_name |} |}
+            0
+        end
+    end
+end
+
 fn is_loading
   case {| name, loading |} =>
     list_contains_str {| list: loading, s: name |}
+end
+
+-- ============================================================
+-- Signature Files (.steli)
+-- ============================================================
+
+fn signature_is_horizontal_space
+  case {| ch |} => (ch == 32) || (ch == 9) || (ch == 13)
+end
+
+fn signature_skip_horizontal_space
+  case {| text, pos, slen |} =>
+    match pos >= slen
+      case 1 => pos
+      case 0 =>
+        let ch = char_at {| s: text, n: pos |}
+        match signature_is_horizontal_space {| ch: ch |}
+          case 1 => signature_skip_horizontal_space {| text: text, pos: pos + 1, slen: slen |}
+          case 0 => pos
+        end
+    end
+end
+
+fn signature_line_end
+  case {| text, pos, slen |} =>
+    match pos >= slen
+      case 1 => pos
+      case 0 =>
+        match char_at {| s: text, n: pos |} == 10
+          case 1 => pos
+          case 0 => signature_line_end {| text: text, pos: pos + 1, slen: slen |}
+        end
+    end
+end
+
+fn signature_word_end
+  case {| text, pos, limit |} =>
+    match pos >= limit
+      case 1 => pos
+      case 0 =>
+        let ch = char_at {| s: text, n: pos |}
+        match signature_is_horizontal_space {| ch: ch |}
+          case 1 => pos
+          case 0 => signature_word_end {| text: text, pos: pos + 1, limit: limit |}
+        end
+    end
+end
+
+fn signature_kind_valid
+  case {| kind |} =>
+    (str_eq {| a: kind, b: "fn" |}) ||
+    (str_eq {| a: kind, b: "struct" |}) ||
+    (str_eq {| a: kind, b: "oneof" |}) ||
+    (str_eq {| a: kind, b: "do" |}) ||
+    (str_eq {| a: kind, b: "test" |})
+end
+
+fn parse_signature_loop
+  case {| text, pos, slen, acc |} =>
+    match pos >= slen
+      case 1 => list_reverse {| list: acc |}
+      case 0 =>
+        let line_end = signature_line_end {| text: text, pos: pos, slen: slen |}
+        let start = signature_skip_horizontal_space {| text: text, pos: pos, slen: line_end |}
+        let next_pos = match line_end < slen
+          case 1 => line_end + 1
+          case 0 => line_end
+        end
+        match start >= line_end
+          case 1 => parse_signature_loop {| text: text, pos: next_pos, slen: slen, acc: acc |}
+          case 0 =>
+            let first = char_at {| s: text, n: start |}
+            let second = match (start + 1) < line_end
+              case 1 => char_at {| s: text, n: start + 1 |}
+              case 0 => 0
+            end
+            match (first == 45) && (second == 45)
+              case 1 => parse_signature_loop {| text: text, pos: next_pos, slen: slen, acc: acc |}
+              case 0 =>
+                let kind_end = signature_word_end {| text: text, pos: start, limit: line_end |}
+                let kind = substr {| s: text, start: start, len: kind_end - start |}
+                match signature_kind_valid {| kind: kind |}
+                  case 0 =>
+                    let _ = resolve_error {| msg: cat3 {| a: "unknown signature kind: ", b: kind, c: "" |} |}
+                    list_reverse {| list: acc |}
+                  case 1 =>
+                    let name_start = signature_skip_horizontal_space {| text: text, pos: kind_end, slen: line_end |}
+                    match name_start >= line_end
+                      case 1 =>
+                        let _ = resolve_error {| msg: cat3 {| a: "signature line missing name after ", b: kind, c: "" |} |}
+                        list_reverse {| list: acc |}
+                      case 0 =>
+                        let name_end = signature_word_end {| text: text, pos: name_start, limit: line_end |}
+                        let name = substr {| s: text, start: name_start, len: name_end - name_start |}
+                        parse_signature_loop {| text: text, pos: next_pos, slen: slen, acc: cons {| head: name, tail: acc |} |}
+                    end
+                end
+            end
+        end
+    end
+end
+
+fn parse_signature
+  case {| text |} =>
+    parse_signature_loop {| text: text, pos: 0, slen: strlen {| s: text |}, acc: nil {| |} |}
+end
+
+fn expand_signature_exports_loop
+  case {| decls, exports |} =>
+    match is_nil {| list: decls |}
+      case 1 => exports
+      case 0 =>
+        let head = list_head {| list: decls |}
+        let tail = list_tail {| list: decls |}
+        let exports2 = match head
+          case DeclOneof {| name, variants |} =>
+            match list_contains_str {| list: exports, s: name |}
+              case 1 => collect_variant_names {| variants: variants, acc: exports |}
+              case 0 => exports
+            end
+          case _ => exports
+        end
+        expand_signature_exports_loop {| decls: tail, exports: exports2 |}
+    end
 end
 
 fn load_module
@@ -250,10 +393,20 @@ fn load_module
             let all_sub_dedup = list_dedup_str {| list: all_sub |}
             let mod_dir = extract_base_path {| filepath: filepath |}
             let state2 = load_modules {| mod_names: all_sub_dedup, base_path: mod_dir, state: state1, builtins: builtins |}
-            -- Collect exported names (all declared names — no signature support yet)
-            let exports = all_decl_names {| decls: parts.locals |}
+            -- A sibling .steli file restricts public names. Internal references
+            -- still see every local declaration.
+            let all_names = all_decl_names {| decls: parts.locals |}
+            let sig_base = lowercase_first_char {| s: mod_name |}
+            let sig_name = concat {| a: sig_base, b: ".steli" |}
+            let sig_path = concat {| a: mod_dir, b: sig_name |}
+            let exports = match file_exists {| path: sig_path |}
+              case 1 =>
+                let declared = parse_signature {| text: read {| path: sig_path |} |}
+                expand_signature_exports_loop {| decls: parts.locals, exports: declared |}
+              case 0 => all_names
+            end
             -- Resolve internal references within this module
-            let local_names = exports
+            let local_names = all_names
             let resolved_decls = resolve_module_internal {| mod_name: mod_name, decls: parts.locals, local_names: local_names, loaded: state2.loaded, opened_mods: parts.opens, builtins: builtins |}
             -- Mangle declaration names
             let mangled = mangle_decls {| decls: resolved_decls, mod_name: mod_name |}
@@ -316,8 +469,8 @@ end
 fn mangle_decl
   case {| decl, mod_name |} =>
     match decl
-      case DeclFn {| name, clauses |} =>
-        DeclFn {| name: mangle {| mod_name: mod_name, name: name |}, clauses: clauses |}
+      case DeclFn {| name, clauses, closure |} =>
+        DeclFn {| name: mangle {| mod_name: mod_name, name: name |}, clauses: clauses, closure: closure |}
       case DeclDo {| name, stmts |} =>
         DeclDo {| name: mangle {| mod_name: mod_name, name: name |}, stmts: stmts |}
       case DeclStruct {| name, fields |} =>
@@ -380,9 +533,9 @@ end
 fn resolve_decl_internal
   case {| decl, ctx |} =>
     match decl
-      case DeclFn {| name, clauses |} =>
+      case DeclFn {| name, clauses, closure |} =>
         let resolved_clauses = resolve_clauses_internal {| clauses: clauses, ctx: ctx |}
-        DeclFn {| name: name, clauses: resolved_clauses |}
+        DeclFn {| name: name, clauses: resolved_clauses, closure: closure |}
       case DeclDo {| name, stmts |} =>
         let resolved_stmts = resolve_stmts_internal {| stmts: stmts, ctx: ctx |}
         DeclDo {| name: name, stmts: resolved_stmts |}
@@ -490,15 +643,18 @@ fn resolve_expr_internal
         {| tag: "closure", clauses: clauses |}
       case "qual_call" =>
         -- Module.func {| ... |} => call with mangled name
+        let ignored_export = require_export {| mod_name: expr.module_name, name: expr.name, loaded: ctx.loaded |}
         let mangled = mangle {| mod_name: expr.module_name, name: expr.name |}
         let arg = resolve_expr_internal {| expr: expr.arg, ctx: ctx |}
         {| tag: "call", name: mangled, arg: arg |}
       case "qual_var" =>
         -- Module.var => var with mangled name
+        let ignored_export = require_export {| mod_name: expr.module_name, name: expr.name, loaded: ctx.loaded |}
         let mangled = mangle {| mod_name: expr.module_name, name: expr.name |}
         {| tag: "var", name: mangled |}
       case "qual_named_record" =>
         -- Module.Type {| ... |} => named_record with mangled name
+        let ignored_export = require_export {| mod_name: expr.module_name, name: expr.name, loaded: ctx.loaded |}
         let mangled = mangle {| mod_name: expr.module_name, name: expr.name |}
         let fields = resolve_record_fields_internal {| fields: expr.fields, ctx: ctx |}
         {| tag: "named_record", name: mangled, fields: fields |}
@@ -544,6 +700,7 @@ fn resolve_pat_internal
         let inner = resolve_pat_internal {| pat: pat.inner, ctx: ctx |}
         {| tag: "pat_variant", vname: resolved_name, inner: inner |}
       case "pat_qual_variant" =>
+        let ignored_export = require_export {| mod_name: pat.module_name, name: pat.vname, loaded: ctx.loaded |}
         let mangled = mangle {| mod_name: pat.module_name, name: pat.vname |}
         let inner = resolve_pat_internal {| pat: pat.inner, ctx: ctx |}
         {| tag: "pat_variant", vname: mangled, inner: inner |}
@@ -675,9 +832,9 @@ end
 fn resolve_decl_local
   case {| decl, ctx |} =>
     match decl
-      case DeclFn {| name, clauses |} =>
+      case DeclFn {| name, clauses, closure |} =>
         let resolved_clauses = resolve_clauses_local {| clauses: clauses, ctx: ctx |}
-        DeclFn {| name: name, clauses: resolved_clauses |}
+        DeclFn {| name: name, clauses: resolved_clauses, closure: closure |}
       case DeclDo {| name, stmts |} =>
         let resolved_stmts = resolve_stmts_local {| stmts: stmts, ctx: ctx |}
         DeclDo {| name: name, stmts: resolved_stmts |}
@@ -784,13 +941,16 @@ fn resolve_expr_local
         let clauses = resolve_clauses_local {| clauses: expr.clauses, ctx: ctx |}
         {| tag: "closure", clauses: clauses |}
       case "qual_call" =>
+        let ignored_export = require_export {| mod_name: expr.module_name, name: expr.name, loaded: ctx.loaded |}
         let mangled = mangle {| mod_name: expr.module_name, name: expr.name |}
         let arg = resolve_expr_local {| expr: expr.arg, ctx: ctx |}
         {| tag: "call", name: mangled, arg: arg |}
       case "qual_var" =>
+        let ignored_export = require_export {| mod_name: expr.module_name, name: expr.name, loaded: ctx.loaded |}
         let mangled = mangle {| mod_name: expr.module_name, name: expr.name |}
         {| tag: "var", name: mangled |}
       case "qual_named_record" =>
+        let ignored_export = require_export {| mod_name: expr.module_name, name: expr.name, loaded: ctx.loaded |}
         let mangled = mangle {| mod_name: expr.module_name, name: expr.name |}
         let fields = resolve_record_fields_local {| fields: expr.fields, ctx: ctx |}
         {| tag: "named_record", name: mangled, fields: fields |}
@@ -836,6 +996,7 @@ fn resolve_pat_local
         let inner = resolve_pat_local {| pat: pat.inner, ctx: ctx |}
         {| tag: "pat_variant", vname: resolved_name, inner: inner |}
       case "pat_qual_variant" =>
+        let ignored_export = require_export {| mod_name: pat.module_name, name: pat.vname, loaded: ctx.loaded |}
         let mangled = mangle {| mod_name: pat.module_name, name: pat.vname |}
         let inner = resolve_pat_local {| pat: pat.inner, ctx: ctx |}
         {| tag: "pat_variant", vname: mangled, inner: inner |}

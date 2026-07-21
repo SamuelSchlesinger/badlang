@@ -25,10 +25,10 @@ Follow the prompts to install GHC and Cabal.
 
 ## Using a Pre-Built Compiler
 
-If you have a pre-built `compiler` binary, you can compile programs directly:
+If you have built `build/compiler`, you can compile programs directly:
 
 ```bash
-./compiler examples/hello.stele hello.c
+./build/compiler examples/hello.stele hello.c
 cc -O1 -o hello hello.c
 ./hello
 ```
@@ -52,9 +52,10 @@ You can also bootstrap manually:
 ```bash
 cd bootstrap/haskell
 cabal build
-cabal run stele -- ../../compiler.stele
+cabal run stele -- ../../compiler/main.stele
 cd ../..
-cc -O1 -o compiler compiler.c
+mkdir -p build
+cc -O1 -o build/compiler compiler/main.c
 ```
 
 ## Compiling Programs
@@ -62,7 +63,7 @@ cc -O1 -o compiler compiler.c
 To compile a `.stele` source file to C:
 
 ```bash
-./compiler examples/hello.stele hello.c
+./build/compiler examples/hello.stele hello.c
 ```
 
 This produces `hello.c`. You can then compile and run it:
@@ -85,10 +86,10 @@ The self-hosted compiler can also emit native assembly:
 
 ```bash
 # AArch64 (Apple Silicon / Linux ARM)
-./compiler examples/hello.stele hello.s asm
+./build/compiler examples/hello.stele hello.s asm
 cc -O1 -o hello hello.s runtime/runtime.c
 
 # x86_64 (macOS / Linux)
-./compiler examples/hello.stele hello.s x86
+./build/compiler examples/hello.stele hello.s x86
 cc -O1 -o hello hello.s runtime/runtime.c
 ```

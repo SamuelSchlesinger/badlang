@@ -53,8 +53,9 @@ Output:
 3628800
 ```
 
-A `fn` is a pure function defined by pattern matching. A `do` is an
-effectful entry point. Functions are called by placing an argument after the
+A `fn` is a function defined by pattern matching. A `do` names an entry point;
+Stele does not currently track effects in the type system. Functions are
+called by placing an argument after the
 function name. `print` prints a value. `{| ... |}` are record literals — the
 "pillars" that hold the language together.
 

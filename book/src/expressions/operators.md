@@ -11,9 +11,11 @@ operators are infix and left-associative.
 | `-` | Subtraction | `10 - 3` | `7` |
 | `*` | Multiplication | `5 * 6` | `30` |
 | `/` | Integer division | `17 / 5` | `3` |
+| `%` | Integer remainder | `17 % 5` | `2` |
 
 Division truncates toward zero. Both operands must be `Int`, and the result
-is `Int`.
+is `Int`. Arithmetic traps on overflow, division by zero, and remainder by
+zero.
 
 ## Unary Operators
 
@@ -52,7 +54,7 @@ From highest to lowest precedence:
 1. Primary expressions (literals, variables, parenthesized expressions)
 2. Unary operators (`-`)
 3. Field access (`.field`)
-4. Multiplicative (`*`, `/`)
+4. Multiplicative (`*`, `/`, `%`)
 5. Additive (`+`, `-`)
 6. Comparison (`==`, `!=`, `<`, `>`, `<=`, `>=`)
 7. Logical AND (`&&`)

@@ -1,0 +1,15 @@
+oneof LeftChoice
+  LeftValue
+end
+
+oneof RightChoice
+  RightValue
+end
+
+fn use_left
+  case LeftValue => 1
+end
+
+do main
+  print use_left(RightValue)
+end

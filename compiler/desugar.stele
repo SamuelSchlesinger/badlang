@@ -197,9 +197,9 @@ end
 fn desugar_decl
   case {| decl, info |} =>
     match decl
-      case DeclFn {| name, clauses |} =>
+      case DeclFn {| name, clauses, closure |} =>
         let desugared_clauses = desugar_clauses {| clauses: clauses, info: info |}
-        DeclFn {| name: name, clauses: desugared_clauses |}
+        DeclFn {| name: name, clauses: desugared_clauses, closure: closure |}
       case DeclDo {| name, stmts |} =>
         let desugared_stmts = desugar_stmts {| stmts: stmts, info: info |}
         DeclDo {| name: name, stmts: desugared_stmts |}

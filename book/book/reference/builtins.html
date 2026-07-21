@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-bebaa2d8.js";
+            window.path_to_searchindex_js = "../searchindex-49372bdb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-29fcd749.js"></script>
@@ -198,27 +198,34 @@ the result as a string.</li>
 <pre><code>let n = readint
 </code></pre>
 <h2 id="file-io"><a class="header" href="#file-io">File I/O</a></h2>
-<h3 id="unearth"><a class="header" href="#unearth">unearth</a></h3>
+<h3 id="read"><a class="header" href="#read">read</a></h3>
 <p>Read the contents of a file.</p>
 <ul>
-<li><strong>Call:</strong> <code>unearth {| path: "filename.txt" |}</code></li>
+<li><strong>Call:</strong> <code>read {| path: "filename.txt" |}</code></li>
 <li><strong>Argument:</strong> <code>{| path: String |}</code></li>
 <li><strong>Returns:</strong> <code>String</code></li>
 <li><strong>Behavior:</strong> Reads the entire file contents into a string.</li>
 </ul>
-<pre><code>let contents = unearth {| path: "data.txt" |}
+<pre><code>let contents = read {| path: "data.txt" |}
 print contents
 </code></pre>
-<h3 id="inscribe"><a class="header" href="#inscribe">inscribe</a></h3>
+<h3 id="write"><a class="header" href="#write">write</a></h3>
 <p>Write a string to a file.</p>
 <ul>
-<li><strong>Call:</strong> <code>inscribe {| path: "filename.txt", content: "data" |}</code></li>
+<li><strong>Call:</strong> <code>write {| path: "filename.txt", content: "data" |}</code></li>
 <li><strong>Argument:</strong> <code>{| path: String, content: String |}</code></li>
 <li><strong>Returns:</strong> <code>Void</code></li>
 <li><strong>Behavior:</strong> Creates or overwrites the file with the case content.</li>
 </ul>
-<pre><code>inscribe {| path: "output.txt", content: "Hello from Stele!" |}
+<pre><code>write {| path: "output.txt", content: "Hello from Stele!" |}
 </code></pre>
+<h3 id="file_exists"><a class="header" href="#file_exists">file_exists</a></h3>
+<p>Check whether a filesystem path exists without invoking a shell.</p>
+<ul>
+<li><strong>Call:</strong> <code>file_exists {| path: "data.txt" |}</code></li>
+<li><strong>Argument:</strong> <code>{| path: String |}</code></li>
+<li><strong>Returns:</strong> <code>Int</code> (<code>1</code> when present, <code>0</code> otherwise)</li>
+</ul>
 <h2 id="command-line-arguments"><a class="header" href="#command-line-arguments">Command-Line Arguments</a></h2>
 <h3 id="argc"><a class="header" href="#argc">argc</a></h3>
 <p>Get the number of command-line arguments.</p>
@@ -257,7 +264,7 @@ process status code.</li>
 <ul>
 <li><strong>Call:</strong> <code>terminate {| code: 1 |}</code></li>
 <li><strong>Argument:</strong> <code>{| code: Int |}</code></li>
-<li><strong>Returns:</strong> <code>Void</code></li>
+<li><strong>Returns:</strong> <code>Never</code> (the call does not return)</li>
 <li><strong>Behavior:</strong> Terminates the process with the provided exit code.</li>
 </ul>
 <h3 id="spawn"><a class="header" href="#spawn">spawn</a></h3>
@@ -295,8 +302,9 @@ as <code>0</code>).</li>
 <tbody>
 <tr><td><code>readln</code></td><td>(none)</td><td><code>String</code></td><td>Read line from stdin</td></tr>
 <tr><td><code>readint</code></td><td>(none)</td><td><code>Int</code></td><td>Read integer from stdin</td></tr>
-<tr><td><code>unearth</code></td><td>`{</td><td>path: String</td><td>}`</td></tr>
-<tr><td><code>inscribe</code></td><td>`{</td><td>path: String, content: String</td><td>}`</td></tr>
+<tr><td><code>read</code></td><td>`{</td><td>path: String</td><td>}`</td></tr>
+<tr><td><code>write</code></td><td>`{</td><td>path: String, content: String</td><td>}`</td></tr>
+<tr><td><code>file_exists</code></td><td>`{</td><td>path: String</td><td>}`</td></tr>
 <tr><td><code>argc</code></td><td>`{</td><td></td><td>}`</td></tr>
 <tr><td><code>argv</code></td><td>`{</td><td>n: Int</td><td>}`</td></tr>
 <tr><td><code>sh</code></td><td>`{</td><td>command: String</td><td>}`</td></tr>

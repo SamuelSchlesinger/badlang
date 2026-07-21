@@ -46,6 +46,7 @@ import qualified Data.Map.Strict as Map
 import           Data.Map.Strict (Map)
 import           Data.IORef
 import qualified Data.Set as Set
+import           Data.List (isPrefixOf)
 import           System.IO.Unsafe (unsafePerformIO)
 
 -- ---------------------------------------------------------------------------
@@ -59,7 +60,9 @@ type TypeError = String
 data Type
   = TInt                              -- ^ Integer
   | TStr                              -- ^ String
-  | TVoid                             -- ^ Void (no value)
+  | TVoid                             -- ^ Unit-like result of effectful operations
+  | TNever                            -- ^ Does not return (currently terminate)
+  | TOneof !String                    -- ^ Nominal sum type
   | TFun Type Type                    -- ^ Function: argument -> result
   | TRec Row                          -- ^ Record type with row
   | TVar (IORef TVarState)            -- ^ Unification variable
@@ -85,12 +88,13 @@ data Env = Env
   , envFns      :: Map String Type      -- ^ Fn name -> function type
   , envStructs  :: Map String [(String, Type)]  -- ^ Struct name -> fields
   , envOneofs   :: Map String [(String, [Field])] -- ^ Oneof name -> [(variant, fields)]
+  , envOneofNames :: Set.Set String             -- ^ All declared oneofs, including forward references
   , envVariants :: Map String (String, [Field])   -- ^ Variant name -> (oneof_name, fields)
   , envLevel    :: !Int                 -- ^ Current generalization level
   }
 
 emptyEnv :: Env
-emptyEnv = Env Map.empty Map.empty Map.empty Map.empty Map.empty 0
+emptyEnv = Env Map.empty Map.empty Map.empty Map.empty Set.empty Map.empty 0
 
 extendVar :: String -> Type -> Env -> Env
 extendVar name ty env = env { envVars = Map.insert name ty (envVars env) }
@@ -159,6 +163,8 @@ instantiateType level ty = do
         TInt      -> return TInt
         TStr      -> return TStr
         TVoid     -> return TVoid
+        TNever    -> return TNever
+        TOneof n  -> return (TOneof n)
         TFun a r  -> do
           a' <- goType tvSub rvSub a
           r' <- goType tvSub rvSub r
@@ -212,15 +218,27 @@ unify' :: Type -> Type -> IO (Either TypeError ())
 unify' TInt TInt = return (Right ())
 unify' TStr TStr = return (Right ())
 unify' TVoid TVoid = return (Right ())
--- Void acts as a bottom type: it unifies with anything (expressions that never return)
-unify' TVoid _ = return (Right ())
-unify' _ TVoid = return (Right ())
+-- Never is the bottom type; Void is an ordinary unit-like value.
+unify' TNever _ = return (Right ())
+unify' _ TNever = return (Right ())
+unify' (TOneof n1) (TOneof n2)
+  | n1 == n2 = return (Right ())
+  | otherwise = return (Left $ "Cannot unify oneof " ++ n1 ++ " with oneof " ++ n2)
 unify' (TFun a1 r1) (TFun a2 r2) = do
   e1 <- unify a1 a2
   case e1 of
     Left err -> return (Left err)
     Right () -> unify r1 r2
-unify' (TRec r1) (TRec r2) = unifyRow r1 r2
+unify' (TRec r1) (TRec r2) = do
+  result <- unifyRow r1 r2
+  case result of
+    Right () -> return (Right ())
+    Left err -> do
+      tagged1 <- rowContainsField "tag" r1
+      tagged2 <- rowContainsField "tag" r2
+      if tagged1 && tagged2
+        then return (Right ())
+        else return (Left err)
 unify' (TVar ref1) (TVar ref2)
   | ref1 == ref2 = return (Right ())
 unify' (TVar ref) t = bindTVar ref t
@@ -333,9 +351,9 @@ infer env (Var name) =
     Just t  -> return (Right t)
     Nothing ->
       case Map.lookup name (envVariants env) of
-        Just (_oneofName, fields)
+        Just (oneofName, fields)
           | null fields ->
-              return (Right (TRec (RExtend "__tag" TStr REmpty)))
+              return (Right (TOneof oneofName))
           | otherwise ->
               return (Left $ "Variant '" ++ name ++ "' requires fields; use " ++ name ++ " {| ... |}")
         Nothing ->
@@ -374,17 +392,23 @@ infer env (FieldAccess e field) = do
     Left err -> return (Left err)
     Right ty -> do
       ty' <- resolveType ty
-      fieldTy <- freshTVar (envLevel env)
-      restRow <- freshRVar (envLevel env)
-      let expected = TRec (RExtend field fieldTy restRow)
-      e' <- unify ty' expected
-      case e' of
-        Right () -> return (Right fieldTy)
-        Left err ->
-          case ty' of
-            TRec _ -> return (Right fieldTy)
-            TVar _ -> return (Right fieldTy)
-            _      -> return (Left $ "Field access ." ++ field ++ ": " ++ err)
+      case ty' of
+        TOneof oneofName -> inferOneofField env oneofName field
+        _ -> do
+          fieldTy <- freshTVar (envLevel env)
+          restRow <- freshRVar (envLevel env)
+          let expected = TRec (RExtend field fieldTy restRow)
+          e' <- unify ty' expected
+          case e' of
+            Right () -> return (Right fieldTy)
+            Left err ->
+              case ty' of
+                TRec row -> do
+                  isDynamic <- rowContainsField "tag" row
+                  if isDynamic
+                    then return (Right fieldTy)
+                    else return (Left $ "Field access ." ++ field ++ ": " ++ err)
+                _ -> return (Left $ "Field access ." ++ field ++ ": " ++ err)
 
 infer env (Record fields) = do
   row <- inferRecordFields env fields
@@ -406,7 +430,7 @@ infer env (NamedRecord typeName fields) = do
             Left err -> return (Left $ "Struct '" ++ typeName ++ "': " ++ err)
             Right () -> return (Right (TRec (RExtend "__tag" TStr expectedRow)))
     Nothing -> case Map.lookup typeName (envVariants env) of
-      Just (_oneofName, expectedFieldDecls) -> do
+      Just (oneofName, expectedFieldDecls) -> do
         row <- inferRecordFields env fields
         case row of
           Left err -> return (Left err)
@@ -423,7 +447,7 @@ infer env (NamedRecord typeName fields) = do
                 e <- unifyRow r expectedRow
                 case e of
                   Left err -> return (Left $ "Variant '" ++ typeName ++ "': " ++ err)
-                  Right () -> return (Right (TRec (RExtend "__tag" TStr expectedRow)))
+                  Right () -> return (Right (TOneof oneofName))
       Nothing -> return (Left $ "Unknown type: " ++ typeName)
 
 infer env (Closure clauses) = do
@@ -446,12 +470,10 @@ infer env (Call fnName arg) =
         Right argTy -> do
           retTy <- freshTVar (envLevel env)
           varTy' <- resolveType varTy
-          case varTy' of
-            TFun _ rt -> return (Right rt)
-            TVar _ -> do
-              _ <- unify varTy' (TFun argTy retTy)
-              return (Right retTy)
-            _ -> return (Left $ "Cannot call non-function variable '" ++ fnName ++ "'")
+          e <- unify varTy' (TFun argTy retTy)
+          case e of
+            Left err -> return (Left $ "In closure call '" ++ fnName ++ "': " ++ err)
+            Right () -> return (Right retTy)
     Nothing ->
       case Map.lookup fnName (envFns env) of
         Nothing -> return (Left $ "Unknown fn: " ++ fnName)
@@ -461,19 +483,11 @@ infer env (Call fnName arg) =
             Left err -> return (Left err)
             Right argTy -> do
               fnTy <- instantiateType (envLevel env) fnTyTemplate
-              if fnName `elem` builtinFnNames
-                then do
-                  retTy <- freshTVar (envLevel env)
-                  e <- unify fnTy (TFun argTy retTy)
-                  case e of
-                    Left err -> return (Left $ "In call to '" ++ fnName ++ "': " ++ err)
-                    Right () -> return (Right retTy)
-                else
-                  case fnTy of
-                    TFun _ retTy -> return (Right retTy)
-                    _ -> do
-                      retTy <- freshTVar (envLevel env)
-                      return (Right retTy)
+              retTy <- freshTVar (envLevel env)
+              e <- unify fnTy (TFun argTy retTy)
+              case e of
+                Left err -> return (Left $ "In call to '" ++ fnName ++ "': " ++ err)
+                Right () -> return (Right retTy)
 
 infer env (LetIn name value body) = do
   valTy <- infer env value
@@ -495,6 +509,53 @@ infer env (Match scrutinee clauses) = do
 infer env (QualCall modN fn arg) = infer env (Call (modN ++ "__" ++ fn) arg)
 infer env (QualVar modN name) = infer env (Var (modN ++ "__" ++ name))
 infer env (QualRecord modN typN fields) = infer env (NamedRecord (modN ++ "__" ++ typN) fields)
+
+inferOneofField :: Env -> String -> String -> IO (Either TypeError Type)
+inferOneofField env oneofName field =
+  case Map.lookup oneofName (envOneofs env) of
+    Nothing -> return (Left $ "Unknown oneof: " ++ oneofName)
+    Just variants -> do
+      resolved <- mapM resolveVariantField variants
+      case sequence resolved of
+        Left err -> return (Left err)
+        Right [] -> return (Left $ "Oneof '" ++ oneofName ++ "' has no variants")
+        Right (firstTy : rest) -> unifyAll firstTy rest
+  where
+    resolveVariantField (variantName, fields) =
+      case [ann | Field name ann <- fields, name == field] of
+        [] -> return (Left $ "Field '" ++ field ++ "' is not present in variant '" ++ variantName ++ "'")
+        ann : _ -> resolveTypeAnnIO env ann
+
+    unifyAll firstTy [] = return (Right firstTy)
+    unifyAll firstTy (ty : rest) = do
+      result <- unify firstTy ty
+      case result of
+        Left err -> return (Left $ "Field '" ++ field ++ "' has inconsistent types in oneof '" ++ oneofName ++ "': " ++ err)
+        Right () -> unifyAll firstTy rest
+
+rowContainsField :: String -> Row -> IO Bool
+rowContainsField wanted row = do
+  row' <- resolveRow row
+  case row' of
+    REmpty -> return False
+    RVar _ -> return False
+    RExtend name _ rest
+      | name == wanted -> return True
+      | otherwise -> rowContainsField wanted rest
+
+rowsHaveSameFields :: Row -> Row -> IO Bool
+rowsHaveSameFields left right = do
+  leftNames <- rowFieldNames left
+  rightNames <- rowFieldNames right
+  return (Set.fromList leftNames == Set.fromList rightNames)
+
+rowFieldNames :: Row -> IO [String]
+rowFieldNames row = do
+  row' <- resolveRow row
+  case row' of
+    REmpty -> return []
+    RVar _ -> return []
+    RExtend name _ rest -> (name :) <$> rowFieldNames rest
 
 inferBinOp :: BinOp -> Type -> Type -> IO (Either TypeError Type)
 inferBinOp op ty1 ty2
@@ -552,10 +613,9 @@ inferRecordFields env ((name, expr) : rest) = do
 inferPattern :: Env -> Pattern -> Type -> IO (Either TypeError Env)
 inferPattern env (PVar name) ty =
   case Map.lookup name (envVariants env) of
-    Just (_oneofName, fields)
+    Just (oneofName, fields)
       | null fields -> do
-          tailRow <- freshRVar (envLevel env)
-          e <- unify ty (TRec (RExtend "__tag" TStr tailRow))
+          e <- unify ty (TOneof oneofName)
           case e of
             Left err -> return (Left $ "Variant pattern '" ++ name ++ "': " ++ err)
             Right () -> return (Right env)
@@ -589,14 +649,21 @@ inferPattern env (PVariant vname innerPat) ty =
   case Map.lookup vname (envVariants env) of
     Nothing ->
       return (Left $ "Unknown variant in pattern: " ++ vname)
-    Just _ -> do
-      tailRow <- freshRVar (envLevel env)
-      eTag <- unify ty (TRec (RExtend "__tag" TStr tailRow))
+    Just (oneofName, fields) -> do
+      eTag <- unify ty (TOneof oneofName)
       case eTag of
         Left err -> return (Left $ "Variant pattern '" ++ vname ++ "': " ++ err)
         Right () -> do
-          freshVariantTy <- freshTVar (envLevel env)
-          inferPattern env innerPat freshVariantTy
+          resolvedFields <- mapM (\(Field n t) -> do
+                                    result <- resolveTypeAnnIO env t
+                                    case result of
+                                      Left err -> return (Left err)
+                                      Right fieldTy -> return (Right (n, fieldTy))) fields
+          case sequence resolvedFields of
+            Left err -> return (Left err)
+            Right payloadFields ->
+              let payloadRow = foldr (\(n, t) acc -> RExtend n t acc) REmpty payloadFields
+              in inferPattern env innerPat (TRec payloadRow)
 inferPattern env (PQualVariant modN vname innerPat) ty =
   inferPattern env (PVariant (modN ++ "__" ++ vname) innerPat) ty
 inferPattern _ (PLit _) _ = return (Left "Unsupported pattern literal")
@@ -664,9 +731,23 @@ inferClause env scrTy resultTy (CaseClause pat body) = do
           case e of
             Left err -> do
               ty' <- resolveType ty
-              resTy' <- resolveType resultTy
-              case (ty', resTy') of
-                (TRec _, TRec _) -> return (Right ())
+              resultTy' <- resolveType resultTy
+              case (ty', resultTy', resultTy) of
+                -- Legacy structural tagged records form open unions. Keep
+                -- their result row open so later field access is explicit in
+                -- the row constraints; declared oneofs use TOneof instead.
+                (TRec bodyRow, TRec resultRow, TVar resultRef) -> do
+                  bodyTagged <- rowContainsField "tag" bodyRow
+                  resultTagged <- rowContainsField "tag" resultRow
+                  sameShape <- rowsHaveSameFields bodyRow resultRow
+                  if bodyTagged && resultTagged
+                    then do
+                      openRow <- freshRVar (envLevel env)
+                      writeIORef resultRef (Link (TRec openRow))
+                      return (Right ())
+                    else if sameShape && "Infinite type" `isPrefixOf` err
+                      then return (Right ())
+                      else return (Left $ "Clause result type mismatch: " ++ err)
                 _ -> return (Left $ "Clause result type mismatch: " ++ err)
             Right () -> return (Right ())
 
@@ -729,7 +810,8 @@ typeCheck prog = unsafePerformIO $ typeCheckIO prog
 typeCheckIO :: Program -> IO (Either TypeError Program)
 typeCheckIO (Program decls) = do
   writeIORef varCounter 0
-  let builtinEnv = registerBuiltinFns emptyEnv
+  let declaredOneofs = Set.fromList [name | OneofDecl name _ <- decls]
+      builtinEnv = (registerBuiltinFns emptyEnv) { envOneofNames = declaredOneofs }
   env <- buildEnv builtinEnv decls
   case env of
     Left err -> return (Left err)
@@ -749,14 +831,16 @@ registerBuiltinFns env = env
       [ ("read",  TFun (TRec (RExtend "path" TStr REmpty)) TStr)
       -- write : {| path: String, content: String |} -> Void
       , ("write", TFun (TRec (RExtend "path" TStr (RExtend "content" TStr REmpty))) TVoid)
+      -- file_exists : {| path: String |} -> Int
+      , ("file_exists", TFun (TRec (RExtend "path" TStr REmpty)) TInt)
       -- argc : {| |} -> Int
       , ("argc",     TFun (TRec REmpty) TInt)
       -- argv : {| n: Int |} -> String
       , ("argv",     TFun (TRec (RExtend "n" TInt REmpty)) TStr)
       -- sh : {| command: String |} -> Int
       , ("sh",       TFun (TRec (RExtend "command" TStr REmpty)) TInt)
-      -- terminate : {| code: Int |} -> Void
-      , ("terminate", TFun (TRec (RExtend "code" TInt REmpty)) TVoid)
+      -- terminate : {| code: Int |} -> Never
+      , ("terminate", TFun (TRec (RExtend "code" TInt REmpty)) TNever)
       -- spawn : {| command: String |} -> Int
       , ("spawn",    TFun (TRec (RExtend "command" TStr REmpty)) TInt)
       -- await : {| pid: Int |} -> Int
@@ -778,14 +862,6 @@ registerBuiltinFns env = env
       -- strcmp : {| a: String, b: String |} -> Int
       , ("strcmp",   TFun (TRec (RExtend "a" TStr (RExtend "b" TStr REmpty))) TInt)
       ]
-
-builtinFnNames :: [String]
-builtinFnNames =
-  [ "read", "write", "argc", "argv", "sh", "terminate"
-  , "spawn", "await", "sleep_ms"
-  , "strlen", "char_at", "substr", "concat"
-  , "int_to_str", "char_of_int", "strcmp"
-  ]
 
 -- | First pass: collect all declarations into the environment.
 buildEnv :: Env -> [Decl] -> IO (Either TypeError Env)
@@ -867,8 +943,10 @@ resolveTypeAnnInEnv env (TAName name) =
       in Right (TRec (RExtend "__tag" TStr row))
     Nothing ->
       case Map.lookup name (envOneofs env) of
-        Just _  -> Right TVoid  -- placeholder; use resolveTypeAnnIO for actual fresh vars
-        Nothing -> Left $ "Unknown type annotation: " ++ name
+        Just _  -> Right (TOneof name)
+        Nothing
+          | Set.member name (envOneofNames env) -> Right (TOneof name)
+          | otherwise -> Left $ "Unknown type annotation: " ++ name
 resolveTypeAnnInEnv _ (TARecord _) =
   Left "Record type annotations are not supported yet"
 resolveTypeAnnInEnv _ (TAFun _ _) =
@@ -880,7 +958,7 @@ resolveTypeAnnInEnv _ (TAFun _ _) =
 resolveTypeAnnIO :: Env -> TypeAnn -> IO (Either TypeError Type)
 resolveTypeAnnIO env (TAName "_") = Right <$> freshTVar (envLevel env)
 resolveTypeAnnIO env (TAName name)
-  | Map.member name (envOneofs env) = Right <$> freshTVar (envLevel env)
+  | Set.member name (envOneofNames env) = return (Right (TOneof name))
   | otherwise = return (resolveTypeAnnInEnv env (TAName name))
 resolveTypeAnnIO env ta = return (resolveTypeAnnInEnv env ta)
 
@@ -959,6 +1037,8 @@ showType :: Type -> String
 showType TInt = "Int"
 showType TStr = "String"
 showType TVoid = "Void"
+showType TNever = "Never"
+showType (TOneof name) = name
 showType (TFun a r) = showType a ++ " -> " ++ showType r
 showType (TRec row) = "{| " ++ showRow row ++ " |}"
 showType (TVar ref) = unsafePerformIO $ do

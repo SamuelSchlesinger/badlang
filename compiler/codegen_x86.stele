@@ -83,22 +83,27 @@ fn emit_mov_imm_x86
     concat {| a: s3, b: nc |}
 end
 
--- x86-64 function prologue (fixed 2048-byte frame)
+-- x86-64 function prologue with a 16-byte-aligned, per-function frame.
 fn emit_prologue_x86
-  case {| |} =>
+  case {| frame_size |} =>
     let n = nl {| |}
     let s1 = concat {| a: "  pushq %rbp", b: n |}
     let s2 = concat {| a: s1, b: "  movq %rsp, %rbp" |}
     let s3 = concat {| a: s2, b: n |}
-    let s4 = concat {| a: s3, b: "  subq $2048, %rsp" |}
-    concat {| a: s4, b: n |}
+    match frame_size == 0
+      case 1 => s3
+      case 0 =>
+        let s4 = concat {| a: s3, b: "  subq $" |}
+        let s5 = concat {| a: s4, b: int_to_str {| n: frame_size |} |}
+        concat {| a: concat {| a: s5, b: ", %rsp" |}, b: n |}
+    end
 end
 
 -- x86-64 function epilogue
 fn emit_epilogue_x86
   case {| |} =>
     let n = nl {| |}
-    let s1 = concat {| a: "  addq $2048, %rsp", b: n |}
+    let s1 = concat {| a: "  movq %rbp, %rsp", b: n |}
     let s2 = concat {| a: s1, b: "  popq %rbp" |}
     let s3 = concat {| a: s2, b: n |}
     let s4 = concat {| a: s3, b: "  retq" |}
@@ -193,29 +198,6 @@ fn emit_binop_op_x86
   case {| op |} =>
     let n = nl {| |}
     match op
-      case "+" =>
-        let s1 = asm_ln {| s: "  addq %r9, %r8" |}
-        concat {| a: s1, b: asm_ln {| s: "  movq %r8, %rdi" |} |}
-      case "-" =>
-        let s1 = asm_ln {| s: "  subq %r9, %r8" |}
-        concat {| a: s1, b: asm_ln {| s: "  movq %r8, %rdi" |} |}
-      case "*" =>
-        let s1 = asm_ln {| s: "  imulq %r9, %r8" |}
-        concat {| a: s1, b: asm_ln {| s: "  movq %r8, %rdi" |} |}
-      case "/" =>
-        let s1 = concat {| a: "  movq %r8, %rax", b: n |}
-        let s2 = concat {| a: s1, b: "  cqo" |}
-        let s3 = concat {| a: s2, b: n |}
-        let s4 = concat {| a: s3, b: "  idivq %r9" |}
-        let s5 = concat {| a: s4, b: n |}
-        concat {| a: s5, b: asm_ln {| s: "  movq %rax, %rdi" |} |}
-      case "%" =>
-        let s1 = concat {| a: "  movq %r8, %rax", b: n |}
-        let s2 = concat {| a: s1, b: "  cqo" |}
-        let s3 = concat {| a: s2, b: n |}
-        let s4 = concat {| a: s3, b: "  idivq %r9" |}
-        let s5 = concat {| a: s4, b: n |}
-        concat {| a: s5, b: asm_ln {| s: "  movq %rdx, %rdi" |} |}
       case "==" =>
         let s1 = concat {| a: "  cmpq %r9, %r8", b: n |}
         let s2 = concat {| a: s1, b: "  sete %dil" |}
@@ -267,6 +249,15 @@ fn emit_binop_op_x86
     end
 end
 
+fn emit_checked_binop_call_x86
+  case {| left_slot, right_slot, operation, mode |} =>
+    let pfx = sym_prefix_x86 {| mode: mode |}
+    let lp = emit_load_slot_x86 {| slot: left_slot, reg: "%rdi" |}
+    let rp = emit_load_slot_x86 {| slot: right_slot, reg: "%rsi" |}
+    let call = asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: operation |} |} |}
+    concat {| a: concat {| a: lp, b: rp |}, b: call |}
+end
+
 fn emit_binop_x86
   case {| node, state, mode |} =>
     let pfx = sym_prefix_x86 {| mode: mode |}
@@ -296,6 +287,11 @@ fn emit_binop_x86
         let c2 = concat {| a: c1, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "stele_value_neq" |} |} |} |}
         let c3 = concat {| a: c2, b: asm_ln {| s: "  movl %eax, %edi" |} |}
         concat {| a: c3, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "make_int" |} |} |} |}
+      case "+" => emit_checked_binop_call_x86 {| left_slot: ls, right_slot: rs, operation: "checked_add", mode: mode |}
+      case "-" => emit_checked_binop_call_x86 {| left_slot: ls, right_slot: rs, operation: "checked_sub", mode: mode |}
+      case "*" => emit_checked_binop_call_x86 {| left_slot: ls, right_slot: rs, operation: "checked_mul", mode: mode |}
+      case "/" => emit_checked_binop_call_x86 {| left_slot: ls, right_slot: rs, operation: "checked_div", mode: mode |}
+      case "%" => emit_checked_binop_call_x86 {| left_slot: ls, right_slot: rs, operation: "checked_mod", mode: mode |}
       case _ =>
         let ll = emit_load_slot_x86 {| slot: ls, reg: "%r8" |}
         let rl = emit_load_slot_x86 {| slot: rs, reg: "%r9" |}
@@ -316,24 +312,17 @@ end
 
 fn emit_unop_x86
   case {| node, state, mode |} =>
-    let n = nl {| |}
     let pfx = sym_prefix_x86 {| mode: mode |}
     let r = emit_expr_x86 {| node: node.operand, state: state, mode: mode |}
     let f = fresh_var {| prefix: "_t", counter: r.state.counter |}
     let st = {| counter: f.counter, slot_counter: r.state.slot_counter, slots: r.state.slots, strs: r.state.strs |}
     let ar = alloc_slot {| name: f.name, state: st |}
     let ss = lookup_slot {| name: r.var, slots: ar.state.slots |}
-    let load = emit_load_slot_x86 {| slot: ss, reg: "%r8" |}
+    let load = emit_load_slot_x86 {| slot: ss, reg: "%rdi" |}
     let store = emit_store_slot_x86 {| slot: ar.slot, reg: "%rax" |}
     let rload = emit_load_slot_x86 {| slot: ss, reg: "%rdi" |}
     let s1 = concat {| a: r.code, b: load |}
-    let s2 = concat {| a: s1, b: "  movq 8(%r8), %r8" |}
-    let s3 = concat {| a: s2, b: n |}
-    let s4 = concat {| a: s3, b: "  negq %r8" |}
-    let s5 = concat {| a: s4, b: n |}
-    let s6 = concat {| a: s5, b: "  movq %r8, %rdi" |}
-    let s7 = concat {| a: s6, b: n |}
-    let s8 = concat {| a: s7, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "make_int" |} |} |} |}
+    let s8 = concat {| a: s1, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "checked_neg" |} |} |} |}
     let s9 = concat {| a: s8, b: store |}
     let s10 = concat {| a: s9, b: rload |}
     {| code: concat {| a: s10, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "rc_release" |} |} |} |}, var: f.name, state: ar.state |}
@@ -684,7 +673,11 @@ fn emit_match_clause_x86
     let s9 = concat {| a: s8, b: fl.name |}
     let s10 = concat {| a: s9, b: ":" |}
     let code = concat {| a: s10, b: n |}
-    {| code: code, state: {| counter: rb.state.counter, slot_counter: saved_sc, slots: saved_slots, strs: rb.state.strs |} |}
+    let high_sc = match rb.state.slot_counter > saved_sc
+      case 1 => rb.state.slot_counter
+      case 0 => saved_sc
+    end
+    {| code: code, state: {| counter: rb.state.counter, slot_counter: high_sc, slots: saved_slots, strs: rb.state.strs |} |}
 end
 
 fn emit_match_clauses_loop_x86
@@ -815,15 +808,14 @@ fn emit_closure_ref_x86
         let s8 = concat {| a: s7, b: n |}
         let s9 = concat {| a: s8, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "make_record_with_fields" |} |} |} |}
         let s10 = concat {| a: s9, b: add_sp |}
-        -- %rax = env record, save to %rbx (callee-saved)
-        let s11 = concat {| a: s10, b: asm_ln {| s: "  movq %rax, %rbx" |} |}
+        -- %rax = env record; pass it directly as the second argument
+        let s11 = concat {| a: s10, b: asm_ln {| s: "  movq %rax, %rsi" |} |}
         let fn_name = concat {| a: pfx, b: concat {| a: "fn_", b: node.lambda_name |} |}
         let s12 = concat {| a: s11, b: "  leaq " |}
         let s13 = concat {| a: s12, b: fn_name |}
         let s14 = concat {| a: s13, b: "(%rip), %rdi" |}
         let s15 = concat {| a: s14, b: n |}
-        let s16 = concat {| a: s15, b: asm_ln {| s: "  movq %rbx, %rsi" |} |}
-        let s17 = concat {| a: s16, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "make_closure" |} |} |} |}
+        let s17 = concat {| a: s15, b: asm_ln {| s: concat {| a: "  callq ", b: concat {| a: pfx, b: "make_closure" |} |} |} |}
         let f = fresh_var {| prefix: "_t", counter: sr.state.counter |}
         let st1 = {| counter: f.counter, slot_counter: sr.state.slot_counter, slots: sr.state.slots, strs: sr.state.strs |}
         let ar = alloc_slot {| name: f.name, state: st1 |}
@@ -906,7 +898,11 @@ fn emit_clause_x86
     let s6 = concat {| a: s5, b: fail_label |}
     let s7 = concat {| a: s6, b: ":" |}
     let code = concat {| a: s7, b: n |}
-    {| code: code, state: {| counter: rb.state.counter, slot_counter: saved_sc, slots: saved_slots, strs: rb.state.strs |} |}
+    let high_sc = match rb.state.slot_counter > saved_sc
+      case 1 => rb.state.slot_counter
+      case 0 => saved_sc
+    end
+    {| code: code, state: {| counter: rb.state.counter, slot_counter: high_sc, slots: saved_slots, strs: rb.state.strs |} |}
 end
 
 fn emit_clauses_loop_x86
@@ -922,16 +918,29 @@ fn emit_clauses_loop_x86
 end
 
 fn emit_fn_x86
-  case {| name, clauses, state, mode |} =>
+  case {| name, clauses, closure, state, mode |} =>
     let n = nl {| |}
     let pfx = sym_prefix_x86 {| mode: mode |}
     let fp = concat {| a: "fn_", b: name |}
     let fp2 = concat {| a: fp, b: "_" |}
-    let pro = emit_prologue_x86 {| |}
-    let init_s = cons {| head: {| name: "arg", slot: 0 |}, tail: nil {| |} |}
-    let fst = {| counter: state.counter, slot_counter: 1, slots: init_s, strs: state.strs |}
+    let arg_s = cons {| head: {| name: "arg", slot: 0 |}, tail: nil {| |} |}
+    let init_s = match closure
+      case 1 => cons {| head: {| name: "stele_closure_env", slot: 1 |}, tail: arg_s |}
+      case 0 => arg_s
+    end
+    let initial_slots = match closure
+      case 1 => 2
+      case 0 => 1
+    end
+    let fst = {| counter: state.counter, slot_counter: initial_slots, slots: init_s, strs: state.strs |}
     let store_arg = emit_store_slot_x86 {| slot: 0, reg: "%rdi" |}
+    let store_env = match closure
+      case 1 => emit_store_slot_x86 {| slot: 1, reg: "%rsi" |}
+      case 0 => ""
+    end
     let rc = emit_clauses_loop_x86 {| clauses: clauses, clause_id: 0, func_prefix: fp2, state: fst, acc: "", mode: mode |}
+    let frame_size = ((rc.state.slot_counter * 8 + 15) / 16) * 16
+    let pro = emit_prologue_x86 {| frame_size: frame_size |}
     let mf_msg = concat {| a: "fn '", b: name |}
     let mf_msg2 = concat {| a: mf_msg, b: "'" |}
     let mf_sr = add_str_asm {| s: mf_msg2, state: rc.state |}
@@ -950,7 +959,8 @@ fn emit_fn_x86
     let l9 = concat {| a: l8, b: n |}
     let s1 = concat {| a: l9, b: pro |}
     let s2 = concat {| a: s1, b: store_arg |}
-    let s3 = concat {| a: s2, b: rc.code |}
+    let s2b = concat {| a: s2, b: store_env |}
+    let s3 = concat {| a: s2b, b: rc.code |}
     let s4 = concat {| a: s3, b: mf4 |}
     let code = concat {| a: s4, b: n |}
     {| code: code, state: {| counter: mf_sr.state.counter, slot_counter: state.slot_counter, slots: state.slots, strs: mf_sr.state.strs |} |}
@@ -1027,7 +1037,6 @@ fn emit_main_fn_x86
     let n = nl {| |}
     let pfx = sym_prefix_x86 {| mode: mode |}
     let rit = find_do {| decls: decls, name: "main" |}
-    let pro = emit_prologue_x86 {| |}
     let ac1 = concat {| a: "  movq ", b: pfx |}
     let ac2 = concat {| a: ac1, b: "g_argc@GOTPCREL(%rip), %r8" |}
     let ac3 = concat {| a: ac2, b: n |}
@@ -1044,6 +1053,7 @@ fn emit_main_fn_x86
     let main_hdr6 = concat {| a: main_hdr5, b: n |}
     match rit.tag
       case "none" =>
+        let pro = emit_prologue_x86 {| frame_size: 0 |}
         let s1 = concat {| a: main_hdr6, b: pro |}
         let s2 = concat {| a: s1, b: argc_code |}
         let s3 = concat {| a: s2, b: argv_code |}
@@ -1053,6 +1063,8 @@ fn emit_main_fn_x86
         let init = nil {| |}
         let fst = {| counter: state.counter, slot_counter: 0, slots: init, strs: state.strs |}
         let rs = emit_stmts_loop_x86 {| stmts: rit.stmts, state: fst, acc: "", mode: mode, declared: nil {| |} |}
+        let frame_size = ((rs.state.slot_counter * 8 + 15) / 16) * 16
+        let pro = emit_prologue_x86 {| frame_size: frame_size |}
         let empty = nil {| |}
         let let_names = collect_let_names {| stmts: rit.stmts, acc: empty |}
         let rel = gen_release_code_x86 {| names: let_names, slots: rs.state.slots, mode: mode |}
@@ -1063,6 +1075,59 @@ fn emit_main_fn_x86
         let s5 = concat {| a: s4, b: rel |}
         let s6 = concat {| a: s5, b: asm_ln {| s: "  xorl %eax, %eax" |} |}
         let code = concat {| a: s6, b: emit_epilogue_x86 {| |} |}
+        {| code: code, state: {| counter: rs.state.counter, slot_counter: state.slot_counter, slots: state.slots, strs: rs.state.strs |} |}
+    end
+end
+
+fn emit_test_body_x86
+  case {| decl, state, mode |} =>
+    let rs = emit_stmts_loop_x86 {| stmts: decl.stmts, state: state, acc: "", mode: mode, declared: nil {| |} |}
+    let let_names = collect_let_names {| stmts: decl.stmts, acc: nil {| |} |}
+    let rel = gen_release_code_x86 {| names: let_names, slots: rs.state.slots, mode: mode |}
+    {| code: concat {| a: rs.code, b: rel |}, state: rs.state |}
+end
+
+fn emit_test_bodies_loop_x86
+  case {| tests, state, acc, mode |} =>
+    match is_nil {| list: tests |}
+      case 1 => {| code: acc, state: state |}
+      case 0 =>
+        let head = list_head {| list: tests |}
+        let tail = list_tail {| list: tests |}
+        let r = emit_test_body_x86 {| decl: head, state: state, mode: mode |}
+        emit_test_bodies_loop_x86 {| tests: tail, state: r.state, acc: concat {| a: acc, b: r.code |}, mode: mode |}
+    end
+end
+
+fn emit_test_main_x86
+  case {| decls, state, mode |} =>
+    let tests = collect_tests {| decls: decls, acc: nil {| |} |}
+    match is_nil {| list: tests |}
+      case 1 => emit_main_fn_x86 {| decls: decls, state: state, mode: mode |}
+      case 0 =>
+        let n = nl {| |}
+        let pfx = sym_prefix_x86 {| mode: mode |}
+        let fst = {| counter: state.counter, slot_counter: 0, slots: nil {| |}, strs: state.strs |}
+        let rs = emit_test_bodies_loop_x86 {| tests: tests, state: fst, acc: "", mode: mode |}
+        let frame_size = ((rs.state.slot_counter * 8 + 15) / 16) * 16
+        let pro = emit_prologue_x86 {| frame_size: frame_size |}
+        let ac1 = concat {| a: "  movq ", b: pfx |}
+        let ac2 = concat {| a: ac1, b: "g_argc@GOTPCREL(%rip), %r8" |}
+        let argc_code = concat {| a: concat {| a: ac2, b: n |}, b: asm_ln {| s: "  movl %edi, (%r8)" |} |}
+        let av1 = concat {| a: "  movq ", b: pfx |}
+        let av2 = concat {| a: av1, b: "g_argv@GOTPCREL(%rip), %r8" |}
+        let argv_code = concat {| a: concat {| a: av2, b: n |}, b: asm_ln {| s: "  movq %rsi, (%r8)" |} |}
+        let h1 = concat {| a: ".globl ", b: pfx |}
+        let h2 = concat {| a: h1, b: "main" |}
+        let h3 = concat {| a: h2, b: n |}
+        let h4 = concat {| a: h3, b: pfx |}
+        let h5 = concat {| a: concat {| a: h4, b: "main:" |}, b: n |}
+        let s1 = concat {| a: h5, b: pro |}
+        let s2 = concat {| a: s1, b: argc_code |}
+        let s3 = concat {| a: s2, b: argv_code |}
+        let s4 = concat {| a: s3, b: rs.code |}
+        let s5 = concat {| a: s4, b: asm_ln {| s: "  xorl %eax, %eax" |} |}
+        let code = concat {| a: s5, b: emit_epilogue_x86 {| |} |}
         {| code: code, state: {| counter: rs.state.counter, slot_counter: state.slot_counter, slots: state.slots, strs: rs.state.strs |} |}
     end
 end
@@ -1079,10 +1144,10 @@ fn emit_decls_loop_x86
         let head = list_head {| list: decls |}
         let tail = list_tail {| list: decls |}
         let r = match head
-          case DeclFn {| name, clauses |} =>
+          case DeclFn {| name, clauses, closure |} =>
             match is_builtin_fn {| name: name |}
               case 1 => {| code: "", state: state |}
-              case 0 => emit_fn_x86 {| name: name, clauses: clauses, state: state, mode: mode |}
+              case 0 => emit_fn_x86 {| name: name, clauses: clauses, closure: closure, state: state, mode: mode |}
             end
           case _ => {| code: "", state: state |}
         end
@@ -1107,7 +1172,10 @@ fn emit_x86
     let empty = nil {| |}
     let init_state = {| counter: 0, slot_counter: 0, slots: empty, strs: empty |}
     let fn_defs = emit_decls_loop_x86 {| decls: decls, state: init_state, acc: "", mode: mode |}
-    let main_fn = emit_main_fn_x86 {| decls: decls, state: fn_defs.state, mode: mode |}
+    let main_fn = match is_test_mode {| |}
+      case 1 => emit_test_main_x86 {| decls: decls, state: fn_defs.state, mode: mode |}
+      case 0 => emit_main_fn_x86 {| decls: decls, state: fn_defs.state, mode: mode |}
+    end
     let str_table = emit_string_table_x86 {| strs: main_fn.state.strs, mode: mode |}
     let sect = text_section_x86 {| mode: mode |}
     let hdr = concat {| a: sect, b: n |}
@@ -1126,4 +1194,3 @@ fn emit_x86
     end
     concat {| a: s3, b: gnu_stack |}
 end
-

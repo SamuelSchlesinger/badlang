@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-bebaa2d8.js";
+            window.path_to_searchindex_js = "searchindex-49372bdb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-29fcd749.js"></script>
@@ -187,10 +187,14 @@ errors when things don’t line up.</p>
 <tbody>
 <tr><td><code>Int</code></td><td>64-bit signed integer</td><td><code>0</code>, <code>42</code>, <code>-5</code></td></tr>
 <tr><td><code>String</code></td><td>Immutable string</td><td><code>"hello"</code>, <code>""</code></td></tr>
-<tr><td><code>Void</code></td><td>Unit type (no meaningful value)</td><td>Return type of <code>inscribe</code></td></tr>
+<tr><td><code>Void</code></td><td>Unit type (no meaningful value)</td><td>Return type of <code>write</code></td></tr>
 </tbody>
 </table>
 </div>
+<p><code>terminate</code> has an internal bottom type, <code>Never</code>. Unlike <code>Void</code>, it can satisfy
+the result type of any branch because it never returns.
+Integer literals outside the signed 64-bit range are rejected at compile time;
+runtime arithmetic is checked for overflow and zero divisors.</p>
 <h2 id="record-types"><a class="header" href="#record-types">Record Types</a></h2>
 <p>Records have types determined by their fields:</p>
 <pre><code>{| x: Int, y: Int |}
@@ -276,6 +280,9 @@ a full polymorphic type system while providing useful flexibility.</p>
 <li>Adding a string to an integer</li>
 <li>Accessing a field that doesn’t exist on a record</li>
 <li>Passing a record that’s missing required fields</li>
+<li>Passing the wrong argument shape to a user function or closure</li>
+<li>Returning incompatible types from different clauses</li>
+<li>Mixing distinct declared <code>oneof</code> types</li>
 </ul>
 <pre><code>fn needs_xyz
   case {| x, y, z |} =&gt; x + y + z
@@ -286,16 +293,21 @@ do main
   print needs_xyz {| x: 1, y: 2 |}
 end
 </code></pre>
-<h2 id="no-explicit-type-annotations"><a class="header" href="#no-explicit-type-annotations">No Explicit Type Annotations</a></h2>
-<p>Type annotations appear in only one place: struct field declarations.</p>
+<h2 id="type-annotations"><a class="header" href="#type-annotations">Type Annotations</a></h2>
+<p>Type annotations appear on struct and oneof fields and in record-pattern
+bindings.</p>
 <pre><code>struct Point
   x : Int
   y : Int
 end
 </code></pre>
-<p>Everywhere else — fn bodies, do statements, let bindings — types are
-inferred. There is no syntax for writing type annotations on expressions or
-function signatures.</p>
+<p>Everywhere else — fn bodies, do statements, let bindings — types are inferred.
+There is no syntax for writing an explicit function signature.</p>
+<h2 id="nominal-sums-structural-records"><a class="header" href="#nominal-sums-structural-records">Nominal Sums, Structural Records</a></h2>
+<p>Records and structs remain structurally compatible. Declared <code>oneof</code> sums are
+nominal: two sums with similar-looking variants are still different types.
+Accessing a field directly on a sum is valid only when every variant declares
+that field with a compatible type.</p>
 
                     </main>
 

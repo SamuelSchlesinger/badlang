@@ -3,18 +3,23 @@
 ## Current State
 
 ### What Exists Today
-1. **Compiler integration tests** (`ci/test-compiler.sh`): 8 positive + 4 negative tests run across Haskell C backend, Haskell native backends, and self-hosted C backend (28 total test runs)
-2. **Stdlib tests** (`stdlib/tests/run.sh`): 6 test files (assert, cli, math, concurrency, strings, path) run across all 5 backend modes via `stela test`
-3. **Bootstrap verification** (`bootstrap.sh`): Fixed-point test that compiles the compiler with itself 3 times and verifies output converges
-4. **Example programs** (`ci/test-examples.sh`): Compiles and runs example programs
+1. **Compiler conformance tests** (`ci/test-compiler.sh`): discovers positive,
+   compile-negative, and runtime-negative tests recursively and runs the
+   Haskell and self-hosted compilers across every host-runnable backend.
+2. **Embedded test verification**: proves test bodies execute in Haskell/C and
+   every self-hosted backend, checks the C runner summary, and exercises the
+   `do main` fallback for files without tests.
+3. **Stdlib tests** (`stdlib/tests/run.sh`): 6 test files run across the
+   supported mode matrix and require their success sentinel.
+4. **Bootstrap verification** (`bootstrap.sh`): fixed-point tests for C and
+   native compiler generations, plus Stela and stdlib smoke tests.
+5. **Example programs** (`ci/test-examples.sh`): compiles and runs examples.
 
 ### Gaps
 - No **unit tests** for individual compiler modules (util, lexer, parser, codegen)
-- No tests for the **self-hosted compiler's AArch64/x86 backends**
 - No **fuzz testing** or property-based testing
 - No **performance regression** tracking
-- Tests cannot be **co-located** with the code they test
-- No test discovery — all tests are manually enumerated in bash scripts
+- Compiler modules do not yet contain a broad set of co-located unit tests
 
 ---
 

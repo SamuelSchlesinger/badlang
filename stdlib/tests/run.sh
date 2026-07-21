@@ -68,12 +68,30 @@ run_suite() {
   local action="$1"
   local mode="$2"
   echo "== stdlib suite: action=$action mode=$mode =="
-  "$STELA_BIN" "$action" stdlib/tests/assert_test.stele --lib assert --compiler "$COMPILER_BIN" --mode "$mode" --no-sandbox
-  "$STELA_BIN" "$action" stdlib/tests/cli_test.stele --lib cli --compiler "$COMPILER_BIN" --mode "$mode" --no-sandbox
-  "$STELA_BIN" "$action" stdlib/tests/math_test.stele --lib math --compiler "$COMPILER_BIN" --mode "$mode" --no-sandbox
-  "$STELA_BIN" "$action" stdlib/tests/concurrency_test.stele --lib concurrency --compiler "$COMPILER_BIN" --mode "$mode" --no-sandbox
-  "$STELA_BIN" "$action" stdlib/tests/strings_test.stele --lib assert --lib strings --compiler "$COMPILER_BIN" --mode "$mode" --no-sandbox
-  "$STELA_BIN" "$action" stdlib/tests/path_test.stele --lib assert --lib path --compiler "$COMPILER_BIN" --mode "$mode" --no-sandbox
+  run_case "$action" "$mode" stdlib/tests/assert_test.stele --lib assert
+  run_case "$action" "$mode" stdlib/tests/cli_test.stele --lib cli
+  run_case "$action" "$mode" stdlib/tests/math_test.stele --lib math
+  run_case "$action" "$mode" stdlib/tests/concurrency_test.stele --lib concurrency
+  run_case "$action" "$mode" stdlib/tests/strings_test.stele --lib assert --lib strings
+  run_case "$action" "$mode" stdlib/tests/path_test.stele --lib assert --lib path
+}
+
+run_case() {
+  local action="$1"
+  local mode="$2"
+  local source="$3"
+  shift 3
+  if [[ "$action" == "test" ]]; then
+    local output
+    output="$("$STELA_BIN" "$action" "$source" "$@" --compiler "$COMPILER_BIN" --mode "$mode" --no-sandbox 2>&1)"
+    echo "$output"
+    if ! grep -qx '1' <<<"$output"; then
+      echo "stdlib test did not execute its sentinel: $source ($mode)"
+      exit 1
+    fi
+  else
+    "$STELA_BIN" "$action" "$source" "$@" --compiler "$COMPILER_BIN" --mode "$mode" --no-sandbox
+  fi
 }
 
 (

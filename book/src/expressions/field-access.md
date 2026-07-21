@@ -68,3 +68,6 @@ Output:
 The type checker infers the required field from the access. If you write
 `p.x`, the type checker knows `p` must be a record with at least an `x`
 field, using row polymorphism to allow extra fields.
+
+For a declared `oneof`, direct access is accepted only if every variant has the
+field with a compatible type. Otherwise, pattern-match on the variant first.

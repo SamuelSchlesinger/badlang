@@ -15,7 +15,7 @@ The tokenizer recognizes the following token types:
 
 | Category | Types |
 |----------|-------|
-| Keywords | `fn`, `do`, `struct`, `case`, `end`, `let`, `match`, `readln`, `readint`, `print`, `write`, `oneof` |
+| Keywords | `fn`, `do`, `struct`, `oneof`, `test`, `import`, `open`, `case`, `end`, `let`, `match`, `readln`, `readint`, `print`, `write` |
 | Identifiers | `ident` |
 | Literals | `int`, `str` |
 | Operators | `+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `&&`, `\|\|` |

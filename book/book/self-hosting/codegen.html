@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-bebaa2d8.js";
+            window.path_to_searchindex_js = "../searchindex-49372bdb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-29fcd749.js"></script>
@@ -290,7 +290,7 @@ the <code>goto</code>.</p>
 <p>Clauses are emitted as cascading if-blocks. On a successful match, the body is
 evaluated, pattern-bound variables are released, and the result is returned.</p>
 <h2 id="built-in-functions"><a class="header" href="#built-in-functions">Built-in Functions</a></h2>
-<p>Certain functions (<code>unearth</code>, <code>inscribe</code>, <code>concat</code>, <code>strlen</code>, <code>char_at</code>,
+<p>Certain functions (<code>read</code>, <code>write</code>, <code>concat</code>, <code>strlen</code>, <code>char_at</code>,
 <code>substr</code>, <code>strcmp</code>, <code>int_to_str</code>, <code>char_of_int</code>, <code>argc</code>, <code>argv</code>) are
 implemented in <code>runtime.c</code> rather than generated. The emitter checks
 <code>is_builtin_fn</code> and skips code generation for these — they are available as C
@@ -298,7 +298,7 @@ functions at link time.</p>
 <h2 id="assembling-the-output"><a class="header" href="#assembling-the-output">Assembling the Output</a></h2>
 <p>The top-level <code>emit_c</code> fn assembles the complete C file by concatenating:</p>
 <ol>
-<li>The contents of <code>runtime.c</code> (read via <code>unearth</code>)</li>
+<li>The contents of <code>runtime.c</code> (read via <code>read</code>)</li>
 <li>Forward declarations for all non-builtin functions</li>
 <li>Function definitions</li>
 <li>The <code>main()</code> function (from the <code>do main</code> declaration)</li>

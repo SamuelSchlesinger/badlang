@@ -1,9 +1,9 @@
 # The Self-Hosting Compiler
 
-Stele is **self-hosting**: the file `compiler.stele` (at the repo root) is a
-complete Stele compiler written in Stele itself. It implements the full
-compilation pipeline — tokenizer, parser, C code emitter, and AArch64 native
-code generator — and can compile itself.
+Stele is **self-hosting**: the modular program rooted at
+`compiler/main.stele` is a complete Stele compiler written in Stele itself. It
+implements module resolution, type checking, lambda lifting, and the C,
+AArch64, and x86-64 backends, and can compile itself.
 
 ## Why Self-Hosting?
 
@@ -17,37 +17,38 @@ serves as:
 - **A correctness proof** via bootstrapping: when the compiler compiles itself
   and produces identical output across generations, we know it faithfully
   implements its own semantics.
-- **The largest Stele program**, exercising the compiler at scale (~3000
-  lines).
+- **The largest Stele program**, exercising the compiler at scale (more than
+  8,000 lines across its modules).
 
 ## Architecture at a Glance
 
-The self-hosting compiler follows the same pipeline as the Haskell reference
-compiler, minus the type checker:
+The self-hosting compiler follows the same pipeline as the Haskell bootstrap
+compiler:
 
 ```
-Source (.stele) → Tokenize → Parse → Emit C or AArch64 → Write File
+Source → Tokenize → Parse → Resolve modules → Type check → Desugar
+       → Lift closures → Emit C/AArch64/x86-64 → Write file
 ```
 
-The compiler reads a source file, tokenizes it, parses the token stream into
-an AST, and generates either C code or AArch64 assembly depending on the mode.
-It relies on a shared `runtime.c` (or `runtime/runtime.c` for native mode)
-that provides the value representation, reference counting, and built-in
-functions for file I/O and string manipulation.
+The compiler reads a source file, recursively loads its modules, checks the
+flattened program, and emits C or native assembly depending on the mode. The C
+backend embeds `runtime/runtime.c`; native outputs link against it.
 
 The compiler selects its output mode via command-line arguments:
-- `compiler source.stele output.c` — emit C (default)
-- `compiler source.stele output.s asm` — emit AArch64 assembly
+- `build/compiler source.stele output.c` — emit C (default)
+- `build/compiler source.stele output.s asm` — emit AArch64 assembly
+- `build/compiler source.stele output.s x86` — emit x86-64 assembly
 
-The entire compiler is a single file organized into clear sections:
+The compiler is split into focused modules:
 
 | Section | Purpose |
 |---------|---------|
-| Utility library | Character classification, string helpers, linked lists |
-| Tokenizer | Lexical analysis into tokens |
-| Parser | Recursive descent into AST nodes |
-| C code emitter | AST to C translation |
-| AArch64 code emitter | AST to native assembly translation |
-| Driver | Main do selecting mode and tying it all together |
+| `util`, `lexer`, `parser`, `ast` | Front end and shared data structures |
+| `resolve` | Recursive imports, signatures, and name mangling |
+| `typecheck` | Inference, row unification, and nominal sums |
+| `desugar`, `lambda_lift` | Variant lowering and closure conversion |
+| `codegen_c` | C translation |
+| `codegen_aarch64`, `codegen_x86` | Native assembly translation |
+| `main` | Driver selecting mode and tying the pipeline together |
 
 Each section is covered in detail in the following subchapters.

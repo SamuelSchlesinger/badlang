@@ -16,25 +16,28 @@ and native assembly output.
 The language is built from first principles. It draws from pattern
 calculus and structural subtyping to create a language where pattern matching
 is the fundamental operation and all functions accept structural records.
+The current compatibility contract is documented in
+[`docs/language-semantics.md`](docs/language-semantics.md).
 
 ## Quick Start
 
-The primary compiler is `compiler.stele` — a self-hosting Stele compiler
-written in Stele. If you have a pre-built `compiler` binary:
+The primary compiler source is `compiler/main.stele` plus its sibling modules —
+a self-hosting Stele compiler written in Stele. If you have built
+`build/compiler`:
 
 ```bash
 # Compile a program to C
-./compiler examples/hello.stele hello.c
+./build/compiler examples/hello.stele hello.c
 cc -O1 -o hello hello.c && ./hello
 # => 25
 # => 3628800
 
 # Compile to native AArch64 assembly
-./compiler examples/hello.stele hello.s asm
+./build/compiler examples/hello.stele hello.s asm
 cc -O1 -o hello hello.s runtime/runtime.c && ./hello
 
 # Compile to x86_64 assembly
-./compiler examples/hello.stele hello.s x86
+./build/compiler examples/hello.stele hello.s x86
 cc -O1 -o hello hello.s runtime/runtime.c && ./hello
 ```
 
@@ -77,26 +80,27 @@ Builds still support sandboxing via `sandbox-exec` when available.
 
 ```bash
 # 1) Build the self-hosted compiler binary (from repo root)
-cd bootstrap/haskell && cabal run stele -- ../../compiler.stele && cd ../..
-cc -O1 -o compiler compiler.c
+cd bootstrap/haskell && cabal run stele -- ../../compiler/main.stele && cd ../..
+mkdir -p build
+cc -O1 -o build/compiler compiler/main.c
 
 # 2) Build stela with the self-hosted compiler
-./compiler stela.stele stela.c
-cc -O1 -o stela stela.c
+./build/compiler stela.stele build/stela.c
+cc -O1 -o build/stela build/stela.c
 ```
 
 ### Using Stela
 
-Run from the repo root (the self-hosted compiler reads `runtime.c` relative
+Run from the repo root (the self-hosted compiler reads `runtime/runtime.c` relative
 to the current working directory):
 
 ```bash
-./stela build examples/hello.stele --compiler ./compiler --mode c
-./stela run examples/hello.stele --compiler ./compiler --mode c
-./stela check examples/hello.stele --compiler ./compiler --mode c
-./stela test examples/hello.stele --compiler ./compiler --mode c
-./stela bench examples/hello.stele --compiler ./compiler --mode c
-./stela clean
+./build/stela build examples/hello.stele --compiler ./build/compiler --mode c
+./build/stela run examples/hello.stele --compiler ./build/compiler --mode c
+./build/stela check examples/hello.stele --compiler ./build/compiler --mode c
+./build/stela test examples/hello.stele --compiler ./build/compiler --mode c
+./build/stela bench examples/hello.stele --compiler ./build/compiler --mode c
+./build/stela clean
 ```
 
 ### Package Manifest (`stela.pkg`)
@@ -127,26 +131,31 @@ Fields:
   - `git-ref` is optional; empty resolves as `HEAD`
   - `<major>` is optional when reading older manifests and defaults to `1`
 
+Package and library names are restricted to letters, digits, `-`, and `_`.
+Manifest entries must be relative paths without a `..` component, and manifest
+fields cannot contain newlines or `|`. `stela` shell-quotes every external
+command argument and replaces manifests and lockfiles atomically.
+
 ### Package Workflow
 
 Initialize a project manifest:
 
 ```bash
-./stela init --name app --entry app.stele --kind app --major 1 --manifest stela.pkg
+./build/stela init --name app --entry app.stele --kind app --major 1 --manifest stela.pkg
 ```
 
 Add a dependency (local or remote Git):
 
 ```bash
-./stela add math /path/to/math-repo --major 1 --manifest stela.pkg
-./stela add strings https://github.com/example/strings.stele.git --ref main --major 2 --manifest stela.pkg
-./stela replace math /path/to/math-fork --ref main --major 1 --manifest stela.pkg
+./build/stela add math /path/to/math-repo --major 1 --manifest stela.pkg
+./build/stela add strings https://github.com/example/strings.stele.git --ref main --major 2 --manifest stela.pkg
+./build/stela replace math /path/to/math-fork --ref main --major 1 --manifest stela.pkg
 ```
 
 Install and lock dependencies:
 
 ```bash
-./stela install --manifest stela.pkg
+./build/stela install --manifest stela.pkg
 ```
 
 This materializes:
@@ -167,9 +176,9 @@ Resolver behavior:
 Inspect the dependency graph:
 
 ```bash
-./stela graph --manifest stela.pkg
-./stela why math --major 1 --manifest stela.pkg
-./stela tidy --manifest stela.pkg
+./build/stela graph --manifest stela.pkg
+./build/stela why math --major 1 --manifest stela.pkg
+./build/stela tidy --manifest stela.pkg
 ```
 
 ### Local Library Packaging
@@ -177,8 +186,8 @@ Inspect the dependency graph:
 Manual local library packaging is still available:
 
 ```bash
-./stela package-lib math.stele --name math
-./stela build app.stele --lib math --compiler ./compiler --mode c
+./build/stela package-lib math.stele --name math
+./build/stela build app.stele --lib math --compiler ./build/compiler --mode c
 ```
 
 Libraries are stored under `.stela/lib/<name>.stelib`.
@@ -218,7 +227,10 @@ Options: `--mode c|asm|asm-linux|x86|x86-linux`, `--sandbox`, `--no-sandbox`, `-
 |-----------|------------------------------------------------|
 | `struct`  | Named record type declaration                   |
 | `oneof`   | Sum type declaration with tagged variants        |
-| `fn`      | Pure function, defined by pattern clauses       |
+| `test`    | Embedded test declaration                        |
+| `import`  | Load a module for qualified access               |
+| `open`    | Load a module and expose its public names        |
+| `fn`      | Function defined by pattern clauses             |
 | `do`      | Effectful entry point (do block)                |
 | `case`    | Pattern clause: `case pattern => body`          |
 | `end`     | Closes a struct, fn, do block, or match block   |
@@ -316,8 +328,8 @@ can optionally carry record fields:
 
 ```
 oneof Shape
-  Circle { radius : Int }
-  Rect { width : Int, height : Int }
+  Circle { radius: Int }
+  Rect { width: Int, height: Int }
   Point
 end
 
@@ -328,8 +340,46 @@ fn area
 end
 ```
 
+Declared sum types are nominal: values from distinct `oneof` declarations do
+not unify merely because their payloads have the same shape. Field access on a
+sum is allowed only when every variant has that field with a compatible type.
 Functions pattern-match on variants directly, and `match` expressions work
 with sum types too.
+
+### Closures
+
+Anonymous functions use `fn ... end`, capture lexical variables, can be
+returned from functions, passed as arguments, and stored in records:
+
+```stele
+fn make_adder
+  case {| base |} =>
+    fn case {| n |} => n + base end
+end
+
+do main
+  let add5 = make_adder {| base: 5 |}
+  print add5 {| n: 7 |}
+end
+```
+
+Closure arguments and captures are separate: a caller field cannot override a
+lexically captured name.
+
+### Modules and Signatures
+
+Each source file is a module. `import Math` enables qualified references such
+as `Math.square(...)`; `open Math` also makes exported names available
+unqualified. Module names map to sibling files by lowercasing the first letter
+(`Math` -> `math.stele`). A sibling `math.steli` file restricts exports; without
+one, all declarations are public. Circular imports are rejected.
+
+### Embedded Tests
+
+`test "name" ... end` declarations are omitted from normal builds and executed
+by compiler test mode or `stela test`. If a file has no embedded tests, test
+mode runs its `do main` block. Test execution is currently fail-fast because
+`terminate` exits the runner process.
 
 ### Mutual Recursion
 
@@ -357,9 +407,10 @@ end
 
 ```
 stele/
-├── compiler.stele          # Self-hosted compiler (the primary compiler)
+├── compiler/               # Modular self-hosted compiler
+│   ├── main.stele          # Compiler entry point
+│   └── *.stele             # Front end, type checker, lowering, backends
 ├── stela.stele             # Build tool + package manager
-├── runtime.c               # C backend runtime (embedded in generated C)
 ├── bootstrap.sh            # Multi-generation bootstrap and fixed-point test
 ├── bootstrap/
 │   └── haskell/            # Haskell bootstrap compiler (for initial build)
@@ -394,9 +445,10 @@ Source (.stele) → PEG Parse → AST → Type Check → IR → Backend → cc �
 
 ### Self-Hosted Compiler
 
-The primary compiler is `compiler.stele` at the repo root. It implements the
-full pipeline — tokenizer, parser, C code emitter, and native code generators
-(AArch64 and x86-64) — and can compile itself. A bootstrap test verifies that
+The primary compiler begins at `compiler/main.stele`. Its modules implement the
+full pipeline — tokenizer, parser, resolver, type checker, C code emitter, and
+native code generators (AArch64 and x86-64) — and can compile themselves. A
+bootstrap test verifies that
 the compiler reaches a fixed point:
 
 ```bash
@@ -405,22 +457,24 @@ the compiler reaches a fixed point:
 ./bootstrap.sh 3 x86    # x86_64 native mode
 ```
 
-This compiles `compiler.stele` through three generations and confirms each
+This compiles `compiler/main.stele` through three generations and confirms each
 produces identical output.
 
 ### Bootstrap Compiler
 
 The Haskell bootstrap compiler lives in `bootstrap/haskell/`. It is used only
-to produce the initial `compiler.c` from `compiler.stele`. Once a pre-built
+to produce the initial `compiler/main.c` from the modular compiler. Once a built
 compiler binary is available, the Haskell toolchain is not required.
 
-The bootstrap compiler is a ten-module Haskell library plus a thin CLI driver:
+The bootstrap compiler is a twelve-module Haskell library plus a thin CLI driver:
 
 | Module               | Purpose                                        |
 |----------------------|------------------------------------------------|
 | `Stele.PEG`          | PEG parser generator, built from scratch       |
 | `Stele.AST`          | Abstract syntax tree types                     |
 | `Stele.Grammar`      | Grammar definition + parse tree to AST         |
+| `Stele.Resolve`      | Module loading, signatures, and name mangling   |
+| `Stele.Signature`    | `.steli` export-signature parsing               |
 | `Stele.Types`        | Type inference with row polymorphism           |
 | `Stele.IR`           | Intermediate representation (basic blocks)     |
 | `Stele.Lower`        | AST to IR lowering pass                        |
@@ -434,7 +488,7 @@ Building the bootstrap compiler (requires GHC 9.6+ and Cabal 3.10+):
 ```bash
 cd bootstrap/haskell
 cabal build
-cabal run stele -- ../../compiler.stele   # Produces compiler.c at repo root
+cabal run stele -- ../../compiler/main.stele   # Produces compiler/main.c
 ```
 
 ### PEG Parser Generator
@@ -469,9 +523,11 @@ backends are purely mechanical translations.
 
 **C backend.** The C emitter produces self-contained C with an embedded
 runtime. All values are reference-counted tagged unions allocated with
-`malloc`. Because Stele values are immutable and there are no closures,
-cycles are impossible and reference counting is sufficient. The generated code
-is readable and can be compiled with any C compiler.
+`malloc`. Closures carry a separate lexical-environment record and use the same
+ownership rules as other values. Values are immutable, so reference cycles
+cannot be constructed with the current language forms and reference counting
+is sufficient. The generated code is readable and can be compiled with GCC or
+Clang.
 
 **AArch64 backend.** The native emitter supports both Apple and Linux AArch64
 assembly syntax. All variables live on the stack in a fixed-size frame per
@@ -492,7 +548,7 @@ Links against the same `runtime/runtime.c`.
 | `examples/mutual.stele`    | Mutual recursion, Ackermann, Collatz, GCD, Fibonacci |
 | `examples/oneof.stele`     | Sum types with variants                          |
 | `examples/io.stele`        | IO operations                                    |
-| `compiler.stele`           | Self-hosting compiler (Stele written in Stele)   |
+| `compiler/main.stele`      | Self-hosting compiler entry point                |
 
 ## License
 

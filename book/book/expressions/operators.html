@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-bebaa2d8.js";
+            window.path_to_searchindex_js = "../searchindex-49372bdb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-29fcd749.js"></script>
@@ -188,11 +188,13 @@ operators are infix and left-associative.</p>
 <tr><td><code>-</code></td><td>Subtraction</td><td><code>10 - 3</code></td><td><code>7</code></td></tr>
 <tr><td><code>*</code></td><td>Multiplication</td><td><code>5 * 6</code></td><td><code>30</code></td></tr>
 <tr><td><code>/</code></td><td>Integer division</td><td><code>17 / 5</code></td><td><code>3</code></td></tr>
+<tr><td><code>%</code></td><td>Integer remainder</td><td><code>17 % 5</code></td><td><code>2</code></td></tr>
 </tbody>
 </table>
 </div>
 <p>Division truncates toward zero. Both operands must be <code>Int</code>, and the result
-is <code>Int</code>.</p>
+is <code>Int</code>. Arithmetic traps on overflow, division by zero, and remainder by
+zero.</p>
 <h2 id="unary-operators"><a class="header" href="#unary-operators">Unary Operators</a></h2>
 <div class="table-wrapper">
 <table>
@@ -242,7 +244,7 @@ operands must be <code>Int</code>.</p>
 <li>Primary expressions (literals, variables, parenthesized expressions)</li>
 <li>Unary operators (<code>-</code>)</li>
 <li>Field access (<code>.field</code>)</li>
-<li>Multiplicative (<code>*</code>, <code>/</code>)</li>
+<li>Multiplicative (<code>*</code>, <code>/</code>, <code>%</code>)</li>
 <li>Additive (<code>+</code>, <code>-</code>)</li>
 <li>Comparison (<code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code>)</li>
 <li>Logical AND (<code>&amp;&amp;</code>)</li>

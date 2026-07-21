@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-bebaa2d8.js";
+            window.path_to_searchindex_js = "searchindex-49372bdb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-29fcd749.js"></script>
@@ -226,15 +226,15 @@ end
 end
 </code></pre>
 <h2 id="file-io"><a class="header" href="#file-io">File I/O</a></h2>
-<h3 id="inscribe--write-to-a-file"><a class="header" href="#inscribe--write-to-a-file">inscribe — Write to a File</a></h3>
-<p><code>inscribe</code> writes a string to a file, creating or overwriting it:</p>
-<pre><code>inscribe {| path: "output.txt", content: "Written by Stele!" |}
+<h3 id="write--write-to-a-file"><a class="header" href="#write--write-to-a-file">write — Write to a File</a></h3>
+<p><code>write</code> writes a string to a file, creating or overwriting it:</p>
+<pre><code>write {| path: "output.txt", content: "Written by Stele!" |}
 </code></pre>
 <p>The argument is a record with fields <code>path</code> (the file path) and <code>content</code>
 (the string to write).</p>
-<h3 id="unearth--read-from-a-file"><a class="header" href="#unearth--read-from-a-file">unearth — Read from a File</a></h3>
-<p><code>unearth</code> reads the entire contents of a file and returns it as a <code>String</code>:</p>
-<pre><code>let contents = unearth {| path: "input.txt" |}
+<h3 id="read--read-from-a-file"><a class="header" href="#read--read-from-a-file">read — Read from a File</a></h3>
+<p><code>read</code> reads the entire contents of a file and returns it as a <code>String</code>:</p>
+<pre><code>let contents = read {| path: "input.txt" |}
 print contents
 </code></pre>
 <p>The argument is a record with a single field <code>path</code>.</p>
@@ -277,10 +277,10 @@ print argv {| n: 1 |}   -- first argument
   print argv {| n: 0 |}
 
   -- File I/O
-  inscribe {| path: "io_test.txt", content: "Written by Stele!" |}
+  write {| path: "io_test.txt", content: "Written by Stele!" |}
   print "Wrote io_test.txt"
 
-  let contents = unearth {| path: "io_test.txt" |}
+  let contents = read {| path: "io_test.txt" |}
   print "Read back:"
   print contents
 end

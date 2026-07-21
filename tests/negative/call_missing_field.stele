@@ -1,0 +1,7 @@
+fn add
+  case {| x, y |} => x + y
+end
+
+do main
+  print add {| x: 1 |}
+end

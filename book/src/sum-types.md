@@ -16,8 +16,8 @@ oneof Color
 end
 
 oneof Shape
-  Circle {| radius: Int |}
-  Rectangle {| width: Int, height: Int |}
+  Circle { radius: Int }
+  Rectangle { width: Int, height: Int }
   Point
 end
 ```
@@ -25,7 +25,10 @@ end
 Each variant is either:
 
 - **Nullary** -- just a name, like `Red` or `Point`.
-- **With fields** -- a name followed by a record type, like `Circle {| radius: Int |}`.
+- **With fields** -- a name followed by fields in braces, like `Circle { radius: Int }`.
+
+`oneof` types are nominal. Two independently declared sums are not compatible
+just because their variants have the same payloads.
 
 ## Constructing Values
 
@@ -86,3 +89,11 @@ simply `{| __tag: "Red" |}`. For a variant with fields like
 
 This means sum type values are ordinary records under the hood, and the pattern
 matching machinery inspects the `__tag` field to determine which branch to take.
+The type checker nevertheless treats the declared sum nominally; the record is
+an implementation detail.
+
+## Common Fields
+
+A field may be accessed without matching only when every variant declares it
+with a compatible type. This is useful for shared metadata while preserving
+checked access to variant-specific payloads.

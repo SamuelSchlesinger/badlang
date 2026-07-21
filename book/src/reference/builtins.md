@@ -59,6 +59,14 @@ Write a string to a file.
 write {| path: "output.txt", content: "Hello from Stele!" |}
 ```
 
+### file_exists
+
+Check whether a filesystem path exists without invoking a shell.
+
+- **Call:** `file_exists {| path: "data.txt" |}`
+- **Argument:** `{| path: String |}`
+- **Returns:** `Int` (`1` when present, `0` otherwise)
+
 ## Command-Line Arguments
 
 ### argc
@@ -107,7 +115,7 @@ Exit the current process immediately.
 
 - **Call:** `terminate {| code: 1 |}`
 - **Argument:** `{| code: Int |}`
-- **Returns:** `Void`
+- **Returns:** `Never` (the call does not return)
 - **Behavior:** Terminates the process with the provided exit code.
 
 ### spawn
@@ -147,10 +155,11 @@ Sleep the current process for a number of milliseconds.
 | `readint` | (none) | `Int` | Read integer from stdin |
 | `read` | `{| path: String |}` | `String` | Read file contents |
 | `write` | `{| path: String, content: String |}` | `Void` | Write to file |
+| `file_exists` | `{| path: String |}` | `Int` | Check path existence |
 | `argc` | `{| |}` | `Int` | Argument count |
 | `argv` | `{| n: Int |}` | `String` | Get argument by index |
 | `sh` | `{| command: String |}` | `Int` | Run shell command |
-| `terminate` | `{| code: Int |}` | `Void` | Exit the process |
+| `terminate` | `{| code: Int |}` | `Never` | Exit the process |
 | `spawn` | `{| command: String |}` | `Int` | Spawn child process (shell command) |
 | `await` | `{| pid: Int |}` | `Int` | Wait for child and return status |
 | `sleep_ms` | `{| ms: Int |}` | `Void` | Sleep for a duration in ms |

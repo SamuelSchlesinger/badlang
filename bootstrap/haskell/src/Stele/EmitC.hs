@@ -46,7 +46,7 @@ cRuntime = unlines
   , "        int64_t int_val;"
   , "        char* str_val;"
   , "        struct { int num_fields; Field* fields; } record;"
-  , "        struct { struct Value* (*fn_ptr)(struct Value*); struct Value* env; } closure;"
+  , "        struct { struct Value* (*fn_ptr)(struct Value*, struct Value*); struct Value* env; } closure;"
   , "    };"
   , "} Value;"
   , ""
@@ -113,13 +113,13 @@ cRuntime = unlines
   , "    return v;"
   , "}"
   , ""
-  , "static Value* make_closure(Value* (*fn_ptr)(Value*), Value* env) {"
+  , "/* Takes ownership of env. */"
+  , "static Value* make_closure(Value* (*fn_ptr)(Value*, Value*), Value* env) {"
   , "    Value* v = (Value*)stele_malloc(sizeof(Value));"
   , "    v->tag = TAG_CLOSURE;"
   , "    v->refcount = 1;"
   , "    v->closure.fn_ptr = fn_ptr;"
   , "    v->closure.env = env;"
-  , "    if (env) rc_retain(env);"
   , "    return v;"
   , "}"
   , ""
@@ -128,27 +128,7 @@ cRuntime = unlines
   , "        fprintf(stderr, \"stele: attempt to call non-closure value\\n\");"
   , "        exit(1);"
   , "    }"
-  , "    Value* env = clos->closure.env;"
-  , "    if (env && env->tag == TAG_RECORD && arg && arg->tag == TAG_RECORD) {"
-  , "        int total = arg->record.num_fields + env->record.num_fields;"
-  , "        Value* merged = (Value*)stele_malloc(sizeof(Value));"
-  , "        merged->tag = TAG_RECORD;"
-  , "        merged->refcount = 1;"
-  , "        merged->record.num_fields = total;"
-  , "        merged->record.fields = (Field*)stele_malloc(sizeof(Field) * total);"
-  , "        for (int i = 0; i < arg->record.num_fields; i++) {"
-  , "            merged->record.fields[i] = arg->record.fields[i];"
-  , "            rc_retain(arg->record.fields[i].value);"
-  , "        }"
-  , "        for (int i = 0; i < env->record.num_fields; i++) {"
-  , "            merged->record.fields[arg->record.num_fields + i] = env->record.fields[i];"
-  , "            rc_retain(env->record.fields[i].value);"
-  , "        }"
-  , "        Value* result = clos->closure.fn_ptr(merged);"
-  , "        rc_release(merged);"
-  , "        return result;"
-  , "    }"
-  , "    return clos->closure.fn_ptr(arg);"
+  , "    return clos->closure.fn_ptr(arg, clos->closure.env);"
   , "}"
   , ""
   , "static void rc_release(Value* v) {"
@@ -315,21 +295,39 @@ cRuntime = unlines
   , "    return result;"
   , "}"
   , ""
+  , "static Value* fn_file_exists(Value* arg) {"
+  , "    Value* pathVal = record_field(arg, \"path\");"
+  , "    if (!pathVal || pathVal->tag != TAG_STR) {"
+  , "        fprintf(stderr, \"stele: file_exists requires path: String\\n\");"
+  , "        exit(1);"
+  , "    }"
+  , "    return make_int(access(pathVal->str_val, F_OK) == 0 ? 1 : 0);"
+  , "}"
+  , ""
   , "static Value* fn_write(Value* arg) {"
   , "    Value* pathVal = record_field(arg, \"path\");"
   , "    Value* contentVal = record_field(arg, \"content\");"
-  , "    if (pathVal && pathVal->tag == TAG_STR &&"
-  , "        contentVal && contentVal->tag == TAG_STR) {"
-  , "        FILE* f = fopen(pathVal->str_val, \"w\");"
-  , "        if (!f) {"
-  , "            fprintf(stderr, \"stele: write cannot open '%s'\\n\", pathVal->str_val);"
-  , "            exit(1);"
-  , "        }"
-  , "        fputs(contentVal->str_val, f);"
-  , "        fclose(f);"
-  , "        return make_void();"
+  , "    if (!pathVal || pathVal->tag != TAG_STR ||"
+  , "        !contentVal || contentVal->tag != TAG_STR) {"
+  , "        fprintf(stderr, \"stele: write requires path: String, content: String\\n\");"
+  , "        exit(1);"
   , "    }"
-  , "    stele_write(arg);"
+  , "    FILE* f;"
+  , "    int close_after = 0;"
+  , "    if (strcmp(pathVal->str_val, \"/dev/stderr\") == 0) {"
+  , "        f = stderr;"
+  , "    } else if (strcmp(pathVal->str_val, \"/dev/stdout\") == 0) {"
+  , "        f = stdout;"
+  , "    } else {"
+  , "        f = fopen(pathVal->str_val, \"w\");"
+  , "        close_after = 1;"
+  , "    }"
+  , "    if (!f) {"
+  , "        fprintf(stderr, \"stele: write cannot open '%s'\\n\", pathVal->str_val);"
+  , "        exit(1);"
+  , "    }"
+  , "    fputs(contentVal->str_val, f);"
+  , "    if (close_after) fclose(f); else fflush(f);"
   , "    return make_void();"
   , "}"
   , ""
@@ -540,31 +538,83 @@ cRuntime = unlines
   , ""
   , "/* ── checked arithmetic ──────────────────────────────────────── */"
   , ""
+  , "static void require_int(Value* value, const char* operation) {"
+  , "    if (!value || value->tag != TAG_INT) {"
+  , "        fprintf(stderr, \"stele runtime error: %s requires Int operands\\n\", operation);"
+  , "        exit(1);"
+  , "    }"
+  , "}"
+  , ""
   , "static Value* checked_add(Value* a, Value* b) {"
+  , "    require_int(a, \"addition\");"
+  , "    require_int(b, \"addition\");"
   , "    int64_t x = a->int_val, y = b->int_val, r;"
   , "    if (__builtin_add_overflow(x, y, &r)) {"
   , "        fprintf(stderr, \"stele runtime error: integer overflow in addition\\n\");"
-  , "        abort();"
+  , "        exit(1);"
   , "    }"
   , "    return make_int(r);"
   , "}"
   , ""
   , "static Value* checked_sub(Value* a, Value* b) {"
+  , "    require_int(a, \"subtraction\");"
+  , "    require_int(b, \"subtraction\");"
   , "    int64_t x = a->int_val, y = b->int_val, r;"
   , "    if (__builtin_sub_overflow(x, y, &r)) {"
   , "        fprintf(stderr, \"stele runtime error: integer overflow in subtraction\\n\");"
-  , "        abort();"
+  , "        exit(1);"
   , "    }"
   , "    return make_int(r);"
   , "}"
   , ""
   , "static Value* checked_mul(Value* a, Value* b) {"
+  , "    require_int(a, \"multiplication\");"
+  , "    require_int(b, \"multiplication\");"
   , "    int64_t x = a->int_val, y = b->int_val, r;"
   , "    if (__builtin_mul_overflow(x, y, &r)) {"
   , "        fprintf(stderr, \"stele runtime error: integer overflow in multiplication\\n\");"
-  , "        abort();"
+  , "        exit(1);"
   , "    }"
   , "    return make_int(r);"
+  , "}"
+  , ""
+  , "static Value* checked_div(Value* a, Value* b) {"
+  , "    require_int(a, \"division\");"
+  , "    require_int(b, \"division\");"
+  , "    int64_t x = a->int_val, y = b->int_val;"
+  , "    if (y == 0) {"
+  , "        fprintf(stderr, \"stele runtime error: integer division by zero\\n\");"
+  , "        exit(1);"
+  , "    }"
+  , "    if (x == INT64_MIN && y == -1) {"
+  , "        fprintf(stderr, \"stele runtime error: integer overflow in division\\n\");"
+  , "        exit(1);"
+  , "    }"
+  , "    return make_int(x / y);"
+  , "}"
+  , ""
+  , "static Value* checked_mod(Value* a, Value* b) {"
+  , "    require_int(a, \"remainder\");"
+  , "    require_int(b, \"remainder\");"
+  , "    int64_t x = a->int_val, y = b->int_val;"
+  , "    if (y == 0) {"
+  , "        fprintf(stderr, \"stele runtime error: integer remainder by zero\\n\");"
+  , "        exit(1);"
+  , "    }"
+  , "    if (x == INT64_MIN && y == -1) {"
+  , "        fprintf(stderr, \"stele runtime error: integer overflow in remainder\\n\");"
+  , "        exit(1);"
+  , "    }"
+  , "    return make_int(x % y);"
+  , "}"
+  , ""
+  , "static Value* checked_neg(Value* value) {"
+  , "    require_int(value, \"negation\");"
+  , "    if (value->int_val == INT64_MIN) {"
+  , "        fprintf(stderr, \"stele runtime error: integer overflow in negation\\n\");"
+  , "        exit(1);"
+  , "    }"
+  , "    return make_int(-value->int_val);"
   , "}"
   , ""
   , "/* ── end runtime ────────────────────────────────────────────── */"
@@ -576,7 +626,7 @@ cRuntime = unlines
 -- ---------------------------------------------------------------------------
 
 builtinRiteNames :: [String]
-builtinRiteNames = ["read", "write", "argc", "argv", "sh", "terminate",
+builtinRiteNames = ["read", "write", "file_exists", "argc", "argv", "sh", "terminate",
                     "spawn", "await", "sleep_ms",
                     "strlen", "char_at", "substr", "concat",
                     "int_to_str", "char_of_int", "strcmp"]
@@ -598,21 +648,26 @@ emitCFromIR (IRProgram decls) =
 
 -- | Forward declarations for user-defined rites.
 emitForwardDecl :: IRDecl -> String
-emitForwardDecl (IRFunc name _)
+emitForwardDecl (IRFunc name body)
   | name `elem` builtinRiteNames = ""
-  | otherwise = "static Value* fn_" ++ name ++ "(Value* arg);\n"
+  | otherwise = "static Value* fn_" ++ name ++ funcParams body ++ ";\n"
 emitForwardDecl (IRMain _) = ""
 emitForwardDecl (IRTest _ _) = ""
 
 -- | Emit a rite or main function.
 emitIRDecl :: IRDecl -> String
 emitIRDecl (IRFunc name body) =
-  "static Value* fn_" ++ name ++ "(Value* arg) {\n" ++
+  "static Value* fn_" ++ name ++ funcParams body ++ " {\n" ++
   emitVarDecls body ++
   emitFuncBlocks body ++
   "}\n\n"
 emitIRDecl (IRMain _) = ""
 emitIRDecl (IRTest _ _) = ""
+
+funcParams :: IRFuncBody -> String
+funcParams body = case funcEnvParam body of
+  Nothing  -> "(Value* arg)"
+  Just env -> "(Value* arg, Value* " ++ env ++ ")"
 
 -- | Emit the main() wrapper.
 emitMainDecl :: [IRDecl] -> String
@@ -630,9 +685,9 @@ emitMainDecl decls =
 -- This avoids redefinition errors when goto jumps across declarations.
 -- The function parameter is excluded since it's already declared.
 emitVarDecls :: IRFuncBody -> String
-emitVarDecls (IRFuncBody param blocks) =
+emitVarDecls (IRFuncBody param envParam blocks) =
   let (ptrVars, intVars) = collectVarDecls blocks
-      ptrVars' = Set.delete param ptrVars
+      ptrVars' = maybe id Set.delete envParam (Set.delete param ptrVars)
   in concatMap (\v -> "Value* " ++ v ++ ";\n") (Set.toList ptrVars') ++
      concatMap (\v -> "int " ++ v ++ ";\n") (Set.toList intVars)
 
@@ -661,11 +716,11 @@ collectVarDecls blocks = foldl addBlock (Set.empty, Set.empty) blocks
 
 -- | Emit basic blocks for a function body.
 emitFuncBlocks :: IRFuncBody -> String
-emitFuncBlocks (IRFuncBody _ blocks) = concatMap emitBlock blocks
+emitFuncBlocks (IRFuncBody _ _ blocks) = concatMap emitBlock blocks
 
 -- | Emit basic blocks for main (TReturn becomes goto end instead of return).
 emitFuncBlocksMain :: IRFuncBody -> String
-emitFuncBlocksMain (IRFuncBody _ blocks) = concatMap emitBlockMain blocks
+emitFuncBlocksMain (IRFuncBody _ _ blocks) = concatMap emitBlockMain blocks
 
 -- | Emit a basic block.
 emitBlock :: Block -> String
@@ -692,7 +747,7 @@ emitInstr (IConst v OVoid) =
 emitInstr (IBinOp v op l r) =
   v ++ " = " ++ cBinOp op l r ++ ";\n"
 emitInstr (IUnOp v Neg src) =
-  v ++ " = make_int(-" ++ src ++ "->int_val);\n"
+  v ++ " = checked_neg(" ++ src ++ ");\n"
 emitInstr (IUnOp v Not src) =
   v ++ " = make_int(!" ++ src ++ "->int_val);\n"
 emitInstr (IRecord v fields) =
@@ -759,8 +814,8 @@ cBinOp op a b = case op of
   Add -> "checked_add(" ++ a ++ ", " ++ b ++ ")"
   Sub -> "checked_sub(" ++ a ++ ", " ++ b ++ ")"
   Mul -> "checked_mul(" ++ a ++ ", " ++ b ++ ")"
-  Div -> "make_int(" ++ a ++ "->int_val / " ++ b ++ "->int_val)"
-  Mod -> "make_int(" ++ a ++ "->int_val % " ++ b ++ "->int_val)"
+  Div -> "checked_div(" ++ a ++ ", " ++ b ++ ")"
+  Mod -> "checked_mod(" ++ a ++ ", " ++ b ++ ")"
   Eq  -> "make_int(stele_value_eq(" ++ a ++ ", " ++ b ++ "))"
   Neq -> "make_int(stele_value_neq(" ++ a ++ ", " ++ b ++ "))"
   Lt  -> "make_int(" ++ a ++ "->int_val < " ++ b ++ "->int_val)"
@@ -792,14 +847,16 @@ cString s = "\"" ++ concatMap escChar s ++ "\""
 -- | Emit a complete C source file in test mode — generates a test runner
 -- main that executes each test block sequentially.
 emitCFromIRTest :: IRProgram -> String
-emitCFromIRTest (IRProgram decls) =
-  cRuntime
-  ++ "\n/* ── forward declarations ──────────────────────────────────── */\n\n"
-  ++ concatMap emitForwardDecl decls
-  ++ "\n/* ── fn definitions ────────────────────────────────────────── */\n\n"
-  ++ concatMap emitIRDecl [d | d@(IRFunc _ _) <- decls]
-  ++ "\n/* ── test runner ──────────────────────────────────────────── */\n\n"
-  ++ emitTestMainDecl decls
+emitCFromIRTest program@(IRProgram decls)
+  | null [() | IRTest _ _ <- decls] = emitCFromIR program
+  | otherwise =
+      cRuntime
+      ++ "\n/* ── forward declarations ──────────────────────────────────── */\n\n"
+      ++ concatMap emitForwardDecl decls
+      ++ "\n/* ── fn definitions ────────────────────────────────────────── */\n\n"
+      ++ concatMap emitIRDecl [d | d@(IRFunc _ _) <- decls]
+      ++ "\n/* ── test runner ──────────────────────────────────────────── */\n\n"
+      ++ emitTestMainDecl decls
 
 -- | Emit a main() that runs all test blocks sequentially.
 emitTestMainDecl :: [IRDecl] -> String

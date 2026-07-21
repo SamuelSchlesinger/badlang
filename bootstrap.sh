@@ -202,6 +202,8 @@ if [ -f "$STELA_SRC" ]; then
     cp "$STDLIB_DIR/tests/concurrency_test.stele" "$STELA_RUN_DIR/concurrency_test.stele"
     cp "$STDLIB_DIR/tests/strings_test.stele" "$STELA_RUN_DIR/strings_test.stele"
     cp "$STDLIB_DIR/tests/path_test.stele" "$STELA_RUN_DIR/path_test.stele"
+    WEIRD_SRC="$STELA_RUN_DIR/quoted ' \$(printf injected).stele"
+    cp "$HELLO_SRC" "$WEIRD_SRC"
     cat > "$STELA_RUN_DIR/app.stele" <<'EOF'
 do main
   let argc_now = cli_argc {| |}
@@ -215,6 +217,7 @@ EOF
     (
       cd "$STELA_RUN_DIR" && \
       "$WORK_DIR/stela" check "$HELLO_SRC" --compiler "$WORK_DIR/gen${N}" --mode "$MODE" --no-sandbox >/dev/null && \
+      "$WORK_DIR/stela" check "$WEIRD_SRC" --compiler "$WORK_DIR/gen${N}" --mode "$MODE" --no-sandbox >/dev/null && \
       "$WORK_DIR/stela" package-lib cli.stele --name cli >/dev/null && \
       "$WORK_DIR/stela" package-lib math.stele --name math >/dev/null && \
       "$WORK_DIR/stela" package-lib concurrency.stele --name concurrency >/dev/null && \

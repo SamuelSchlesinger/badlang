@@ -103,7 +103,7 @@ nubReverse = go [] Set.empty . reverse
 -- | Built-in function names (from the runtime).
 builtinFnNames :: Set.Set String
 builtinFnNames = Set.fromList
-  [ "read", "write", "argc", "argv", "sh", "terminate"
+  [ "read", "write", "file_exists", "argc", "argv", "sh", "terminate"
   , "spawn", "await", "sleep_ms"
   , "strlen", "char_at", "substr", "concat"
   , "int_to_str", "char_of_int", "strcmp"
@@ -168,7 +168,7 @@ lowerFn name clauses = do
       lowerClauses "arg" clauses ("fn '" ++ name ++ "'") TReturn
 
   blocks <- collectBlocks
-  return (IRFuncBody "arg" blocks)
+  return (IRFuncBody "arg" Nothing blocks)
 
 -- | Lower a sequence of case clauses into a chain of test blocks.
 -- The continuation says what to do with the result of a successful match.
@@ -673,18 +673,18 @@ lowerExpr (Closure clauses) = do
       savedLocals = localVars s
   modify' (\st -> st { emittedBlocks = [], currentInstrs = [], currentBlockId = "entry"
                       , localVars = Set.empty })
-  -- Extract captured variables from arg (env is merged into arg at call time).
-  -- No retain needed: arg stays alive for the entire function call, so
+  -- Extract captured variables from the closure's lexical environment.
+  -- No retain needed: the closure keeps env alive for the entire call, so
   -- field pointers remain valid.  Body references do their own retain/release.
   mapM_ (\v -> do
     let mangledName = cName v
-    emit (IFieldGet mangledName "arg" v)
+    emit (IFieldGet mangledName "closure_env" v)
     modify' (\st -> st { localVars = Set.insert v (localVars st) })
     ) captured
   -- Lower the lambda body like a fn
   lowerClauses "arg" clauses ("closure '" ++ lambdaName ++ "'") TReturn
   blocks <- collectBlocks
-  let lambdaBody = IRFuncBody "arg" blocks
+  let lambdaBody = IRFuncBody "arg" (Just "closure_env") blocks
   -- Restore state and register the lambda
   modify' (\st -> st { emittedBlocks = savedBlocks
                       , currentInstrs = savedInstrs
@@ -809,7 +809,7 @@ lowerDo stmts = do
   finishBlockFinal (TReturn voidVar)
 
   blocks <- collectBlocks
-  return (IRFuncBody "arg" blocks)
+  return (IRFuncBody "arg" Nothing blocks)
 
 -- | Lower a list of statements, returning names of let-bound variables
 -- (for release at end).

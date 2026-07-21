@@ -230,7 +230,7 @@ mangle modName name = modName ++ "__" ++ name
 -- (nil, cons, str_eq, etc.) are resolved through the module system.
 builtinNames :: Set.Set String
 builtinNames = Set.fromList
-  [ "read", "write", "argc", "argv", "sh", "terminate"
+  [ "read", "write", "file_exists", "argc", "argv", "sh", "terminate"
   , "spawn", "await", "sleep_ms"
   , "strlen", "char_at", "substr", "concat"
   , "int_to_str", "char_of_int", "strcmp"

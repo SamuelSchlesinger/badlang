@@ -31,7 +31,7 @@ followed by a newline. `end` closes the block.
 
 ## Adding a Function
 
-A `fn` is a pure function. Let's add one:
+A `fn` is a function defined by pattern clauses. Let's add one:
 
 ```
 fn square

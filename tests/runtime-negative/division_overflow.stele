@@ -1,0 +1,4 @@
+do main
+  let minimum = 0 - 9223372036854775807 - 1
+  print minimum / (0 - 1)
+end

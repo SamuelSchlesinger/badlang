@@ -73,13 +73,14 @@ end
 ```
 
 ### When to Use Named Construction
-Named construction is optional. You can use anonymous record literals anywhere a
-named type is expected. These two are equivalent:
+Named construction adds the struct's private runtime tag and validates its
+declared fields. Anonymous records remain structurally typed, but they are not
+identical constructors:
 
 ```
-let p = Point {| x: 3, y: 4 |}
-let p = {| x: 3, y: 4 |}
+let named = Point {| x: 3, y: 4 |}
+let anonymous = {| x: 3, y: 4 |}
 ```
 
-Named construction is useful for documentation and clarity — it makes the
-intent explicit and ensures the fields match the struct declaration.
+Use named construction when satisfying a named annotation or when constructor
+validation matters.

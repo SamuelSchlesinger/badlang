@@ -1,0 +1,7 @@
+fn exported_fn
+  case {| n |} => helper {| n: n |}
+end
+
+fn helper
+  case {| n |} => n * 2
+end

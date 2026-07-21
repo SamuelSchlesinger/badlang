@@ -175,12 +175,53 @@ fn parse_record_pat
     end
 end
 
+fn int_literal_significant_start
+  case {| s, pos, slen |} =>
+    match pos >= slen
+      case 1 => pos
+      case 0 =>
+        match char_at {| s: s, n: pos |} == 48
+          case 1 => int_literal_significant_start {| s: s, pos: pos + 1, slen: slen |}
+          case 0 => pos
+        end
+    end
+end
+
+fn int_literal_in_range
+  case {| s |} =>
+    let slen = strlen {| s: s |}
+    let start = int_literal_significant_start {| s: s, pos: 0, slen: slen |}
+    let digits = slen - start
+    match digits < 19
+      case 1 => 1
+      case 0 =>
+        match digits > 19
+          case 1 => 0
+          case 0 =>
+            let significant = substr {| s: s, start: start, len: digits |}
+            strcmp {| a: significant, b: "9223372036854775807" |} <= 0
+        end
+    end
+end
+
+fn require_int_literal_in_range
+  case {| tok |} =>
+    match int_literal_in_range {| s: tok.value |}
+      case 1 => 0
+      case 0 =>
+        let msg = concat {| a: "integer literal out of range for Int: ", b: tok.value |}
+        let _ = parse_error {| msg: msg, line: tok.line, col: tok.col |}
+        0
+    end
+end
+
 fn parse_pattern
   case {| tokens |} =>
     let tok = peek {| tokens: tokens |}
     match tok.type
       case "{|" => parse_record_pat {| tokens: tokens |}
       case "int" =>
+        let _ = require_int_literal_in_range {| tok: tok |}
         let rest1 = advance {| tokens: tokens |}
         {| node: {| tag: "pat_int", value: tok.value |}, rest: rest1 |}
       case "str" =>
@@ -352,6 +393,7 @@ fn parse_primary
     let tok = peek {| tokens: tokens |}
     match tok.type
       case "int" =>
+        let _ = require_int_literal_in_range {| tok: tok |}
         let rest1 = advance {| tokens: tokens |}
         {| node: {| tag: "int_lit", value: tok.value |}, rest: rest1 |}
       case "str" =>
@@ -746,7 +788,7 @@ fn parse_fn_decl
     let empty = nil {| |}
     let r = parse_case_clauses {| tokens: id.rest, acc: empty |}
     let rest2 = expect {| tokens: r.rest, type: "end" |}
-    {| node: DeclFn {| name: id.name, clauses: r.node |}, rest: rest2 |}
+    {| node: DeclFn {| name: id.name, clauses: r.node, closure: 0 |}, rest: rest2 |}
 end
 
 fn parse_do_decl
@@ -808,7 +850,7 @@ fn parse_decl
         let s1 = concat {| a: "expected 'import', 'open', 'fn', 'do', 'struct', 'oneof', or 'test' but got '", b: tok.type |}
         let s2 = concat {| a: s1, b: "'" |}
         let _ = parse_error {| msg: s2, line: tok.line, col: tok.col |}
-        {| node: DeclFn {| name: "", clauses: nil {| |} |}, rest: tokens |}
+        {| node: DeclFn {| name: "", clauses: nil {| |}, closure: 0 |}, rest: tokens |}
     end
 end
 
@@ -829,4 +871,3 @@ fn parse_program
     let empty = nil {| |}
     parse_decls {| tokens: tokens, acc: empty |}
 end
-

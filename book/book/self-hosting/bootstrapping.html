@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-bebaa2d8.js";
+            window.path_to_searchindex_js = "../searchindex-49372bdb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-29fcd749.js"></script>
@@ -182,19 +182,19 @@ existing compiler to get things started.</p>
 <p>Stele’s bootstrap process uses the Haskell reference compiler as the seed:</p>
 <pre><code>                    Haskell compiler
                          |
-compiler.stele ──────► gen0 binary
+compiler/main.stele ─► gen0 binary
                          |
-compiler.stele ──────► gen1.c ──► gen1 binary
+compiler/main.stele ─► gen1.c ──► gen1 binary
                                     |
-compiler.stele ───────────────► gen2.c ──► gen2 binary
+compiler/main.stele ──────────► gen2.c ──► gen2 binary
                                             |
-compiler.stele ─────────────────────────► gen3.c
+compiler/main.stele ────────────────────► gen3.c
 </code></pre>
 <ol>
-<li><strong>gen0</strong>: The Haskell compiler compiles <code>compiler.stele</code> to C, which is
+<li><strong>gen0</strong>: The Haskell compiler compiles <code>compiler/main.stele</code> to C, which is
 compiled to a native binary.</li>
-<li><strong>gen1</strong>: The gen0 binary compiles <code>compiler.stele</code>, producing <code>gen1.c</code>.</li>
-<li><strong>gen2</strong>: The gen1 binary compiles <code>compiler.stele</code>, producing <code>gen2.c</code>.</li>
+<li><strong>gen1</strong>: The gen0 binary compiles <code>compiler/main.stele</code>, producing <code>gen1.c</code>.</li>
+<li><strong>gen2</strong>: The gen1 binary compiles <code>compiler/main.stele</code>, producing <code>gen2.c</code>.</li>
 <li><strong>gen3</strong>: And so on.</li>
 </ol>
 <h2 id="the-fixed-point"><a class="header" href="#the-fixed-point">The Fixed Point</a></h2>
@@ -204,7 +204,7 @@ of which generation compiled it.</p>
 <p>Why does gen0’s output differ? Because gen0 was compiled by the <em>Haskell</em>
 compiler, which may generate slightly different C code (different variable
 numbering, different formatting). But once the self-hosting compiler compiles
-itself (gen1), its output is determined entirely by <code>compiler.stele</code> — and since
+itself (gen1), its output is determined entirely by the modular compiler source — and since
 gen1 and gen2 are the same binary (they came from identical C), they produce
 identical output.</p>
 <p>This fixed-point property is a strong correctness argument: the compiler
@@ -229,13 +229,13 @@ subsequent generations emit <code>.s</code> files and link against <code>runtime
 Generations: 3
 Mode: c
 
-[gen0] Compiling compiler.stele with Haskell compiler...
+[gen0] Compiling compiler/main.stele with Haskell compiler...
 [gen0] OK
-[gen1] Compiling compiler.stele with gen0...
+[gen1] Compiling compiler/main.stele with gen0...
 [gen1] OK
-[gen2] Compiling compiler.stele with gen1...
+[gen2] Compiling compiler/main.stele with gen1...
 [gen2] OK
-[gen3] Compiling compiler.stele with gen2...
+[gen3] Compiling compiler/main.stele with gen2...
 [gen3] OK
 
 === Verifying Fixed Point ===

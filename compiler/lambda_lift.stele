@@ -162,13 +162,14 @@ fn lift_expr
         -- Filter: only keep names that are NOT known functions and NOT builtins
         let fvs_filtered = filter_non_fn_vars {| vars: fvs_raw, fn_names: fn_names |}
         let fvs = list_dedup_str {| list: fvs_filtered |}
-        -- Wrap clause bodies with let bindings to extract captured vars from arg
+        -- Wrap clause bodies with let bindings to extract captured vars from
+        -- the separate lexical environment parameter.
         let wrapped_clauses = wrap_clauses_with_captures {| clauses: lr.clauses, captures: fvs |}
         -- Assign a lambda name
         let lambda_name = concat {| a: "_lambda_", b: int_to_str {| n: lr.counter |} |}
         let new_counter = lr.counter + 1
         -- Create a top-level decl_fn for the lambda
-        let lambda_decl = DeclFn {| name: lambda_name, clauses: wrapped_clauses |}
+        let lambda_decl = DeclFn {| name: lambda_name, clauses: wrapped_clauses, closure: 1 |}
         let new_lambdas = cons {| head: lambda_decl, tail: lr.lambdas |}
         -- Build list of free var field records for the closure_ref node
         let fv_fields = make_fv_fields {| names: fvs |}
@@ -281,8 +282,9 @@ fn make_fv_fields
     end
 end
 
--- Wrap a clause body with let bindings extracting captured vars from arg.
--- For each captured var "x": let x = arg.x in <body>
+-- Wrap a clause body with let bindings extracting captured vars from the
+-- compiler-only $closure_env parameter.  The dollar sign cannot occur in a
+-- source identifier, so user bindings cannot collide with it.
 fn wrap_body_with_captures
   case {| body, captures |} =>
     match is_nil {| list: captures |}
@@ -291,8 +293,8 @@ fn wrap_body_with_captures
         let head = list_head {| list: captures |}
         let tail = list_tail {| list: captures |}
         let inner = wrap_body_with_captures {| body: body, captures: tail |}
-        let arg_ref = {| tag: "var", name: "arg" |}
-        let field_access = {| tag: "field_access", obj: arg_ref, field: head |}
+        let env_ref = {| tag: "var", name: "$closure_env" |}
+        let field_access = {| tag: "field_access", obj: env_ref, field: head |}
         {| tag: "let_in", name: head, value: field_access, body: inner |}
     end
 end
@@ -374,9 +376,9 @@ end
 fn lift_decl
   case {| decl, fn_names, counter |} =>
     match decl
-      case DeclFn {| name, clauses |} =>
+      case DeclFn {| name, clauses, closure |} =>
         let r = lift_clauses {| clauses: clauses, fn_names: fn_names, counter: counter |}
-        let new_decl = DeclFn {| name: name, clauses: r.clauses |}
+        let new_decl = DeclFn {| name: name, clauses: r.clauses, closure: closure |}
         {| decl: new_decl, lambdas: r.lambdas, counter: r.counter |}
       case DeclDo {| name, stmts |} =>
         let r = lift_stmts {| stmts: stmts, fn_names: fn_names, counter: counter |}

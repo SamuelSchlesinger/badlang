@@ -44,9 +44,10 @@ value is freed:
   is freed, then the `Value`.
 - `TAG_INT` / `TAG_VOID` — the `Value` is freed directly.
 
-Because Stele values are **immutable** and there are **no closures or
-first-class functions**, reference cycles are impossible and reference counting
-is a complete solution — no garbage collector is needed.
+Stele values are **immutable**. Closures and first-class functions carry a
+separate lexical-environment record governed by the same ownership convention.
+The current construction forms cannot build reference cycles, so reference
+counting is sufficient and no tracing collector is needed.
 
 ### Ownership Convention
 
@@ -62,6 +63,7 @@ it is done with the value.
 | Variable access | Borrows from local, caller retains to own |
 | Function call | Caller owns the argument; callee borrows it. Return value is owned. |
 | `print` / `write` | Borrow their argument (caller releases after) |
+| `make_closure` | Adopts its environment; calls receive argument and environment separately |
 
 ## How Constructs Compile
 
@@ -213,7 +215,7 @@ cabal run stele -- --native ../../examples/hello.stele
 Or using the self-hosted compiler:
 
 ```bash
-./compiler examples/hello.stele hello.s asm
+./build/compiler examples/hello.stele hello.s asm
 cc -O1 -o hello hello.s runtime/runtime.c && ./hello
 ```
 
@@ -223,7 +225,7 @@ __TEXT,__cstring` data section. Function calls use the standard Apple AArch64
 calling convention (x0 for first argument / return value, x29/x30 for frame
 and link registers).
 
-The self-hosting compiler in `compiler.stele` (at the repo root) also has its own
+The self-hosting compiler rooted at `compiler/main.stele` also has its own
 AArch64 backend and can emit assembly when invoked with the `asm` flag.
 
 ## Inspecting Generated Code
@@ -231,14 +233,14 @@ AArch64 backend and can emit assembly when invoked with the `asm` flag.
 To see the generated C without running it:
 
 ```bash
-./compiler examples/hello.stele hello.c
+./build/compiler examples/hello.stele hello.c
 cat hello.c
 ```
 
 To see the generated assembly:
 
 ```bash
-./compiler examples/hello.stele hello.s asm
+./build/compiler examples/hello.stele hello.s asm
 cat hello.s
 ```
 

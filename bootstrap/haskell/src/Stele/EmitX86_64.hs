@@ -152,7 +152,7 @@ when False _ = return ()
 -- ---------------------------------------------------------------------------
 
 countVars :: IRFuncBody -> Int
-countVars (IRFuncBody _ blocks) =
+countVars (IRFuncBody _ _ blocks) =
   length $ concatMap blockVars blocks
   where
     blockVars (Block _ instrs _) = concatMap instrVars instrs
@@ -228,6 +228,8 @@ emitFunc label body = do
 
   -- Store arg (%rdi) to its slot
   storeVar (funcParam body) "%rdi"
+  -- Lifted closures receive their lexical environment separately in %rsi.
+  mapM_ (\env -> storeVar env "%rsi") (funcEnvParam body)
 
   -- Emit blocks
   mapM_ emitBlockAsm (funcBlocks body)
@@ -305,6 +307,14 @@ emitBlockAsm (Block bid instrs term) = do
 -- Instruction emission
 -- ---------------------------------------------------------------------------
 
+emitCheckedBinOp :: Var -> Var -> Var -> String -> Asm ()
+emitCheckedBinOp v l r operation = do
+  tgt <- getTarget
+  loadVar l "%rdi"
+  loadVar r "%rsi"
+  line $ "  callq " ++ symPrefix tgt ++ operation
+  storeVar v "%rax"
+
 emitInstrAsm :: Instr -> Asm ()
 
 emitInstrAsm (IConst v (OInt n)) = do
@@ -343,6 +353,12 @@ emitInstrAsm (IBinOp v Neq l r) = do
   line $ "  callq " ++ symPrefix tgt ++ "make_int"
   storeVar v "%rax"
 
+emitInstrAsm (IBinOp v Add l r) = emitCheckedBinOp v l r "checked_add"
+emitInstrAsm (IBinOp v Sub l r) = emitCheckedBinOp v l r "checked_sub"
+emitInstrAsm (IBinOp v Mul l r) = emitCheckedBinOp v l r "checked_mul"
+emitInstrAsm (IBinOp v Div l r) = emitCheckedBinOp v l r "checked_div"
+emitInstrAsm (IBinOp v Mod l r) = emitCheckedBinOp v l r "checked_mod"
+
 emitInstrAsm (IBinOp v op l r) = do
   tgt <- getTarget
   loadVar l "%r8"
@@ -355,11 +371,8 @@ emitInstrAsm (IBinOp v op l r) = do
 
 emitInstrAsm (IUnOp v Neg src) = do
   tgt <- getTarget
-  loadVar src "%r8"
-  line "  movq 8(%r8), %r8"
-  line "  negq %r8"
-  line "  movq %r8, %rdi"
-  line $ "  callq " ++ symPrefix tgt ++ "make_int"
+  loadVar src "%rdi"
+  line $ "  callq " ++ symPrefix tgt ++ "checked_neg"
   storeVar v "%rax"
 
 emitInstrAsm (IUnOp v Not src) = do
@@ -447,10 +460,9 @@ emitInstrAsm (IClosure v lambdaName envFields) = do
       line $ "  callq " ++ symPrefix tgt ++ "make_record_with_fields"
       when (totalSize > 0) $
         line $ "  addq $" ++ show totalSize ++ ", %rsp"
-      -- %rax = env record, save to %rbx (callee-saved)
-      line "  movq %rax, %rbx"
+      -- %rax = env record; pass it directly as the second argument.
+      line "  movq %rax, %rsi"
       line $ "  leaq " ++ symPrefix tgt ++ "fn_" ++ lambdaName ++ "(%rip), %rdi"
-      line "  movq %rbx, %rsi"
       line $ "  callq " ++ symPrefix tgt ++ "make_closure"
       storeVar v "%rax"
 

@@ -1,0 +1,11 @@
+fn positive_or_stop
+  case {| n |} =>
+    match n > 0
+      case 1 => n
+      case 0 => terminate {| code: 99 |}
+    end
+end
+
+do main
+  print positive_or_stop {| n: 7 |}
+end

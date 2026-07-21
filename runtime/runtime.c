@@ -27,7 +27,7 @@ typedef struct Value {
         int64_t int_val;
         char* str_val;
         struct { int num_fields; Field* fields; } record;
-        struct { struct Value* (*fn_ptr)(struct Value*); struct Value* env; } closure;
+        struct { struct Value* (*fn_ptr)(struct Value*, struct Value*); struct Value* env; } closure;
     };
 } Value;
 
@@ -107,13 +107,13 @@ STELE_LINKAGE Value* make_record_with_fields(int n, const char** names, Value** 
     return v;
 }
 
-STELE_LINKAGE Value* make_closure(Value* (*fn_ptr)(Value*), Value* env) {
+/* Takes ownership of env. */
+STELE_LINKAGE Value* make_closure(Value* (*fn_ptr)(Value*, Value*), Value* env) {
     Value* v = (Value*)stele_malloc(sizeof(Value));
     v->tag = TAG_CLOSURE;
     v->refcount = 1;
     v->closure.fn_ptr = fn_ptr;
     v->closure.env = env;
-    if (env) rc_retain(env);
     return v;
 }
 
@@ -122,28 +122,7 @@ STELE_LINKAGE Value* stele_call_closure(Value* clos, Value* arg) {
         fprintf(stderr, "stele: attempt to call non-closure value\n");
         exit(1);
     }
-    /* Merge env fields into arg */
-    Value* env = clos->closure.env;
-    if (env && env->tag == TAG_RECORD && arg && arg->tag == TAG_RECORD) {
-        int total = arg->record.num_fields + env->record.num_fields;
-        Value* merged = (Value*)stele_malloc(sizeof(Value));
-        merged->tag = TAG_RECORD;
-        merged->refcount = 1;
-        merged->record.num_fields = total;
-        merged->record.fields = (Field*)stele_malloc(sizeof(Field) * total);
-        for (int i = 0; i < arg->record.num_fields; i++) {
-            merged->record.fields[i] = arg->record.fields[i];
-            rc_retain(arg->record.fields[i].value);
-        }
-        for (int i = 0; i < env->record.num_fields; i++) {
-            merged->record.fields[arg->record.num_fields + i] = env->record.fields[i];
-            rc_retain(env->record.fields[i].value);
-        }
-        Value* result = clos->closure.fn_ptr(merged);
-        rc_release(merged);
-        return result;
-    }
-    return clos->closure.fn_ptr(arg);
+    return clos->closure.fn_ptr(arg, clos->closure.env);
 }
 
 STELE_LINKAGE void rc_release(Value* v) {
@@ -318,21 +297,39 @@ STELE_LINKAGE Value* fn_read(Value* arg) {
     return result;
 }
 
+STELE_LINKAGE Value* fn_file_exists(Value* arg) {
+    Value* pathVal = record_field(arg, "path");
+    if (!pathVal || pathVal->tag != TAG_STR) {
+        fprintf(stderr, "stele: file_exists requires path: String\n");
+        exit(1);
+    }
+    return make_int(access(pathVal->str_val, F_OK) == 0 ? 1 : 0);
+}
+
 STELE_LINKAGE Value* fn_write(Value* arg) {
     Value* pathVal = record_field(arg, "path");
     Value* contentVal = record_field(arg, "content");
-    if (pathVal && pathVal->tag == TAG_STR &&
-        contentVal && contentVal->tag == TAG_STR) {
-        FILE* f = fopen(pathVal->str_val, "w");
-        if (!f) {
-            fprintf(stderr, "stele: write cannot open '%s'\n", pathVal->str_val);
-            exit(1);
-        }
-        fputs(contentVal->str_val, f);
-        fclose(f);
-        return make_void();
+    if (!pathVal || pathVal->tag != TAG_STR ||
+        !contentVal || contentVal->tag != TAG_STR) {
+        fprintf(stderr, "stele: write requires path: String, content: String\n");
+        exit(1);
     }
-    stele_write(arg);
+    FILE* f;
+    int close_after = 0;
+    if (strcmp(pathVal->str_val, "/dev/stderr") == 0) {
+        f = stderr;
+    } else if (strcmp(pathVal->str_val, "/dev/stdout") == 0) {
+        f = stdout;
+    } else {
+        f = fopen(pathVal->str_val, "w");
+        close_after = 1;
+    }
+    if (!f) {
+        fprintf(stderr, "stele: write cannot open '%s'\n", pathVal->str_val);
+        exit(1);
+    }
+    fputs(contentVal->str_val, f);
+    if (close_after) fclose(f); else fflush(f);
     return make_void();
 }
 
@@ -543,31 +540,83 @@ STELE_LINKAGE Value* fn_strcmp(Value* arg) {
 
 /* ── checked arithmetic ──────────────────────────────────────── */
 
+static void require_int(Value* value, const char* operation) {
+    if (!value || value->tag != TAG_INT) {
+        fprintf(stderr, "stele runtime error: %s requires Int operands\n", operation);
+        exit(1);
+    }
+}
+
 STELE_LINKAGE Value* checked_add(Value* a, Value* b) {
+    require_int(a, "addition");
+    require_int(b, "addition");
     int64_t x = a->int_val, y = b->int_val, r;
     if (__builtin_add_overflow(x, y, &r)) {
         fprintf(stderr, "stele runtime error: integer overflow in addition\n");
-        abort();
+        exit(1);
     }
     return make_int(r);
 }
 
 STELE_LINKAGE Value* checked_sub(Value* a, Value* b) {
+    require_int(a, "subtraction");
+    require_int(b, "subtraction");
     int64_t x = a->int_val, y = b->int_val, r;
     if (__builtin_sub_overflow(x, y, &r)) {
         fprintf(stderr, "stele runtime error: integer overflow in subtraction\n");
-        abort();
+        exit(1);
     }
     return make_int(r);
 }
 
 STELE_LINKAGE Value* checked_mul(Value* a, Value* b) {
+    require_int(a, "multiplication");
+    require_int(b, "multiplication");
     int64_t x = a->int_val, y = b->int_val, r;
     if (__builtin_mul_overflow(x, y, &r)) {
         fprintf(stderr, "stele runtime error: integer overflow in multiplication\n");
-        abort();
+        exit(1);
     }
     return make_int(r);
+}
+
+STELE_LINKAGE Value* checked_div(Value* a, Value* b) {
+    require_int(a, "division");
+    require_int(b, "division");
+    int64_t x = a->int_val, y = b->int_val;
+    if (y == 0) {
+        fprintf(stderr, "stele runtime error: integer division by zero\n");
+        exit(1);
+    }
+    if (x == INT64_MIN && y == -1) {
+        fprintf(stderr, "stele runtime error: integer overflow in division\n");
+        exit(1);
+    }
+    return make_int(x / y);
+}
+
+STELE_LINKAGE Value* checked_mod(Value* a, Value* b) {
+    require_int(a, "remainder");
+    require_int(b, "remainder");
+    int64_t x = a->int_val, y = b->int_val;
+    if (y == 0) {
+        fprintf(stderr, "stele runtime error: integer remainder by zero\n");
+        exit(1);
+    }
+    if (x == INT64_MIN && y == -1) {
+        fprintf(stderr, "stele runtime error: integer overflow in remainder\n");
+        exit(1);
+    }
+    return make_int(x % y);
+}
+
+STELE_LINKAGE Value* checked_neg(Value* value) {
+    require_int(value, "negation");
+    if (value->int_val == INT64_MIN) {
+        fprintf(stderr, "stele runtime error: integer overflow in negation\n");
+        exit(1);
+    }
+    return make_int(-value->int_val);
 }
 
 /* ── end runtime ────────────────────────────────────────────── */

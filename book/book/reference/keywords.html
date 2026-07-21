@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-bebaa2d8.js";
+            window.path_to_searchindex_js = "../searchindex-49372bdb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-29fcd749.js"></script>
@@ -184,8 +184,12 @@
 </thead>
 <tbody>
 <tr><td><code>struct</code></td><td><code>struct Name ... end</code></td><td>Declare a named record type with typed fields</td></tr>
-<tr><td><code>fn</code></td><td><code>fn name case ... end</code></td><td>Define a pure function by pattern matching</td></tr>
+<tr><td><code>oneof</code></td><td><code>oneof Name ... end</code></td><td>Declare a nominal sum type and variants</td></tr>
+<tr><td><code>fn</code></td><td><code>fn name case ... end</code></td><td>Define a function by pattern matching</td></tr>
 <tr><td><code>do</code></td><td><code>do name ... end</code></td><td>Define an effectful entry point</td></tr>
+<tr><td><code>test</code></td><td><code>test "name" ... end</code></td><td>Define an embedded test body</td></tr>
+<tr><td><code>import</code></td><td><code>import Module</code></td><td>Load a module for qualified access</td></tr>
+<tr><td><code>open</code></td><td><code>open Module</code></td><td>Load a module and expose its public names</td></tr>
 <tr><td><code>end</code></td><td>(closing delimiter)</td><td>Close a struct, fn, do, or match block</td></tr>
 </tbody>
 </table>

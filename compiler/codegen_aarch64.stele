@@ -50,7 +50,38 @@ fn emit_store_slot
     end
 end
 
--- Generate mov/movn for integer immediate
+fn emit_mov_word
+  case {| opcode, reg, word, shift |} =>
+    let s1 = concat {| a: "  ", b: opcode |}
+    let s2 = concat {| a: s1, b: " " |}
+    let s3 = concat {| a: s2, b: reg |}
+    let s4 = concat {| a: s3, b: ", #" |}
+    let s5 = concat {| a: s4, b: int_to_str {| n: word |} |}
+    let line = match shift == 0
+      case 1 => s5
+      case 0 =>
+        let s6 = concat {| a: s5, b: ", lsl #" |}
+        concat {| a: s6, b: int_to_str {| n: shift |} |}
+    end
+    asm_ln {| s: line |}
+end
+
+fn emit_mov_chunks
+  case {| reg, n |} =>
+    let w0 = n % 65536
+    let q1 = n / 65536
+    let w1 = q1 % 65536
+    let q2 = q1 / 65536
+    let w2 = q2 % 65536
+    let w3 = (q2 / 65536) % 65536
+    let s0 = emit_mov_word {| opcode: "movz", reg: reg, word: w0, shift: 0 |}
+    let s1 = emit_mov_word {| opcode: "movk", reg: reg, word: w1, shift: 16 |}
+    let s2 = emit_mov_word {| opcode: "movk", reg: reg, word: w2, shift: 32 |}
+    let s3 = emit_mov_word {| opcode: "movk", reg: reg, word: w3, shift: 48 |}
+    concat {| a: concat {| a: s0, b: s1 |}, b: concat {| a: s2, b: s3 |} |}
+end
+
+-- Generate a full signed 64-bit integer immediate.
 fn emit_mov_imm
   case {| reg, n |} =>
     let nc = nl {| |}
@@ -70,71 +101,46 @@ fn emit_mov_imm
             concat {| a: s3, b: nc |}
           case 0 =>
             match n >= 0
-              case 1 =>
-                let lo = n % 65536
-                let hi = n / 65536
-                let s1 = concat {| a: "  mov ", b: reg |}
-                let s2 = concat {| a: s1, b: ", #" |}
-                let s3 = concat {| a: s2, b: int_to_str {| n: lo |} |}
-                let s4 = concat {| a: s3, b: nc |}
-                let s5 = concat {| a: s4, b: "  movk " |}
-                let s6 = concat {| a: s5, b: reg |}
-                let s7 = concat {| a: s6, b: ", #" |}
-                let s8 = concat {| a: s7, b: int_to_str {| n: hi |} |}
-                let s9 = concat {| a: s8, b: ", lsl #16" |}
-                concat {| a: s9, b: nc |}
+              case 1 => emit_mov_chunks {| reg: reg, n: n |}
               case 0 =>
-                let abs_n = 0 - n
-                let lo = abs_n % 65536
-                let hi = abs_n / 65536
-                match hi == 0
+                let min_i64 = (0 - 9223372036854775807) - 1
+                match n == min_i64
                   case 1 =>
-                    let s1 = concat {| a: "  mov ", b: reg |}
-                    let s2 = concat {| a: s1, b: ", #" |}
-                    let s3 = concat {| a: s2, b: int_to_str {| n: lo |} |}
-                    let s4 = concat {| a: s3, b: nc |}
-                    let s5 = concat {| a: s4, b: "  neg " |}
-                    let s6 = concat {| a: s5, b: reg |}
-                    let s7 = concat {| a: s6, b: ", " |}
-                    let s8 = concat {| a: s7, b: reg |}
-                    concat {| a: s8, b: nc |}
+                    let s0 = emit_mov_word {| opcode: "movz", reg: reg, word: 0, shift: 0 |}
+                    let s1 = emit_mov_word {| opcode: "movk", reg: reg, word: 32768, shift: 48 |}
+                    concat {| a: s0, b: s1 |}
                   case 0 =>
-                    let s1 = concat {| a: "  mov ", b: reg |}
-                    let s2 = concat {| a: s1, b: ", #" |}
-                    let s3 = concat {| a: s2, b: int_to_str {| n: lo |} |}
-                    let s4 = concat {| a: s3, b: nc |}
-                    let s5 = concat {| a: s4, b: "  movk " |}
-                    let s6 = concat {| a: s5, b: reg |}
-                    let s7 = concat {| a: s6, b: ", #" |}
-                    let s8 = concat {| a: s7, b: int_to_str {| n: hi |} |}
-                    let s9 = concat {| a: s8, b: ", lsl #16" |}
-                    let s10 = concat {| a: s9, b: nc |}
-                    let s11 = concat {| a: s10, b: "  neg " |}
-                    let s12 = concat {| a: s11, b: reg |}
-                    let s13 = concat {| a: s12, b: ", " |}
-                    let s14 = concat {| a: s13, b: reg |}
-                    concat {| a: s14, b: nc |}
+                    let chunks = emit_mov_chunks {| reg: reg, n: 0 - n |}
+                    let s1 = concat {| a: chunks, b: "  neg " |}
+                    let s2 = concat {| a: s1, b: reg |}
+                    let s3 = concat {| a: s2, b: ", " |}
+                    concat {| a: concat {| a: s3, b: reg |}, b: nc |}
                 end
             end
         end
     end
 end
 
--- Fixed-size function prologue/epilogue (2064-byte frame)
+-- Function prologue/epilogue with a 16-byte-aligned, per-function frame.
 fn emit_prologue
-  case {| |} =>
+  case {| frame_size |} =>
     let n = nl {| |}
     let s1 = concat {| a: "  stp x29, x30, [sp, #-16]!", b: n |}
     let s2 = concat {| a: s1, b: "  mov x29, sp" |}
     let s3 = concat {| a: s2, b: n |}
-    let s4 = concat {| a: s3, b: "  sub sp, sp, #2048" |}
-    concat {| a: s4, b: n |}
+    match frame_size == 0
+      case 1 => s3
+      case 0 =>
+        let mov = emit_mov_imm {| reg: "x16", n: frame_size |}
+        let sub = asm_ln {| s: "  sub sp, sp, x16" |}
+        concat {| a: s3, b: concat {| a: mov, b: sub |} |}
+    end
 end
 
 fn emit_epilogue
   case {| |} =>
     let n = nl {| |}
-    let s1 = concat {| a: "  add sp, sp, #2048", b: n |}
+    let s1 = concat {| a: "  mov sp, x29", b: n |}
     let s2 = concat {| a: s1, b: "  ldp x29, x30, [sp], #16" |}
     let s3 = concat {| a: s2, b: n |}
     let s4 = concat {| a: s3, b: "  ret" |}
@@ -355,13 +361,6 @@ fn emit_binop_op_asm
   case {| op |} =>
     let n = nl {| |}
     match op
-      case "+" => asm_ln {| s: "  add x0, x8, x9" |}
-      case "-" => asm_ln {| s: "  sub x0, x8, x9" |}
-      case "*" => asm_ln {| s: "  mul x0, x8, x9" |}
-      case "/" => asm_ln {| s: "  sdiv x0, x8, x9" |}
-      case "%" =>
-        let s1 = concat {| a: "  sdiv x10, x8, x9", b: n |}
-        concat {| a: s1, b: asm_ln {| s: "  msub x0, x10, x9, x8" |} |}
       case "==" =>
         let s1 = concat {| a: "  cmp x8, x9", b: n |}
         concat {| a: s1, b: asm_ln {| s: "  cset x0, eq" |} |}
@@ -397,6 +396,13 @@ fn emit_binop_op_asm
     end
 end
 
+fn emit_checked_binop_call_asm
+  case {| left_slot, right_slot, operation |} =>
+    let lp = emit_load_slot {| slot: left_slot, reg: "x0" |}
+    let rp = emit_load_slot {| slot: right_slot, reg: "x1" |}
+    concat {| a: concat {| a: lp, b: rp |}, b: asm_bl {| name: operation |} |}
+end
+
 fn emit_binop_asm
   case {| node, state |} =>
     let r1 = emit_expr_asm {| node: node.left, state: state |}
@@ -423,6 +429,11 @@ fn emit_binop_asm
         let c1 = concat {| a: lp, b: rp |}
         let c2 = concat {| a: c1, b: asm_bl {| name: "stele_value_neq" |} |}
         concat {| a: c2, b: asm_bl {| name: "make_int" |} |}
+      case "+" => emit_checked_binop_call_asm {| left_slot: ls, right_slot: rs, operation: "checked_add" |}
+      case "-" => emit_checked_binop_call_asm {| left_slot: ls, right_slot: rs, operation: "checked_sub" |}
+      case "*" => emit_checked_binop_call_asm {| left_slot: ls, right_slot: rs, operation: "checked_mul" |}
+      case "/" => emit_checked_binop_call_asm {| left_slot: ls, right_slot: rs, operation: "checked_div" |}
+      case "%" => emit_checked_binop_call_asm {| left_slot: ls, right_slot: rs, operation: "checked_mod" |}
       case _ =>
         let ll = emit_load_slot {| slot: ls, reg: "x8" |}
         let rl = emit_load_slot {| slot: rs, reg: "x9" |}
@@ -443,22 +454,17 @@ end
 
 fn emit_unop_asm
   case {| node, state |} =>
-    let n = nl {| |}
     let r = emit_expr_asm {| node: node.operand, state: state |}
     let f = fresh_var {| prefix: "_t", counter: r.state.counter |}
     let st = {| counter: f.counter, slot_counter: r.state.slot_counter, slots: r.state.slots, strs: r.state.strs |}
     let ar = alloc_slot {| name: f.name, state: st |}
     let ss = lookup_slot {| name: r.var, slots: ar.state.slots |}
-    let load = emit_load_slot {| slot: ss, reg: "x8" |}
+    let load = emit_load_slot {| slot: ss, reg: "x0" |}
     let store = emit_store_slot {| slot: ar.slot, reg: "x0" |}
     let rload = emit_load_slot {| slot: ss, reg: "x0" |}
     let s1 = concat {| a: r.code, b: load |}
-    let s2 = concat {| a: s1, b: "  ldr x8, [x8, #8]" |}
-    let s3 = concat {| a: s2, b: n |}
-    let s4 = concat {| a: s3, b: "  neg x0, x8" |}
-    let s5 = concat {| a: s4, b: n |}
-    let s6 = concat {| a: s5, b: asm_bl {| name: "make_int" |} |}
-    let s7 = concat {| a: s6, b: store |}
+    let s2 = concat {| a: s1, b: asm_bl {| name: "checked_neg" |} |}
+    let s7 = concat {| a: s2, b: store |}
     let s8 = concat {| a: s7, b: rload |}
     {| code: concat {| a: s8, b: asm_bl {| name: "rc_release" |} |}, var: f.name, state: ar.state |}
 end
@@ -779,7 +785,11 @@ fn emit_match_clause_asm
     let s9 = concat {| a: s8, b: fl.name |}
     let s10 = concat {| a: s9, b: ":" |}
     let code = concat {| a: s10, b: n |}
-    {| code: code, state: {| counter: rb.state.counter, slot_counter: saved_sc, slots: saved_slots, strs: rb.state.strs |} |}
+    let high_sc = match rb.state.slot_counter > saved_sc
+      case 1 => rb.state.slot_counter
+      case 0 => saved_sc
+    end
+    {| code: code, state: {| counter: rb.state.counter, slot_counter: high_sc, slots: saved_slots, strs: rb.state.strs |} |}
 end
 
 fn emit_match_clauses_loop_asm
@@ -903,12 +913,11 @@ fn emit_closure_ref_asm
         let s7 = concat {| a: s6, b: n |}
         let s8 = concat {| a: s7, b: asm_bl {| name: "make_record_with_fields" |} |}
         let s9 = concat {| a: s8, b: add_sp |}
-        -- x0 = env record, save to x19
-        let s10 = concat {| a: s9, b: asm_ln {| s: "  mov x19, x0" |} |}
+        -- x0 = env record; pass it directly as the second argument
+        let s10 = concat {| a: s9, b: asm_ln {| s: "  mov x1, x0" |} |}
         let fn_sym = asm_symbol {| name: concat {| a: "fn_", b: node.lambda_name |} |}
         let s11 = concat {| a: s10, b: asm_load_label_addr {| reg: "x0", label: fn_sym |} |}
-        let s12 = concat {| a: s11, b: asm_ln {| s: "  mov x1, x19" |} |}
-        let s13 = concat {| a: s12, b: asm_bl {| name: "make_closure" |} |}
+        let s13 = concat {| a: s11, b: asm_bl {| name: "make_closure" |} |}
         let f = fresh_var {| prefix: "_t", counter: sr.state.counter |}
         let st1 = {| counter: f.counter, slot_counter: sr.state.slot_counter, slots: sr.state.slots, strs: sr.state.strs |}
         let ar = alloc_slot {| name: f.name, state: st1 |}
@@ -990,7 +999,11 @@ fn emit_clause_asm
     let s6 = concat {| a: s5, b: fail_label |}
     let s7 = concat {| a: s6, b: ":" |}
     let code = concat {| a: s7, b: n |}
-    {| code: code, state: {| counter: rb.state.counter, slot_counter: saved_sc, slots: saved_slots, strs: rb.state.strs |} |}
+    let high_sc = match rb.state.slot_counter > saved_sc
+      case 1 => rb.state.slot_counter
+      case 0 => saved_sc
+    end
+    {| code: code, state: {| counter: rb.state.counter, slot_counter: high_sc, slots: saved_slots, strs: rb.state.strs |} |}
 end
 
 fn emit_clauses_loop_asm
@@ -1006,15 +1019,28 @@ fn emit_clauses_loop_asm
 end
 
 fn emit_fn_asm
-  case {| name, clauses, state |} =>
+  case {| name, clauses, closure, state |} =>
     let n = nl {| |}
     let fp = concat {| a: "fn_", b: name |}
     let fp2 = concat {| a: fp, b: "_" |}
-    let pro = emit_prologue {| |}
-    let init_s = cons {| head: {| name: "arg", slot: 0 |}, tail: nil {| |} |}
-    let fst = {| counter: state.counter, slot_counter: 1, slots: init_s, strs: state.strs |}
+    let arg_s = cons {| head: {| name: "arg", slot: 0 |}, tail: nil {| |} |}
+    let init_s = match closure
+      case 1 => cons {| head: {| name: "stele_closure_env", slot: 1 |}, tail: arg_s |}
+      case 0 => arg_s
+    end
+    let initial_slots = match closure
+      case 1 => 2
+      case 0 => 1
+    end
+    let fst = {| counter: state.counter, slot_counter: initial_slots, slots: init_s, strs: state.strs |}
     let store_arg = emit_store_slot {| slot: 0, reg: "x0" |}
+    let store_env = match closure
+      case 1 => emit_store_slot {| slot: 1, reg: "x1" |}
+      case 0 => ""
+    end
     let rc = emit_clauses_loop_asm {| clauses: clauses, clause_id: 0, func_prefix: fp2, state: fst, acc: "" |}
+    let frame_size = (((rc.state.slot_counter * 8) + 16 + 15) / 16) * 16
+    let pro = emit_prologue {| frame_size: frame_size |}
     let mf_msg = concat {| a: "fn '", b: name |}
     let mf_msg2 = concat {| a: mf_msg, b: "'" |}
     let mf_sr = add_str_asm {| s: mf_msg2, state: rc.state |}
@@ -1030,7 +1056,8 @@ fn emit_fn_asm
     let l6 = concat {| a: l5, b: n |}
     let s1 = concat {| a: l6, b: pro |}
     let s2 = concat {| a: s1, b: store_arg |}
-    let s3 = concat {| a: s2, b: rc.code |}
+    let s2b = concat {| a: s2, b: store_env |}
+    let s3 = concat {| a: s2b, b: rc.code |}
     let s4 = concat {| a: s3, b: mf8 |}
     let code = concat {| a: s4, b: n |}
     {| code: code, state: {| counter: mf_sr.state.counter, slot_counter: state.slot_counter, slots: state.slots, strs: mf_sr.state.strs |} |}
@@ -1105,7 +1132,6 @@ fn emit_main_fn_asm
   case {| decls, state |} =>
     let n = nl {| |}
     let rit = find_do {| decls: decls, name: "main" |}
-    let pro = emit_prologue {| |}
     let argc_load = asm_load_global_ptr {| reg: "x8", symbol: "g_argc" |}
     let argc_code = concat {| a: argc_load, b: asm_ln {| s: "  str w0, [x8]" |} |}
     let argv_load = asm_load_global_ptr {| reg: "x8", symbol: "g_argv" |}
@@ -1118,6 +1144,7 @@ fn emit_main_fn_asm
     let main_hdr5 = concat {| a: main_hdr4, b: n |}
     match rit.tag
       case "none" =>
+        let pro = emit_prologue {| frame_size: 0 |}
         let s1 = concat {| a: main_hdr5, b: pro |}
         let s2 = concat {| a: s1, b: argc_code |}
         let s3 = concat {| a: s2, b: argv_code |}
@@ -1127,6 +1154,8 @@ fn emit_main_fn_asm
         let init = nil {| |}
         let fst = {| counter: state.counter, slot_counter: 0, slots: init, strs: state.strs |}
         let rs = emit_stmts_loop_asm {| stmts: rit.stmts, state: fst, acc: "", declared: nil {| |} |}
+        let frame_size = (((rs.state.slot_counter * 8) + 16 + 15) / 16) * 16
+        let pro = emit_prologue {| frame_size: frame_size |}
         let empty = nil {| |}
         let let_names = collect_let_names {| stmts: rit.stmts, acc: empty |}
         let rel = gen_release_code_asm {| names: let_names, slots: rs.state.slots |}
@@ -1137,6 +1166,56 @@ fn emit_main_fn_asm
         let s5 = concat {| a: s4, b: rel |}
         let s6 = concat {| a: s5, b: asm_ln {| s: "  mov x0, #0" |} |}
         let code = concat {| a: s6, b: emit_epilogue {| |} |}
+        {| code: code, state: {| counter: rs.state.counter, slot_counter: state.slot_counter, slots: state.slots, strs: rs.state.strs |} |}
+    end
+end
+
+fn emit_test_body_asm
+  case {| decl, state |} =>
+    let rs = emit_stmts_loop_asm {| stmts: decl.stmts, state: state, acc: "", declared: nil {| |} |}
+    let let_names = collect_let_names {| stmts: decl.stmts, acc: nil {| |} |}
+    let rel = gen_release_code_asm {| names: let_names, slots: rs.state.slots |}
+    {| code: concat {| a: rs.code, b: rel |}, state: rs.state |}
+end
+
+fn emit_test_bodies_loop_asm
+  case {| tests, state, acc |} =>
+    match is_nil {| list: tests |}
+      case 1 => {| code: acc, state: state |}
+      case 0 =>
+        let head = list_head {| list: tests |}
+        let tail = list_tail {| list: tests |}
+        let r = emit_test_body_asm {| decl: head, state: state |}
+        emit_test_bodies_loop_asm {| tests: tail, state: r.state, acc: concat {| a: acc, b: r.code |} |}
+    end
+end
+
+fn emit_test_main_asm
+  case {| decls, state |} =>
+    let tests = collect_tests {| decls: decls, acc: nil {| |} |}
+    match is_nil {| list: tests |}
+      case 1 => emit_main_fn_asm {| decls: decls, state: state |}
+      case 0 =>
+        let n = nl {| |}
+        let fst = {| counter: state.counter, slot_counter: 0, slots: nil {| |}, strs: state.strs |}
+        let rs = emit_test_bodies_loop_asm {| tests: tests, state: fst, acc: "" |}
+        let frame_size = (((rs.state.slot_counter * 8) + 16 + 15) / 16) * 16
+        let pro = emit_prologue {| frame_size: frame_size |}
+        let argc_load = asm_load_global_ptr {| reg: "x8", symbol: "g_argc" |}
+        let argc_code = concat {| a: argc_load, b: asm_ln {| s: "  str w0, [x8]" |} |}
+        let argv_load = asm_load_global_ptr {| reg: "x8", symbol: "g_argv" |}
+        let argv_code = concat {| a: argv_load, b: asm_ln {| s: "  str x1, [x8]" |} |}
+        let main_sym = asm_symbol {| name: "main" |}
+        let h1 = concat {| a: ".globl ", b: main_sym |}
+        let h2 = concat {| a: h1, b: n |}
+        let h3 = concat {| a: h2, b: main_sym |}
+        let h4 = concat {| a: concat {| a: h3, b: ":" |}, b: n |}
+        let s1 = concat {| a: h4, b: pro |}
+        let s2 = concat {| a: s1, b: argc_code |}
+        let s3 = concat {| a: s2, b: argv_code |}
+        let s4 = concat {| a: s3, b: rs.code |}
+        let s5 = concat {| a: s4, b: asm_ln {| s: "  mov x0, #0" |} |}
+        let code = concat {| a: s5, b: emit_epilogue {| |} |}
         {| code: code, state: {| counter: rs.state.counter, slot_counter: state.slot_counter, slots: state.slots, strs: rs.state.strs |} |}
     end
 end
@@ -1153,10 +1232,10 @@ fn emit_decls_loop_asm
         let head = list_head {| list: decls |}
         let tail = list_tail {| list: decls |}
         let r = match head
-          case DeclFn {| name, clauses |} =>
+          case DeclFn {| name, clauses, closure |} =>
             match is_builtin_fn {| name: name |}
               case 1 => {| code: "", state: state |}
-              case 0 => emit_fn_asm {| name: name, clauses: clauses, state: state |}
+              case 0 => emit_fn_asm {| name: name, clauses: clauses, closure: closure, state: state |}
             end
           case _ => {| code: "", state: state |}
         end
@@ -1180,7 +1259,10 @@ fn emit_asm
     let empty = nil {| |}
     let init_state = {| counter: 0, slot_counter: 0, slots: empty, strs: empty |}
     let fn_defs = emit_decls_loop_asm {| decls: decls, state: init_state, acc: "" |}
-    let main_fn = emit_main_fn_asm {| decls: decls, state: fn_defs.state |}
+    let main_fn = match is_test_mode {| |}
+      case 1 => emit_test_main_asm {| decls: decls, state: fn_defs.state |}
+      case 0 => emit_main_fn_asm {| decls: decls, state: fn_defs.state |}
+    end
     let str_table = emit_string_table {| strs: main_fn.state.strs |}
     let hdr = concat {| a: asm_text_section {| |}, b: n |}
     let hdr2 = concat {| a: hdr, b: ".align 2" |}
@@ -1198,4 +1280,3 @@ fn emit_asm
     end
     concat {| a: s3, b: gnu_stack |}
 end
-

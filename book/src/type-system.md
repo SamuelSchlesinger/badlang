@@ -12,6 +12,11 @@ errors when things don't line up.
 | `String` | Immutable string | `"hello"`, `""` |
 | `Void` | Unit type (no meaningful value) | Return type of `write` |
 
+`terminate` has an internal bottom type, `Never`. Unlike `Void`, it can satisfy
+the result type of any branch because it never returns.
+Integer literals outside the signed 64-bit range are rejected at compile time;
+runtime arithmetic is checked for overflow and zero divisors.
+
 ## Record Types
 
 Records have types determined by their fields:
@@ -106,6 +111,9 @@ The type checker catches errors like:
 - Adding a string to an integer
 - Accessing a field that doesn't exist on a record
 - Passing a record that's missing required fields
+- Passing the wrong argument shape to a user function or closure
+- Returning incompatible types from different clauses
+- Mixing distinct declared `oneof` types
 
 ```
 fn needs_xyz
@@ -118,9 +126,10 @@ do main
 end
 ```
 
-## No Explicit Type Annotations
+## Type Annotations
 
-Type annotations appear in only one place: struct field declarations.
+Type annotations appear on struct and oneof fields and in record-pattern
+bindings.
 
 ```
 struct Point
@@ -129,6 +138,12 @@ struct Point
 end
 ```
 
-Everywhere else — fn bodies, do statements, let bindings — types are
-inferred. There is no syntax for writing type annotations on expressions or
-function signatures.
+Everywhere else — fn bodies, do statements, let bindings — types are inferred.
+There is no syntax for writing an explicit function signature.
+
+## Nominal Sums, Structural Records
+
+Records and structs remain structurally compatible. Declared `oneof` sums are
+nominal: two sums with similar-looking variants are still different types.
+Accessing a field directly on a sum is valid only when every variant declares
+that field with a compatible type.

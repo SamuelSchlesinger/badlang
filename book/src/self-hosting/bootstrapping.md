@@ -11,19 +11,19 @@ Stele's bootstrap process uses the Haskell reference compiler as the seed:
 ```
                     Haskell compiler
                          |
-compiler.stele ──────► gen0 binary
+compiler/main.stele ─► gen0 binary
                          |
-compiler.stele ──────► gen1.c ──► gen1 binary
+compiler/main.stele ─► gen1.c ──► gen1 binary
                                     |
-compiler.stele ───────────────► gen2.c ──► gen2 binary
+compiler/main.stele ──────────► gen2.c ──► gen2 binary
                                             |
-compiler.stele ─────────────────────────► gen3.c
+compiler/main.stele ────────────────────► gen3.c
 ```
 
-1. **gen0**: The Haskell compiler compiles `compiler.stele` to C, which is
+1. **gen0**: The Haskell compiler compiles `compiler/main.stele` to C, which is
    compiled to a native binary.
-2. **gen1**: The gen0 binary compiles `compiler.stele`, producing `gen1.c`.
-3. **gen2**: The gen1 binary compiles `compiler.stele`, producing `gen2.c`.
+2. **gen1**: The gen0 binary compiles `compiler/main.stele`, producing `gen1.c`.
+3. **gen2**: The gen1 binary compiles `compiler/main.stele`, producing `gen2.c`.
 4. **gen3**: And so on.
 
 ## The Fixed Point
@@ -35,7 +35,7 @@ of which generation compiled it.
 Why does gen0's output differ? Because gen0 was compiled by the *Haskell*
 compiler, which may generate slightly different C code (different variable
 numbering, different formatting). But once the self-hosting compiler compiles
-itself (gen1), its output is determined entirely by `compiler.stele` — and since
+itself (gen1), its output is determined entirely by the modular compiler source — and since
 gen1 and gen2 are the same binary (they came from identical C), they produce
 identical output.
 
@@ -69,13 +69,13 @@ A successful C-mode run looks like:
 Generations: 3
 Mode: c
 
-[gen0] Compiling compiler.stele with Haskell compiler...
+[gen0] Compiling compiler/main.stele with Haskell compiler...
 [gen0] OK
-[gen1] Compiling compiler.stele with gen0...
+[gen1] Compiling compiler/main.stele with gen0...
 [gen1] OK
-[gen2] Compiling compiler.stele with gen1...
+[gen2] Compiling compiler/main.stele with gen1...
 [gen2] OK
-[gen3] Compiling compiler.stele with gen2...
+[gen3] Compiling compiler/main.stele with gen2...
 [gen3] OK
 
 === Verifying Fixed Point ===

@@ -10,8 +10,10 @@ All arithmetic operators require `Int` operands and produce `Int` results.
 | `-` | Subtraction | Left | `10 - 3` → `7` |
 | `*` | Multiplication | Left | `5 * 6` → `30` |
 | `/` | Integer Division | Left | `17 / 5` → `3` |
+| `%` | Integer Remainder | Left | `17 % 5` → `2` |
 
-Division truncates toward zero.
+Division truncates toward zero. Arithmetic is checked: overflow, division by
+zero, and remainder by zero terminate with a runtime error.
 
 ## Unary Operators
 
@@ -59,7 +61,7 @@ From highest to lowest:
 | 1 | Literals, variables, `(...)` | — |
 | 2 | `-` (unary) | Prefix |
 | 3 | `.field` | Left |
-| 4 | `*`, `/` | Left |
+| 4 | `*`, `/`, `%` | Left |
 | 5 | `+`, `-` | Left |
 | 6 | `==`, `!=`, `<`, `>`, `<=`, `>=` | Non-associative |
 | 7 | `&&` | Left |

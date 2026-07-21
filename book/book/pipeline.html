@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-bebaa2d8.js";
+            window.path_to_searchindex_js = "searchindex-49372bdb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-29fcd749.js"></script>
@@ -175,9 +175,9 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="the-compilation-pipeline"><a class="header" href="#the-compilation-pipeline">The Compilation Pipeline</a></h1>
-<p>Stele compiles source code to standalone executables through two backends:
-a portable <strong>C backend</strong> and a native <strong>AArch64 backend</strong> (Apple Silicon).
-Both share a common front end and intermediate representation.</p>
+<p>Stele compiles source code to standalone executables through a portable
+<strong>C backend</strong> and native assembly backends for <strong>AArch64</strong> and <strong>x86-64</strong> on
+macOS and Linux. They share a common front end and intermediate representation.</p>
 <pre><code>Source (.stele) → PEG Parse → AST → Type Check → IR → Backend → cc → Binary
                                                        │
                                                        ├─ C Backend      → .c file
@@ -185,8 +185,8 @@ Both share a common front end and intermediate representation.</p>
                                                        └─ x86_64 Backend  → .s file + runtime
 </code></pre>
 <p>In the Haskell bootstrap compiler (under <code>bootstrap/haskell/</code>), each stage is
-implemented as a separate module. The self-hosted compiler (<code>compiler.stele</code>)
-implements the same pipeline in a single file.</p>
+implemented as a separate module. The modular self-hosted compiler begins at
+<code>compiler/main.stele</code> and implements the same pipeline in Stele.</p>
 <h2 id="stage-1-peg-parsing"><a class="header" href="#stage-1-peg-parsing">Stage 1: PEG Parsing</a></h2>
 <p><strong>Module:</strong> <code>Stele.PEG</code></p>
 <p>The parser is built entirely from first principles — no Megaparsec, no Happy,

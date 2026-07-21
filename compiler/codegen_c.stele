@@ -76,7 +76,11 @@ fn c_name
   case {| name |} =>
     match str_eq {| a: name, b: "arg" |}
       case 1 => "arg"
-      case 0 => concat {| a: "stele_", b: name |}
+      case 0 =>
+        match str_eq {| a: name, b: "$closure_env" |}
+          case 1 => "stele_closure_env"
+          case 0 => concat {| a: "stele_", b: name |}
+        end
     end
 end
 
@@ -85,6 +89,7 @@ fn is_builtin_fn
   case {| name |} =>
     (str_eq {| a: name, b: "read" |}) ||
     (str_eq {| a: name, b: "write" |}) ||
+    (str_eq {| a: name, b: "file_exists" |}) ||
     (str_eq {| a: name, b: "argc" |}) ||
     (str_eq {| a: name, b: "argv" |}) ||
     (str_eq {| a: name, b: "sh" |}) ||
@@ -113,8 +118,8 @@ fn emit_binop_c
       case "+" => cat5 {| a: "checked_add(", b: a, c: ", ", d: b, e: ")" |}
       case "-" => cat5 {| a: "checked_sub(", b: a, c: ", ", d: b, e: ")" |}
       case "*" => cat5 {| a: "checked_mul(", b: a, c: ", ", d: b, e: ")" |}
-      case "/" => cat5 {| a: "make_int(", b: a, c: "->int_val / ", d: b, e: "->int_val)" |}
-      case "%" => cat5 {| a: "make_int(", b: a, c: "->int_val % ", d: b, e: "->int_val)" |}
+      case "/" => cat5 {| a: "checked_div(", b: a, c: ", ", d: b, e: ")" |}
+      case "%" => cat5 {| a: "checked_mod(", b: a, c: ", ", d: b, e: ")" |}
       case "==" => cat5 {| a: "make_int(stele_value_eq(", b: a, c: ", ", d: b, e: "))" |}
       case "!=" => cat5 {| a: "make_int(stele_value_neq(", b: a, c: ", ", d: b, e: "))" |}
       case "<" => cat5 {| a: "make_int(", b: a, c: "->int_val < ", d: b, e: "->int_val)" |}
@@ -187,9 +192,9 @@ fn emit_unop
     -- Only negation supported for now
     let s1 = concat {| a: r.code, b: "Value* " |}
     let s2 = concat {| a: s1, b: f.name |}
-    let s3 = concat {| a: s2, b: " = make_int(-" |}
+    let s3 = concat {| a: s2, b: " = checked_neg(" |}
     let s4 = concat {| a: s3, b: r.var |}
-    let s5 = concat {| a: s4, b: "->int_val);" |}
+    let s5 = concat {| a: s4, b: ");" |}
     let s6 = concat {| a: s5, b: n |}
     let s7 = concat {| a: s6, b: "rc_release(" |}
     let s8 = concat {| a: s7, b: r.var |}
@@ -804,11 +809,15 @@ end
 
 -- Emit a fn definition
 fn emit_fn
-  case {| name, clauses, counter |} =>
+  case {| name, clauses, closure, counter |} =>
     let n = nl {| |}
     let rc = emit_clauses_loop {| clauses: clauses, counter: counter, acc: "" |}
     let s1 = concat {| a: "static Value* fn_", b: name |}
-    let s2 = concat {| a: s1, b: "(Value* arg) {" |}
+    let params = match closure
+      case 1 => "(Value* arg, Value* stele_closure_env) {"
+      case 0 => "(Value* arg) {"
+    end
+    let s2 = concat {| a: s1, b: params |}
     let s3 = concat {| a: s2, b: n |}
     let s4 = concat {| a: s3, b: rc.code |}
     let s5 = concat {| a: s4, b: "fprintf(stderr, " |}
@@ -830,11 +839,15 @@ end
 
 -- Emit a forward declaration for a fn
 fn emit_forward_decl
-  case {| name |} =>
+  case {| name, closure |} =>
     match is_builtin_fn {| name: name |}
       case 1 => ""
       case 0 =>
-        cat4 {| a: "static Value* fn_", b: name, c: "(Value* arg);", d: nl {| |} |}
+        let params = match closure
+          case 1 => "(Value* arg, Value* stele_closure_env);"
+          case 0 => "(Value* arg);"
+        end
+        cat4 {| a: "static Value* fn_", b: name, c: params, d: nl {| |} |}
     end
 end
 
@@ -847,8 +860,8 @@ fn emit_forward_decls_loop
         let head = list_head {| list: decls |}
         let tail = list_tail {| list: decls |}
         let new_acc = match head
-          case DeclFn {| name |} =>
-            let fd = emit_forward_decl {| name: name |}
+          case DeclFn {| name, closure |} =>
+            let fd = emit_forward_decl {| name: name, closure: closure |}
             concat {| a: acc, b: fd |}
           case _ => acc
         end
@@ -1113,25 +1126,29 @@ fn emit_test_main
     let empty = nil {| |}
     let tests = collect_tests {| decls: decls, acc: empty |}
     let num_tests = count_tests {| tests: tests, acc: 0 |}
-    let test_bodies = emit_test_bodies_loop {| tests: tests, counter: counter, acc: "" |}
-    let s1 = concat {| a: "int main(int argc, char** argv) {", b: n |}
-    let s2 = concat {| a: s1, b: "g_argc = argc;" |}
-    let s3 = concat {| a: s2, b: n |}
-    let s4 = concat {| a: s3, b: "g_argv = argv;" |}
-    let s5 = concat {| a: s4, b: n |}
-    let s6 = concat {| a: s5, b: "int _test_pass = 0;" |}
-    let s7 = concat {| a: s6, b: n |}
-    let s8 = concat {| a: s7, b: "int _test_total = " |}
-    let s9 = concat {| a: s8, b: int_to_str {| n: num_tests |} |}
-    let s10 = concat {| a: s9, b: ";" |}
-    let s11 = concat {| a: s10, b: n |}
-    let s12 = concat {| a: s11, b: test_bodies.code |}
-    let s13 = concat {| a: s12, b: "fprintf(stderr, \"\\n%d/%d tests passed\\n\", _test_pass, _test_total);" |}
-    let s14 = concat {| a: s13, b: n |}
-    let s15 = concat {| a: s14, b: "return (_test_pass == _test_total) ? 0 : 1;" |}
-    let s16 = concat {| a: s15, b: n |}
-    let s17 = concat {| a: s16, b: "}" |}
-    concat {| a: s17, b: n |}
+    match num_tests == 0
+      case 1 => emit_main_fn {| decls: decls, counter: counter |}
+      case 0 =>
+        let test_bodies = emit_test_bodies_loop {| tests: tests, counter: counter, acc: "" |}
+        let s1 = concat {| a: "int main(int argc, char** argv) {", b: n |}
+        let s2 = concat {| a: s1, b: "g_argc = argc;" |}
+        let s3 = concat {| a: s2, b: n |}
+        let s4 = concat {| a: s3, b: "g_argv = argv;" |}
+        let s5 = concat {| a: s4, b: n |}
+        let s6 = concat {| a: s5, b: "int _test_pass = 0;" |}
+        let s7 = concat {| a: s6, b: n |}
+        let s8 = concat {| a: s7, b: "int _test_total = " |}
+        let s9 = concat {| a: s8, b: int_to_str {| n: num_tests |} |}
+        let s10 = concat {| a: s9, b: ";" |}
+        let s11 = concat {| a: s10, b: n |}
+        let s12 = concat {| a: s11, b: test_bodies.code |}
+        let s13 = concat {| a: s12, b: "fprintf(stderr, \"\\n%d/%d tests passed\\n\", _test_pass, _test_total);" |}
+        let s14 = concat {| a: s13, b: n |}
+        let s15 = concat {| a: s14, b: "return (_test_pass == _test_total) ? 0 : 1;" |}
+        let s16 = concat {| a: s15, b: n |}
+        let s17 = concat {| a: s16, b: "}" |}
+        concat {| a: s17, b: n |}
+    end
 end
 
 -- ============================================================
@@ -1147,10 +1164,10 @@ fn emit_decls_loop
         let head = list_head {| list: decls |}
         let tail = list_tail {| list: decls |}
         let r = match head
-          case DeclFn {| name, clauses |} =>
+          case DeclFn {| name, clauses, closure |} =>
             match is_builtin_fn {| name: name |}
               case 1 => {| code: "", counter: counter |}
-              case 0 => emit_fn {| name: name, clauses: clauses, counter: counter |}
+              case 0 => emit_fn {| name: name, clauses: clauses, closure: closure, counter: counter |}
             end
           case _ => {| code: "", counter: counter |}
         end
@@ -1299,4 +1316,3 @@ fn emit_string_table_loop
         emit_string_table_loop {| strs: tail, acc: concat {| a: acc, b: line |} |}
     end
 end
-

@@ -68,6 +68,8 @@ main = do
       hPutStrLn stderr "Usage:"
       hPutStrLn stderr "  stele <source.stele>                              Compile to C"
       hPutStrLn stderr "  stele --run <source.stele>                        Compile to C, build, and run"
+      hPutStrLn stderr "  stele --test <source.stele>                       Compile a C test runner"
+      hPutStrLn stderr "  stele --test --run <source.stele>                 Compile and run C tests"
       hPutStrLn stderr "  stele --native <source.stele>                     Compile to native (auto-detect)"
       hPutStrLn stderr "  stele --native --run <source.stele>               Compile native and run"
       hPutStrLn stderr "  stele --native --target <target> <source.stele>   Compile to specific target"

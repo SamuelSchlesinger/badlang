@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-bebaa2d8.js";
+            window.path_to_searchindex_js = "searchindex-49372bdb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-29fcd749.js"></script>
@@ -187,16 +187,18 @@ be nullary (carrying no data).</p>
 end
 
 oneof Shape
-  Circle {| radius: Int |}
-  Rectangle {| width: Int, height: Int |}
+  Circle { radius: Int }
+  Rectangle { width: Int, height: Int }
   Point
 end
 </code></pre>
 <p>Each variant is either:</p>
 <ul>
 <li><strong>Nullary</strong> – just a name, like <code>Red</code> or <code>Point</code>.</li>
-<li><strong>With fields</strong> – a name followed by a record type, like <code>Circle {| radius: Int |}</code>.</li>
+<li><strong>With fields</strong> – a name followed by fields in braces, like <code>Circle { radius: Int }</code>.</li>
 </ul>
+<p><code>oneof</code> types are nominal. Two independently declared sums are not compatible
+just because their variants have the same payloads.</p>
 <h2 id="constructing-values"><a class="header" href="#constructing-values">Constructing Values</a></h2>
 <p>Nullary variants are used directly as expressions:</p>
 <pre><code>let c = Red
@@ -236,7 +238,13 @@ that identifies the variant. For a nullary variant like <code>Red</code>, the va
 simply <code>{| __tag: "Red" |}</code>. For a variant with fields like
 <code>Circle {| radius: 5 |}</code>, the value is <code>{| __tag: "Circle", radius: 5 |}</code>.</p>
 <p>This means sum type values are ordinary records under the hood, and the pattern
-matching machinery inspects the <code>__tag</code> field to determine which branch to take.</p>
+matching machinery inspects the <code>__tag</code> field to determine which branch to take.
+The type checker nevertheless treats the declared sum nominally; the record is
+an implementation detail.</p>
+<h2 id="common-fields"><a class="header" href="#common-fields">Common Fields</a></h2>
+<p>A field may be accessed without matching only when every variant declares it
+with a compatible type. This is useful for shared metadata while preserving
+checked access to variant-specific payloads.</p>
 
                     </main>
 

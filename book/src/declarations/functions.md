@@ -1,6 +1,8 @@
 # Functions
 
-A `fn` is a pure function defined by one or more pattern-matching clauses.
+A `fn` is a function defined by one or more pattern-matching clauses. Stele
+does not currently track effects, so `fn` communicates structure rather than a
+statically enforced purity guarantee.
 
 ## Syntax
 

@@ -1,0 +1,6 @@
+do main
+  let add_one = fn
+    case {| n |} => n + 1
+  end
+  print add_one {| n: "wrong" |}
+end

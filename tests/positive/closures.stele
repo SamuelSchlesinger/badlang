@@ -51,4 +51,14 @@ do main
   let mul_fn = ops.mul
   print add_fn {| a: 3, b: 4 |}
   print mul_fn {| a: 3, b: 4 |}
+
+  -- Caller fields must never override lexical captures
+  let captured = 10
+  let add_captured = fn case {| n |} => n + captured end
+  print add_captured {| n: 1, captured: 100 |}
+
+  -- Capturing closures preserve scalar argument semantics too
+  let offset = 4
+  let add_offset = fn case n => n + offset end
+  print add_offset(6)
 end

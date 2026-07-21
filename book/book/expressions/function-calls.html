@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-bebaa2d8.js";
+            window.path_to_searchindex_js = "../searchindex-49372bdb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-29fcd749.js"></script>
@@ -203,7 +203,7 @@ literal or parenthesized:</p>
 as part of a <code>print</code>/<code>write</code>:</p>
 <pre><code>do main
   print factorial {| n: 10 |}
-  inscribe {| path: "out.txt", content: "hello" |}
+  write {| path: "out.txt", content: "hello" |}
 end
 </code></pre>
 <h2 id="constructing-named-records"><a class="header" href="#constructing-named-records">Constructing Named Records</a></h2>
@@ -223,13 +223,14 @@ do main
 end
 </code></pre>
 <h3 id="when-to-use-named-construction"><a class="header" href="#when-to-use-named-construction">When to Use Named Construction</a></h3>
-<p>Named construction is optional. You can use anonymous record literals anywhere a
-named type is expected. These two are equivalent:</p>
-<pre><code>let p = Point {| x: 3, y: 4 |}
-let p = {| x: 3, y: 4 |}
+<p>Named construction adds the struct’s private runtime tag and validates its
+declared fields. Anonymous records remain structurally typed, but they are not
+identical constructors:</p>
+<pre><code>let named = Point {| x: 3, y: 4 |}
+let anonymous = {| x: 3, y: 4 |}
 </code></pre>
-<p>Named construction is useful for documentation and clarity — it makes the
-intent explicit and ensures the fields match the struct declaration.</p>
+<p>Use named construction when satisfying a named annotation or when constructor
+validation matters.</p>
 
                     </main>
 

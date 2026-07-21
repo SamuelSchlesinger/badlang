@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-bebaa2d8.js";
+            window.path_to_searchindex_js = "searchindex-49372bdb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-29fcd749.js"></script>
@@ -225,8 +225,9 @@ end
 <p>Output:</p>
 <pre><code>3628800
 </code></pre>
-<p>A <code>fn</code> is a pure function defined by pattern matching. A <code>do</code> is an
-effectful entry point. Functions are called by placing an argument after the
+<p>A <code>fn</code> is a function defined by pattern matching. A <code>do</code> names an entry point;
+Stele does not currently track effects in the type system. Functions are
+called by placing an argument after the
 function name. <code>print</code> prints a value. <code>{| ... |}</code> are record literals — the
 “pillars” that hold the language together.</p>
 <h2 id="what-this-book-covers"><a class="header" href="#what-this-book-covers">What This Book Covers</a></h2>
@@ -260,8 +261,8 @@ function name. <code>print</code> prints a value. <code>{| ... |}</code> are rec
 </code></pre>
 <p>Follow the prompts to install GHC and Cabal.</p>
 <h2 id="using-a-pre-built-compiler"><a class="header" href="#using-a-pre-built-compiler">Using a Pre-Built Compiler</a></h2>
-<p>If you have a pre-built <code>compiler</code> binary, you can compile programs directly:</p>
-<pre><code class="language-bash">./compiler examples/hello.stele hello.c
+<p>If you have built <code>build/compiler</code>, you can compile programs directly:</p>
+<pre><code class="language-bash">./build/compiler examples/hello.stele hello.c
 cc -O1 -o hello hello.c
 ./hello
 </code></pre>
@@ -277,13 +278,14 @@ The resulting <code>compiler</code> binary is the self-hosted compiler.</p>
 <p>You can also bootstrap manually:</p>
 <pre><code class="language-bash">cd bootstrap/haskell
 cabal build
-cabal run stele -- ../../compiler.stele
+cabal run stele -- ../../compiler/main.stele
 cd ../..
-cc -O1 -o compiler compiler.c
+mkdir -p build
+cc -O1 -o build/compiler compiler/main.c
 </code></pre>
 <h2 id="compiling-programs"><a class="header" href="#compiling-programs">Compiling Programs</a></h2>
 <p>To compile a <code>.stele</code> source file to C:</p>
-<pre><code class="language-bash">./compiler examples/hello.stele hello.c
+<pre><code class="language-bash">./build/compiler examples/hello.stele hello.c
 </code></pre>
 <p>This produces <code>hello.c</code>. You can then compile and run it:</p>
 <pre><code class="language-bash">cc -O1 -o hello hello.c
@@ -296,11 +298,11 @@ cc -O1 -o compiler compiler.c
 <h2 id="compile-to-native-assembly"><a class="header" href="#compile-to-native-assembly">Compile to Native Assembly</a></h2>
 <p>The self-hosted compiler can also emit native assembly:</p>
 <pre><code class="language-bash"># AArch64 (Apple Silicon / Linux ARM)
-./compiler examples/hello.stele hello.s asm
+./build/compiler examples/hello.stele hello.s asm
 cc -O1 -o hello hello.s runtime/runtime.c
 
 # x86_64 (macOS / Linux)
-./compiler examples/hello.stele hello.s x86
+./build/compiler examples/hello.stele hello.s x86
 cc -O1 -o hello hello.s runtime/runtime.c
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -323,7 +325,7 @@ cc -O1 -o first first.c &amp;&amp; ./first
 contains statements that execute for side effects. <code>print</code> prints a value
 followed by a newline. <code>end</code> closes the block.</p>
 <h2 id="adding-a-function"><a class="header" href="#adding-a-function">Adding a Function</a></h2>
-<p>A <code>fn</code> is a pure function. Let’s add one:</p>
+<p>A <code>fn</code> is a function defined by pattern clauses. Let’s add one:</p>
 <pre><code>fn square
   case {| n |} =&gt; n * n
 end
@@ -393,8 +395,7 @@ end
 the three kinds of declarations.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="declarations"><a class="header" href="#declarations">Declarations</a></h1>
-<p>A Stele program is a sequence of top-level declarations. There are exactly
-three kinds:</p>
+<p>A Stele program is a sequence of top-level declarations:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -402,14 +403,18 @@ three kinds:</p>
 </thead>
 <tbody>
 <tr><td><code>struct</code></td><td>Declare a named record type</td></tr>
-<tr><td><code>fn</code></td><td>Define a pure function by pattern matching</td></tr>
+<tr><td><code>oneof</code></td><td>Declare a nominal sum type</td></tr>
+<tr><td><code>fn</code></td><td>Define a function by pattern matching</td></tr>
 <tr><td><code>do</code></td><td>Define an effectful entry point</td></tr>
+<tr><td><code>test</code></td><td>Define an embedded test body</td></tr>
+<tr><td><code>import</code></td><td>Load a module for qualified access</td></tr>
+<tr><td><code>open</code></td><td>Load a module and bring exports into scope</td></tr>
 </tbody>
 </table>
 </div>
-<p>Every declaration is opened by its keyword and closed by <code>end</code>. There are
-no imports, no modules, and no visibility modifiers — all declarations live in
-a single flat global scope.</p>
+<p>Block declarations close with <code>end</code>; <code>import</code> and <code>open</code> occupy one line.
+Sibling <code>.steli</code> files control module visibility. The resolver flattens modules
+and mangles names before type checking and code generation.</p>
 <p>Declarations can appear in any order. Functions may reference other functions
 defined later in the file, enabling mutual recursion without forward
 declarations.</p>
@@ -486,7 +491,9 @@ end
 record shape, or when you want type annotations in patterns.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="functions"><a class="header" href="#functions">Functions</a></h1>
-<p>A <code>fn</code> is a pure function defined by one or more pattern-matching clauses.</p>
+<p>A <code>fn</code> is a function defined by one or more pattern-matching clauses. Stele
+does not currently track effects, so <code>fn</code> communicates structure rather than a
+statically enforced purity guarantee.</p>
 <h2 id="syntax-1"><a class="header" href="#syntax-1">Syntax</a></h2>
 <pre><code>fn name
   case pattern1 =&gt; body1
@@ -644,7 +651,7 @@ end
 <p>A bare expression can appear as a statement. Its result is discarded. This is
 useful for calling functions with side effects:</p>
 <pre><code>do main
-  inscribe {| path: "out.txt", content: "data" |}
+  write {| path: "out.txt", content: "data" |}
   print "Done."
 end
 </code></pre>
@@ -804,11 +811,13 @@ operators are infix and left-associative.</p>
 <tr><td><code>-</code></td><td>Subtraction</td><td><code>10 - 3</code></td><td><code>7</code></td></tr>
 <tr><td><code>*</code></td><td>Multiplication</td><td><code>5 * 6</code></td><td><code>30</code></td></tr>
 <tr><td><code>/</code></td><td>Integer division</td><td><code>17 / 5</code></td><td><code>3</code></td></tr>
+<tr><td><code>%</code></td><td>Integer remainder</td><td><code>17 % 5</code></td><td><code>2</code></td></tr>
 </tbody>
 </table>
 </div>
 <p>Division truncates toward zero. Both operands must be <code>Int</code>, and the result
-is <code>Int</code>.</p>
+is <code>Int</code>. Arithmetic traps on overflow, division by zero, and remainder by
+zero.</p>
 <h2 id="unary-operators"><a class="header" href="#unary-operators">Unary Operators</a></h2>
 <div class="table-wrapper">
 <table>
@@ -858,7 +867,7 @@ operands must be <code>Int</code>.</p>
 <li>Primary expressions (literals, variables, parenthesized expressions)</li>
 <li>Unary operators (<code>-</code>)</li>
 <li>Field access (<code>.field</code>)</li>
-<li>Multiplicative (<code>*</code>, <code>/</code>)</li>
+<li>Multiplicative (<code>*</code>, <code>/</code>, <code>%</code>)</li>
 <li>Additive (<code>+</code>, <code>-</code>)</li>
 <li>Comparison (<code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code>)</li>
 <li>Logical AND (<code>&amp;&amp;</code>)</li>
@@ -908,7 +917,7 @@ literal or parenthesized:</p>
 as part of a <code>print</code>/<code>write</code>:</p>
 <pre><code>do main
   print factorial {| n: 10 |}
-  inscribe {| path: "out.txt", content: "hello" |}
+  write {| path: "out.txt", content: "hello" |}
 end
 </code></pre>
 <h2 id="constructing-named-records"><a class="header" href="#constructing-named-records">Constructing Named Records</a></h2>
@@ -928,13 +937,14 @@ do main
 end
 </code></pre>
 <h3 id="when-to-use-named-construction"><a class="header" href="#when-to-use-named-construction">When to Use Named Construction</a></h3>
-<p>Named construction is optional. You can use anonymous record literals anywhere a
-named type is expected. These two are equivalent:</p>
-<pre><code>let p = Point {| x: 3, y: 4 |}
-let p = {| x: 3, y: 4 |}
+<p>Named construction adds the struct’s private runtime tag and validates its
+declared fields. Anonymous records remain structurally typed, but they are not
+identical constructors:</p>
+<pre><code>let named = Point {| x: 3, y: 4 |}
+let anonymous = {| x: 3, y: 4 |}
 </code></pre>
-<p>Named construction is useful for documentation and clarity — it makes the
-intent explicit and ensures the fields match the struct declaration.</p>
+<p>Use named construction when satisfying a named annotation or when constructor
+validation matters.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="let-bindings"><a class="header" href="#let-bindings">Let Bindings</a></h1>
 <p><code>let</code> introduces a local variable by binding a name to an expression’s value.</p>
@@ -1031,6 +1041,8 @@ end
 <p>The type checker infers the required field from the access. If you write
 <code>p.x</code>, the type checker knows <code>p</code> must be a record with at least an <code>x</code>
 field, using row polymorphism to allow extra fields.</p>
+<p>For a declared <code>oneof</code>, direct access is accepted only if every variant has the
+field with a compatible type. Otherwise, pattern-match on the variant first.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="pattern-matching"><a class="header" href="#pattern-matching">Pattern Matching</a></h1>
 <p>Pattern matching is the fundamental operation in Stele. It is the only way
@@ -1237,16 +1249,18 @@ be nullary (carrying no data).</p>
 end
 
 oneof Shape
-  Circle {| radius: Int |}
-  Rectangle {| width: Int, height: Int |}
+  Circle { radius: Int }
+  Rectangle { width: Int, height: Int }
   Point
 end
 </code></pre>
 <p>Each variant is either:</p>
 <ul>
 <li><strong>Nullary</strong> – just a name, like <code>Red</code> or <code>Point</code>.</li>
-<li><strong>With fields</strong> – a name followed by a record type, like <code>Circle {| radius: Int |}</code>.</li>
+<li><strong>With fields</strong> – a name followed by fields in braces, like <code>Circle { radius: Int }</code>.</li>
 </ul>
+<p><code>oneof</code> types are nominal. Two independently declared sums are not compatible
+just because their variants have the same payloads.</p>
 <h2 id="constructing-values"><a class="header" href="#constructing-values">Constructing Values</a></h2>
 <p>Nullary variants are used directly as expressions:</p>
 <pre><code>let c = Red
@@ -1286,7 +1300,13 @@ that identifies the variant. For a nullary variant like <code>Red</code>, the va
 simply <code>{| __tag: "Red" |}</code>. For a variant with fields like
 <code>Circle {| radius: 5 |}</code>, the value is <code>{| __tag: "Circle", radius: 5 |}</code>.</p>
 <p>This means sum type values are ordinary records under the hood, and the pattern
-matching machinery inspects the <code>__tag</code> field to determine which branch to take.</p>
+matching machinery inspects the <code>__tag</code> field to determine which branch to take.
+The type checker nevertheless treats the declared sum nominally; the record is
+an implementation detail.</p>
+<h2 id="common-fields"><a class="header" href="#common-fields">Common Fields</a></h2>
+<p>A field may be accessed without matching only when every variant declares it
+with a compatible type. This is useful for shared metadata while preserving
+checked access to variant-specific payloads.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="structural-subtyping-1"><a class="header" href="#structural-subtyping-1">Structural Subtyping</a></h1>
 <p>Structural subtyping is one of Stele’s defining features. It means that a
@@ -1407,10 +1427,14 @@ errors when things don’t line up.</p>
 <tbody>
 <tr><td><code>Int</code></td><td>64-bit signed integer</td><td><code>0</code>, <code>42</code>, <code>-5</code></td></tr>
 <tr><td><code>String</code></td><td>Immutable string</td><td><code>"hello"</code>, <code>""</code></td></tr>
-<tr><td><code>Void</code></td><td>Unit type (no meaningful value)</td><td>Return type of <code>inscribe</code></td></tr>
+<tr><td><code>Void</code></td><td>Unit type (no meaningful value)</td><td>Return type of <code>write</code></td></tr>
 </tbody>
 </table>
 </div>
+<p><code>terminate</code> has an internal bottom type, <code>Never</code>. Unlike <code>Void</code>, it can satisfy
+the result type of any branch because it never returns.
+Integer literals outside the signed 64-bit range are rejected at compile time;
+runtime arithmetic is checked for overflow and zero divisors.</p>
 <h2 id="record-types"><a class="header" href="#record-types">Record Types</a></h2>
 <p>Records have types determined by their fields:</p>
 <pre><code>{| x: Int, y: Int |}
@@ -1496,6 +1520,9 @@ a full polymorphic type system while providing useful flexibility.</p>
 <li>Adding a string to an integer</li>
 <li>Accessing a field that doesn’t exist on a record</li>
 <li>Passing a record that’s missing required fields</li>
+<li>Passing the wrong argument shape to a user function or closure</li>
+<li>Returning incompatible types from different clauses</li>
+<li>Mixing distinct declared <code>oneof</code> types</li>
 </ul>
 <pre><code>fn needs_xyz
   case {| x, y, z |} =&gt; x + y + z
@@ -1506,16 +1533,21 @@ do main
   print needs_xyz {| x: 1, y: 2 |}
 end
 </code></pre>
-<h2 id="no-explicit-type-annotations"><a class="header" href="#no-explicit-type-annotations">No Explicit Type Annotations</a></h2>
-<p>Type annotations appear in only one place: struct field declarations.</p>
+<h2 id="type-annotations"><a class="header" href="#type-annotations">Type Annotations</a></h2>
+<p>Type annotations appear on struct and oneof fields and in record-pattern
+bindings.</p>
 <pre><code>struct Point
   x : Int
   y : Int
 end
 </code></pre>
-<p>Everywhere else — fn bodies, do statements, let bindings — types are
-inferred. There is no syntax for writing type annotations on expressions or
-function signatures.</p>
+<p>Everywhere else — fn bodies, do statements, let bindings — types are inferred.
+There is no syntax for writing an explicit function signature.</p>
+<h2 id="nominal-sums-structural-records"><a class="header" href="#nominal-sums-structural-records">Nominal Sums, Structural Records</a></h2>
+<p>Records and structs remain structurally compatible. Declared <code>oneof</code> sums are
+nominal: two sums with similar-looking variants are still different types.
+Accessing a field directly on a sum is valid only when every variant declares
+that field with a compatible type.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="input-and-output"><a class="header" href="#input-and-output">Input and Output</a></h1>
 <p>Stele provides built-in facilities for console I/O, file I/O, and
@@ -1569,15 +1601,15 @@ end
 end
 </code></pre>
 <h2 id="file-io"><a class="header" href="#file-io">File I/O</a></h2>
-<h3 id="inscribe--write-to-a-file"><a class="header" href="#inscribe--write-to-a-file">inscribe — Write to a File</a></h3>
-<p><code>inscribe</code> writes a string to a file, creating or overwriting it:</p>
-<pre><code>inscribe {| path: "output.txt", content: "Written by Stele!" |}
+<h3 id="write--write-to-a-file"><a class="header" href="#write--write-to-a-file">write — Write to a File</a></h3>
+<p><code>write</code> writes a string to a file, creating or overwriting it:</p>
+<pre><code>write {| path: "output.txt", content: "Written by Stele!" |}
 </code></pre>
 <p>The argument is a record with fields <code>path</code> (the file path) and <code>content</code>
 (the string to write).</p>
-<h3 id="unearth--read-from-a-file"><a class="header" href="#unearth--read-from-a-file">unearth — Read from a File</a></h3>
-<p><code>unearth</code> reads the entire contents of a file and returns it as a <code>String</code>:</p>
-<pre><code>let contents = unearth {| path: "input.txt" |}
+<h3 id="read--read-from-a-file"><a class="header" href="#read--read-from-a-file">read — Read from a File</a></h3>
+<p><code>read</code> reads the entire contents of a file and returns it as a <code>String</code>:</p>
+<pre><code>let contents = read {| path: "input.txt" |}
 print contents
 </code></pre>
 <p>The argument is a record with a single field <code>path</code>.</p>
@@ -1620,10 +1652,10 @@ print argv {| n: 1 |}   -- first argument
   print argv {| n: 0 |}
 
   -- File I/O
-  inscribe {| path: "io_test.txt", content: "Written by Stele!" |}
+  write {| path: "io_test.txt", content: "Written by Stele!" |}
   print "Wrote io_test.txt"
 
-  let contents = unearth {| path: "io_test.txt" |}
+  let contents = read {| path: "io_test.txt" |}
   print "Read back:"
   print contents
 end
@@ -1952,9 +1984,9 @@ end
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="the-compilation-pipeline"><a class="header" href="#the-compilation-pipeline">The Compilation Pipeline</a></h1>
-<p>Stele compiles source code to standalone executables through two backends:
-a portable <strong>C backend</strong> and a native <strong>AArch64 backend</strong> (Apple Silicon).
-Both share a common front end and intermediate representation.</p>
+<p>Stele compiles source code to standalone executables through a portable
+<strong>C backend</strong> and native assembly backends for <strong>AArch64</strong> and <strong>x86-64</strong> on
+macOS and Linux. They share a common front end and intermediate representation.</p>
 <pre><code>Source (.stele) → PEG Parse → AST → Type Check → IR → Backend → cc → Binary
                                                        │
                                                        ├─ C Backend      → .c file
@@ -1962,8 +1994,8 @@ Both share a common front end and intermediate representation.</p>
                                                        └─ x86_64 Backend  → .s file + runtime
 </code></pre>
 <p>In the Haskell bootstrap compiler (under <code>bootstrap/haskell/</code>), each stage is
-implemented as a separate module. The self-hosted compiler (<code>compiler.stele</code>)
-implements the same pipeline in a single file.</p>
+implemented as a separate module. The modular self-hosted compiler begins at
+<code>compiler/main.stele</code> and implements the same pipeline in Stele.</p>
 <h2 id="stage-1-peg-parsing"><a class="header" href="#stage-1-peg-parsing">Stage 1: PEG Parsing</a></h2>
 <p><strong>Module:</strong> <code>Stele.PEG</code></p>
 <p>The parser is built entirely from first principles — no Megaparsec, no Happy,
@@ -2117,9 +2149,10 @@ value is freed:</p>
 is freed, then the <code>Value</code>.</li>
 <li><code>TAG_INT</code> / <code>TAG_VOID</code> — the <code>Value</code> is freed directly.</li>
 </ul>
-<p>Because Stele values are <strong>immutable</strong> and there are <strong>no closures or
-first-class functions</strong>, reference cycles are impossible and reference counting
-is a complete solution — no garbage collector is needed.</p>
+<p>Stele values are <strong>immutable</strong>. Closures and first-class functions carry a
+separate lexical-environment record governed by the same ownership convention.
+The current construction forms cannot build reference cycles, so reference
+counting is sufficient and no tracing collector is needed.</p>
 <h3 id="ownership-convention"><a class="header" href="#ownership-convention">Ownership Convention</a></h3>
 <p>Every expression evaluates to an <strong>owned</strong> <code>Value*</code> (its reference count has
 been incremented for the recipient). The recipient must call <code>rc_release</code> when
@@ -2136,6 +2169,7 @@ it is done with the value.</p>
 <tr><td>Variable access</td><td>Borrows from local, caller retains to own</td></tr>
 <tr><td>Function call</td><td>Caller owns the argument; callee borrows it. Return value is owned.</td></tr>
 <tr><td><code>print</code> / <code>write</code></td><td>Borrow their argument (caller releases after)</td></tr>
+<tr><td><code>make_closure</code></td><td>Adopts its environment; calls receive argument and environment separately</td></tr>
 </tbody>
 </table>
 </div>
@@ -2249,32 +2283,32 @@ cabal run stele -- --native ../../examples/hello.stele
 # =&gt; Writes examples/hello.s + examples/hello_rt.c, links to examples/hello
 </code></pre>
 <p>Or using the self-hosted compiler:</p>
-<pre><code class="language-bash">./compiler examples/hello.stele hello.s asm
+<pre><code class="language-bash">./build/compiler examples/hello.stele hello.s asm
 cc -O1 -o hello hello.s runtime/runtime.c &amp;&amp; ./hello
 </code></pre>
 <p>The strategy is straightforward: all IR variables are stored on the stack in
 a fixed-size frame. String literals are collected into a <code>.section __TEXT,__cstring</code> data section. Function calls use the standard Apple AArch64
 calling convention (x0 for first argument / return value, x29/x30 for frame
 and link registers).</p>
-<p>The self-hosting compiler in <code>compiler.stele</code> (at the repo root) also has its own
+<p>The self-hosting compiler rooted at <code>compiler/main.stele</code> also has its own
 AArch64 backend and can emit assembly when invoked with the <code>asm</code> flag.</p>
 <h2 id="inspecting-generated-code"><a class="header" href="#inspecting-generated-code">Inspecting Generated Code</a></h2>
 <p>To see the generated C without running it:</p>
-<pre><code class="language-bash">./compiler examples/hello.stele hello.c
+<pre><code class="language-bash">./build/compiler examples/hello.stele hello.c
 cat hello.c
 </code></pre>
 <p>To see the generated assembly:</p>
-<pre><code class="language-bash">./compiler examples/hello.stele hello.s asm
+<pre><code class="language-bash">./build/compiler examples/hello.stele hello.s asm
 cat hello.s
 </code></pre>
 <p>The output is intentionally readable. It’s a useful learning tool for
 understanding how high-level constructs map to low-level code.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="the-self-hosting-compiler"><a class="header" href="#the-self-hosting-compiler">The Self-Hosting Compiler</a></h1>
-<p>Stele is <strong>self-hosting</strong>: the file <code>compiler.stele</code> (at the repo root) is a
-complete Stele compiler written in Stele itself. It implements the full
-compilation pipeline — tokenizer, parser, C code emitter, and AArch64 native
-code generator — and can compile itself.</p>
+<p>Stele is <strong>self-hosting</strong>: the modular program rooted at
+<code>compiler/main.stele</code> is a complete Stele compiler written in Stele itself. It
+implements module resolution, type checking, lambda lifting, and the C,
+AArch64, and x86-64 backends, and can compile itself.</p>
 <h2 id="why-self-hosting"><a class="header" href="#why-self-hosting">Why Self-Hosting?</a></h2>
 <p>A self-hosting compiler is the ultimate test of a language’s expressiveness. If
 a language can implement its own compiler, it demonstrates that the language is
@@ -2286,37 +2320,38 @@ recursion, structural subtyping, and I/O all get a serious workout.</li>
 <li><strong>A correctness proof</strong> via bootstrapping: when the compiler compiles itself
 and produces identical output across generations, we know it faithfully
 implements its own semantics.</li>
-<li><strong>The largest Stele program</strong>, exercising the compiler at scale (~3000
-lines).</li>
+<li><strong>The largest Stele program</strong>, exercising the compiler at scale (more than
+8,000 lines across its modules).</li>
 </ul>
 <h2 id="architecture-at-a-glance"><a class="header" href="#architecture-at-a-glance">Architecture at a Glance</a></h2>
-<p>The self-hosting compiler follows the same pipeline as the Haskell reference
-compiler, minus the type checker:</p>
-<pre><code>Source (.stele) → Tokenize → Parse → Emit C or AArch64 → Write File
+<p>The self-hosting compiler follows the same pipeline as the Haskell bootstrap
+compiler:</p>
+<pre><code>Source → Tokenize → Parse → Resolve modules → Type check → Desugar
+       → Lift closures → Emit C/AArch64/x86-64 → Write file
 </code></pre>
-<p>The compiler reads a source file, tokenizes it, parses the token stream into
-an AST, and generates either C code or AArch64 assembly depending on the mode.
-It relies on a shared <code>runtime.c</code> (or <code>runtime/runtime.c</code> for native mode)
-that provides the value representation, reference counting, and built-in
-functions for file I/O and string manipulation.</p>
+<p>The compiler reads a source file, recursively loads its modules, checks the
+flattened program, and emits C or native assembly depending on the mode. The C
+backend embeds <code>runtime/runtime.c</code>; native outputs link against it.</p>
 <p>The compiler selects its output mode via command-line arguments:</p>
 <ul>
-<li><code>compiler source.stele output.c</code> — emit C (default)</li>
-<li><code>compiler source.stele output.s asm</code> — emit AArch64 assembly</li>
+<li><code>build/compiler source.stele output.c</code> — emit C (default)</li>
+<li><code>build/compiler source.stele output.s asm</code> — emit AArch64 assembly</li>
+<li><code>build/compiler source.stele output.s x86</code> — emit x86-64 assembly</li>
 </ul>
-<p>The entire compiler is a single file organized into clear sections:</p>
+<p>The compiler is split into focused modules:</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Section</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td>Utility library</td><td>Character classification, string helpers, linked lists</td></tr>
-<tr><td>Tokenizer</td><td>Lexical analysis into tokens</td></tr>
-<tr><td>Parser</td><td>Recursive descent into AST nodes</td></tr>
-<tr><td>C code emitter</td><td>AST to C translation</td></tr>
-<tr><td>AArch64 code emitter</td><td>AST to native assembly translation</td></tr>
-<tr><td>Driver</td><td>Main do selecting mode and tying it all together</td></tr>
+<tr><td><code>util</code>, <code>lexer</code>, <code>parser</code>, <code>ast</code></td><td>Front end and shared data structures</td></tr>
+<tr><td><code>resolve</code></td><td>Recursive imports, signatures, and name mangling</td></tr>
+<tr><td><code>typecheck</code></td><td>Inference, row unification, and nominal sums</td></tr>
+<tr><td><code>desugar</code>, <code>lambda_lift</code></td><td>Variant lowering and closure conversion</td></tr>
+<tr><td><code>codegen_c</code></td><td>C translation</td></tr>
+<tr><td><code>codegen_aarch64</code>, <code>codegen_x86</code></td><td>Native assembly translation</td></tr>
+<tr><td><code>main</code></td><td>Driver selecting mode and tying the pipeline together</td></tr>
 </tbody>
 </table>
 </div>
@@ -2416,7 +2451,7 @@ token is a record with a <code>type</code> and a <code>value</code>:</p>
 <tr><th>Category</th><th>Types</th></tr>
 </thead>
 <tbody>
-<tr><td>Keywords</td><td><code>fn</code>, <code>do</code>, <code>struct</code>, <code>case</code>, <code>end</code>, <code>let</code>, <code>match</code>, <code>readln</code>, <code>readint</code>, <code>print</code>, <code>write</code>, <code>oneof</code></td></tr>
+<tr><td>Keywords</td><td><code>fn</code>, <code>do</code>, <code>struct</code>, <code>oneof</code>, <code>test</code>, <code>import</code>, <code>open</code>, <code>case</code>, <code>end</code>, <code>let</code>, <code>match</code>, <code>readln</code>, <code>readint</code>, <code>print</code>, <code>write</code></td></tr>
 <tr><td>Identifiers</td><td><code>ident</code></td></tr>
 <tr><td>Literals</td><td><code>int</code>, <code>str</code></td></tr>
 <tr><td>Operators</td><td><code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>%</code>, <code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code>, <code>&amp;&amp;</code>, <code>||</code></td></tr>
@@ -2698,7 +2733,7 @@ the <code>goto</code>.</p>
 <p>Clauses are emitted as cascading if-blocks. On a successful match, the body is
 evaluated, pattern-bound variables are released, and the result is returned.</p>
 <h2 id="built-in-functions"><a class="header" href="#built-in-functions">Built-in Functions</a></h2>
-<p>Certain functions (<code>unearth</code>, <code>inscribe</code>, <code>concat</code>, <code>strlen</code>, <code>char_at</code>,
+<p>Certain functions (<code>read</code>, <code>write</code>, <code>concat</code>, <code>strlen</code>, <code>char_at</code>,
 <code>substr</code>, <code>strcmp</code>, <code>int_to_str</code>, <code>char_of_int</code>, <code>argc</code>, <code>argv</code>) are
 implemented in <code>runtime.c</code> rather than generated. The emitter checks
 <code>is_builtin_fn</code> and skips code generation for these — they are available as C
@@ -2706,7 +2741,7 @@ functions at link time.</p>
 <h2 id="assembling-the-output"><a class="header" href="#assembling-the-output">Assembling the Output</a></h2>
 <p>The top-level <code>emit_c</code> fn assembles the complete C file by concatenating:</p>
 <ol>
-<li>The contents of <code>runtime.c</code> (read via <code>unearth</code>)</li>
+<li>The contents of <code>runtime.c</code> (read via <code>read</code>)</li>
 <li>Forward declarations for all non-builtin functions</li>
 <li>Function definitions</li>
 <li>The <code>main()</code> function (from the <code>do main</code> declaration)</li>
@@ -2755,19 +2790,19 @@ existing compiler to get things started.</p>
 <p>Stele’s bootstrap process uses the Haskell reference compiler as the seed:</p>
 <pre><code>                    Haskell compiler
                          |
-compiler.stele ──────► gen0 binary
+compiler/main.stele ─► gen0 binary
                          |
-compiler.stele ──────► gen1.c ──► gen1 binary
+compiler/main.stele ─► gen1.c ──► gen1 binary
                                     |
-compiler.stele ───────────────► gen2.c ──► gen2 binary
+compiler/main.stele ──────────► gen2.c ──► gen2 binary
                                             |
-compiler.stele ─────────────────────────► gen3.c
+compiler/main.stele ────────────────────► gen3.c
 </code></pre>
 <ol>
-<li><strong>gen0</strong>: The Haskell compiler compiles <code>compiler.stele</code> to C, which is
+<li><strong>gen0</strong>: The Haskell compiler compiles <code>compiler/main.stele</code> to C, which is
 compiled to a native binary.</li>
-<li><strong>gen1</strong>: The gen0 binary compiles <code>compiler.stele</code>, producing <code>gen1.c</code>.</li>
-<li><strong>gen2</strong>: The gen1 binary compiles <code>compiler.stele</code>, producing <code>gen2.c</code>.</li>
+<li><strong>gen1</strong>: The gen0 binary compiles <code>compiler/main.stele</code>, producing <code>gen1.c</code>.</li>
+<li><strong>gen2</strong>: The gen1 binary compiles <code>compiler/main.stele</code>, producing <code>gen2.c</code>.</li>
 <li><strong>gen3</strong>: And so on.</li>
 </ol>
 <h2 id="the-fixed-point"><a class="header" href="#the-fixed-point">The Fixed Point</a></h2>
@@ -2777,7 +2812,7 @@ of which generation compiled it.</p>
 <p>Why does gen0’s output differ? Because gen0 was compiled by the <em>Haskell</em>
 compiler, which may generate slightly different C code (different variable
 numbering, different formatting). But once the self-hosting compiler compiles
-itself (gen1), its output is determined entirely by <code>compiler.stele</code> — and since
+itself (gen1), its output is determined entirely by the modular compiler source — and since
 gen1 and gen2 are the same binary (they came from identical C), they produce
 identical output.</p>
 <p>This fixed-point property is a strong correctness argument: the compiler
@@ -2802,13 +2837,13 @@ subsequent generations emit <code>.s</code> files and link against <code>runtime
 Generations: 3
 Mode: c
 
-[gen0] Compiling compiler.stele with Haskell compiler...
+[gen0] Compiling compiler/main.stele with Haskell compiler...
 [gen0] OK
-[gen1] Compiling compiler.stele with gen0...
+[gen1] Compiling compiler/main.stele with gen0...
 [gen1] OK
-[gen2] Compiling compiler.stele with gen1...
+[gen2] Compiling compiler/main.stele with gen1...
 [gen2] OK
-[gen3] Compiling compiler.stele with gen2...
+[gen3] Compiling compiler/main.stele with gen2...
 [gen3] OK
 
 === Verifying Fixed Point ===
@@ -2845,8 +2880,12 @@ bootstrap and checking that the fixed point is preserved.</li>
 </thead>
 <tbody>
 <tr><td><code>struct</code></td><td><code>struct Name ... end</code></td><td>Declare a named record type with typed fields</td></tr>
-<tr><td><code>fn</code></td><td><code>fn name case ... end</code></td><td>Define a pure function by pattern matching</td></tr>
+<tr><td><code>oneof</code></td><td><code>oneof Name ... end</code></td><td>Declare a nominal sum type and variants</td></tr>
+<tr><td><code>fn</code></td><td><code>fn name case ... end</code></td><td>Define a function by pattern matching</td></tr>
 <tr><td><code>do</code></td><td><code>do name ... end</code></td><td>Define an effectful entry point</td></tr>
+<tr><td><code>test</code></td><td><code>test "name" ... end</code></td><td>Define an embedded test body</td></tr>
+<tr><td><code>import</code></td><td><code>import Module</code></td><td>Load a module for qualified access</td></tr>
+<tr><td><code>open</code></td><td><code>open Module</code></td><td>Load a module and expose its public names</td></tr>
 <tr><td><code>end</code></td><td>(closing delimiter)</td><td>Close a struct, fn, do, or match block</td></tr>
 </tbody>
 </table>
@@ -2915,10 +2954,12 @@ Named record construction uses the type name followed by a record literal:
 <tr><td><code>-</code></td><td>Subtraction</td><td>Left</td><td><code>10 - 3</code> → <code>7</code></td></tr>
 <tr><td><code>*</code></td><td>Multiplication</td><td>Left</td><td><code>5 * 6</code> → <code>30</code></td></tr>
 <tr><td><code>/</code></td><td>Integer Division</td><td>Left</td><td><code>17 / 5</code> → <code>3</code></td></tr>
+<tr><td><code>%</code></td><td>Integer Remainder</td><td>Left</td><td><code>17 % 5</code> → <code>2</code></td></tr>
 </tbody>
 </table>
 </div>
-<p>Division truncates toward zero.</p>
+<p>Division truncates toward zero. Arithmetic is checked: overflow, division by
+zero, and remainder by zero terminate with a runtime error.</p>
 <h2 id="unary-operators-1"><a class="header" href="#unary-operators-1">Unary Operators</a></h2>
 <div class="table-wrapper">
 <table>
@@ -2984,7 +3025,7 @@ be <code>Int</code>.</p>
 <tr><td>1</td><td>Literals, variables, <code>(...)</code></td><td>—</td></tr>
 <tr><td>2</td><td><code>-</code> (unary)</td><td>Prefix</td></tr>
 <tr><td>3</td><td><code>.field</code></td><td>Left</td></tr>
-<tr><td>4</td><td><code>*</code>, <code>/</code></td><td>Left</td></tr>
+<tr><td>4</td><td><code>*</code>, <code>/</code>, <code>%</code></td><td>Left</td></tr>
 <tr><td>5</td><td><code>+</code>, <code>-</code></td><td>Left</td></tr>
 <tr><td>6</td><td><code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code></td><td>Non-associative</td></tr>
 <tr><td>7</td><td><code>&amp;&amp;</code></td><td>Left</td></tr>
@@ -3018,27 +3059,34 @@ the result as a string.</li>
 <pre><code>let n = readint
 </code></pre>
 <h2 id="file-io-1"><a class="header" href="#file-io-1">File I/O</a></h2>
-<h3 id="unearth"><a class="header" href="#unearth">unearth</a></h3>
+<h3 id="read"><a class="header" href="#read">read</a></h3>
 <p>Read the contents of a file.</p>
 <ul>
-<li><strong>Call:</strong> <code>unearth {| path: "filename.txt" |}</code></li>
+<li><strong>Call:</strong> <code>read {| path: "filename.txt" |}</code></li>
 <li><strong>Argument:</strong> <code>{| path: String |}</code></li>
 <li><strong>Returns:</strong> <code>String</code></li>
 <li><strong>Behavior:</strong> Reads the entire file contents into a string.</li>
 </ul>
-<pre><code>let contents = unearth {| path: "data.txt" |}
+<pre><code>let contents = read {| path: "data.txt" |}
 print contents
 </code></pre>
-<h3 id="inscribe"><a class="header" href="#inscribe">inscribe</a></h3>
+<h3 id="write"><a class="header" href="#write">write</a></h3>
 <p>Write a string to a file.</p>
 <ul>
-<li><strong>Call:</strong> <code>inscribe {| path: "filename.txt", content: "data" |}</code></li>
+<li><strong>Call:</strong> <code>write {| path: "filename.txt", content: "data" |}</code></li>
 <li><strong>Argument:</strong> <code>{| path: String, content: String |}</code></li>
 <li><strong>Returns:</strong> <code>Void</code></li>
 <li><strong>Behavior:</strong> Creates or overwrites the file with the case content.</li>
 </ul>
-<pre><code>inscribe {| path: "output.txt", content: "Hello from Stele!" |}
+<pre><code>write {| path: "output.txt", content: "Hello from Stele!" |}
 </code></pre>
+<h3 id="file_exists"><a class="header" href="#file_exists">file_exists</a></h3>
+<p>Check whether a filesystem path exists without invoking a shell.</p>
+<ul>
+<li><strong>Call:</strong> <code>file_exists {| path: "data.txt" |}</code></li>
+<li><strong>Argument:</strong> <code>{| path: String |}</code></li>
+<li><strong>Returns:</strong> <code>Int</code> (<code>1</code> when present, <code>0</code> otherwise)</li>
+</ul>
 <h2 id="command-line-arguments-1"><a class="header" href="#command-line-arguments-1">Command-Line Arguments</a></h2>
 <h3 id="argc"><a class="header" href="#argc">argc</a></h3>
 <p>Get the number of command-line arguments.</p>
@@ -3077,7 +3125,7 @@ process status code.</li>
 <ul>
 <li><strong>Call:</strong> <code>terminate {| code: 1 |}</code></li>
 <li><strong>Argument:</strong> <code>{| code: Int |}</code></li>
-<li><strong>Returns:</strong> <code>Void</code></li>
+<li><strong>Returns:</strong> <code>Never</code> (the call does not return)</li>
 <li><strong>Behavior:</strong> Terminates the process with the provided exit code.</li>
 </ul>
 <h3 id="spawn"><a class="header" href="#spawn">spawn</a></h3>
@@ -3115,8 +3163,9 @@ as <code>0</code>).</li>
 <tbody>
 <tr><td><code>readln</code></td><td>(none)</td><td><code>String</code></td><td>Read line from stdin</td></tr>
 <tr><td><code>readint</code></td><td>(none)</td><td><code>Int</code></td><td>Read integer from stdin</td></tr>
-<tr><td><code>unearth</code></td><td>`{</td><td>path: String</td><td>}`</td></tr>
-<tr><td><code>inscribe</code></td><td>`{</td><td>path: String, content: String</td><td>}`</td></tr>
+<tr><td><code>read</code></td><td>`{</td><td>path: String</td><td>}`</td></tr>
+<tr><td><code>write</code></td><td>`{</td><td>path: String, content: String</td><td>}`</td></tr>
+<tr><td><code>file_exists</code></td><td>`{</td><td>path: String</td><td>}`</td></tr>
 <tr><td><code>argc</code></td><td>`{</td><td></td><td>}`</td></tr>
 <tr><td><code>argv</code></td><td>`{</td><td>n: Int</td><td>}`</td></tr>
 <tr><td><code>sh</code></td><td>`{</td><td>command: String</td><td>}`</td></tr>

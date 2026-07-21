@@ -601,9 +601,7 @@ treeToExpr (PTNode "paren_expr" children) =
 treeToExpr (PTNode "int_lit" children) = do
   valNode <- find1 "value" children
   txt <- getText valNode
-  case reads txt of
-    [(n, "")] -> Right (IntLit n)
-    _         -> Left $ "Invalid integer: " ++ txt
+  parseIntegerLiteral txt
 treeToExpr (PTNode "str_lit" children) = do
   valNode <- find1 "value" children
   txt <- getText valNode
@@ -695,8 +693,17 @@ treeToExpr (PTNode _name children) =
 treeToExpr (PTLeaf s) =
   -- A bare leaf in expression position — might be a var or int
   case reads s :: [(Integer, String)] of
-    [(n, "")] -> Right (IntLit n)
+    [(_, "")] -> parseIntegerLiteral s
     _         -> Right (Var s)
+
+parseIntegerLiteral :: String -> Either String Expr
+parseIntegerLiteral txt =
+  case reads txt :: [(Integer, String)] of
+    [(n, "")]
+      | n >= -9223372036854775808 && n <= 9223372036854775807 ->
+          Right (IntLit n)
+      | otherwise -> Left $ "Integer literal out of range for Int: " ++ txt
+    _ -> Left $ "Invalid integer: " ++ txt
 
 treeToRecordFields :: ParseTree -> Either String [(String, Expr)]
 treeToRecordFields (PTNode "fields" children) =

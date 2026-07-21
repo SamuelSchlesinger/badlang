@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-bebaa2d8.js";
+            window.path_to_searchindex_js = "../searchindex-49372bdb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-29fcd749.js"></script>
@@ -187,10 +187,12 @@
 <tr><td><code>-</code></td><td>Subtraction</td><td>Left</td><td><code>10 - 3</code> → <code>7</code></td></tr>
 <tr><td><code>*</code></td><td>Multiplication</td><td>Left</td><td><code>5 * 6</code> → <code>30</code></td></tr>
 <tr><td><code>/</code></td><td>Integer Division</td><td>Left</td><td><code>17 / 5</code> → <code>3</code></td></tr>
+<tr><td><code>%</code></td><td>Integer Remainder</td><td>Left</td><td><code>17 % 5</code> → <code>2</code></td></tr>
 </tbody>
 </table>
 </div>
-<p>Division truncates toward zero.</p>
+<p>Division truncates toward zero. Arithmetic is checked: overflow, division by
+zero, and remainder by zero terminate with a runtime error.</p>
 <h2 id="unary-operators"><a class="header" href="#unary-operators">Unary Operators</a></h2>
 <div class="table-wrapper">
 <table>
@@ -256,7 +258,7 @@ be <code>Int</code>.</p>
 <tr><td>1</td><td>Literals, variables, <code>(...)</code></td><td>—</td></tr>
 <tr><td>2</td><td><code>-</code> (unary)</td><td>Prefix</td></tr>
 <tr><td>3</td><td><code>.field</code></td><td>Left</td></tr>
-<tr><td>4</td><td><code>*</code>, <code>/</code></td><td>Left</td></tr>
+<tr><td>4</td><td><code>*</code>, <code>/</code>, <code>%</code></td><td>Left</td></tr>
 <tr><td>5</td><td><code>+</code>, <code>-</code></td><td>Left</td></tr>
 <tr><td>6</td><td><code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code></td><td>Non-associative</td></tr>
 <tr><td>7</td><td><code>&amp;&amp;</code></td><td>Left</td></tr>

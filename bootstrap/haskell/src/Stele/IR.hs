@@ -55,6 +55,7 @@ data IRDecl
 -- (entry block first).
 data IRFuncBody = IRFuncBody
   { funcParam  :: Var            -- ^ Parameter name ("arg")
+  , funcEnvParam :: Maybe Var     -- ^ Lexical environment parameter for lifted closures
   , funcBlocks :: [Block]        -- ^ Basic blocks, entry first
   }
 

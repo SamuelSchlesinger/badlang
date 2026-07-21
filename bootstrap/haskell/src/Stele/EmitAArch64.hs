@@ -178,7 +178,7 @@ emitAddSp n
 -- ---------------------------------------------------------------------------
 
 countVars :: IRFuncBody -> Int
-countVars (IRFuncBody _ blocks) =
+countVars (IRFuncBody _ _ blocks) =
   length $ concatMap blockVars blocks
   where
     blockVars (Block _ instrs _) = concatMap instrVars instrs
@@ -294,6 +294,8 @@ emitFunc label body = do
 
   -- Store arg (x0) to its slot
   storeVar (funcParam body) "x0"
+  -- Lifted closures receive their lexical environment separately in x1.
+  mapM_ (\env -> storeVar env "x1") (funcEnvParam body)
 
   -- Emit blocks
   mapM_ emitBlockAsm (funcBlocks body)
@@ -397,6 +399,36 @@ emitInstrAsm (IBinOp v Neq l r) = do
   callSym "make_int"
   storeVar v "x0"
 
+emitInstrAsm (IBinOp v Add l r) = do
+  loadVar l "x0"
+  loadVar r "x1"
+  callSym "checked_add"
+  storeVar v "x0"
+
+emitInstrAsm (IBinOp v Sub l r) = do
+  loadVar l "x0"
+  loadVar r "x1"
+  callSym "checked_sub"
+  storeVar v "x0"
+
+emitInstrAsm (IBinOp v Mul l r) = do
+  loadVar l "x0"
+  loadVar r "x1"
+  callSym "checked_mul"
+  storeVar v "x0"
+
+emitInstrAsm (IBinOp v Div l r) = do
+  loadVar l "x0"
+  loadVar r "x1"
+  callSym "checked_div"
+  storeVar v "x0"
+
+emitInstrAsm (IBinOp v Mod l r) = do
+  loadVar l "x0"
+  loadVar r "x1"
+  callSym "checked_mod"
+  storeVar v "x0"
+
 emitInstrAsm (IBinOp v op l r) = do
   loadVar l "x8"
   line "  ldr x8, [x8, #8]"     -- x8 = l->int_val
@@ -407,10 +439,8 @@ emitInstrAsm (IBinOp v op l r) = do
   storeVar v "x0"
 
 emitInstrAsm (IUnOp v Neg src) = do
-  loadVar src "x8"
-  line "  ldr x8, [x8, #8]"
-  line "  neg x0, x8"
-  callSym "make_int"
+  loadVar src "x0"
+  callSym "checked_neg"
   storeVar v "x0"
 
 emitInstrAsm (IUnOp v Not src) = do

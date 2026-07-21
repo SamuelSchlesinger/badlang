@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-bebaa2d8.js";
+            window.path_to_searchindex_js = "searchindex-49372bdb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-29fcd749.js"></script>
@@ -193,8 +193,8 @@
 </code></pre>
 <p>Follow the prompts to install GHC and Cabal.</p>
 <h2 id="using-a-pre-built-compiler"><a class="header" href="#using-a-pre-built-compiler">Using a Pre-Built Compiler</a></h2>
-<p>If you have a pre-built <code>compiler</code> binary, you can compile programs directly:</p>
-<pre><code class="language-bash">./compiler examples/hello.stele hello.c
+<p>If you have built <code>build/compiler</code>, you can compile programs directly:</p>
+<pre><code class="language-bash">./build/compiler examples/hello.stele hello.c
 cc -O1 -o hello hello.c
 ./hello
 </code></pre>
@@ -210,13 +210,14 @@ The resulting <code>compiler</code> binary is the self-hosted compiler.</p>
 <p>You can also bootstrap manually:</p>
 <pre><code class="language-bash">cd bootstrap/haskell
 cabal build
-cabal run stele -- ../../compiler.stele
+cabal run stele -- ../../compiler/main.stele
 cd ../..
-cc -O1 -o compiler compiler.c
+mkdir -p build
+cc -O1 -o build/compiler compiler/main.c
 </code></pre>
 <h2 id="compiling-programs"><a class="header" href="#compiling-programs">Compiling Programs</a></h2>
 <p>To compile a <code>.stele</code> source file to C:</p>
-<pre><code class="language-bash">./compiler examples/hello.stele hello.c
+<pre><code class="language-bash">./build/compiler examples/hello.stele hello.c
 </code></pre>
 <p>This produces <code>hello.c</code>. You can then compile and run it:</p>
 <pre><code class="language-bash">cc -O1 -o hello hello.c
@@ -229,11 +230,11 @@ cc -O1 -o compiler compiler.c
 <h2 id="compile-to-native-assembly"><a class="header" href="#compile-to-native-assembly">Compile to Native Assembly</a></h2>
 <p>The self-hosted compiler can also emit native assembly:</p>
 <pre><code class="language-bash"># AArch64 (Apple Silicon / Linux ARM)
-./compiler examples/hello.stele hello.s asm
+./build/compiler examples/hello.stele hello.s asm
 cc -O1 -o hello hello.s runtime/runtime.c
 
 # x86_64 (macOS / Linux)
-./compiler examples/hello.stele hello.s x86
+./build/compiler examples/hello.stele hello.s x86
 cc -O1 -o hello hello.s runtime/runtime.c
 </code></pre>
 

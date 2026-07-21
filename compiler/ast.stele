@@ -3,7 +3,8 @@
 -- ============================================================
 
 oneof Decl
-  DeclFn { name, clauses }
+  -- closure is compiler metadata: 0 for source functions, 1 for lifted lambdas.
+  DeclFn { name, clauses, closure }
   DeclDo { name, stmts }
   DeclTest { name, stmts }
   DeclStruct { name, fields }

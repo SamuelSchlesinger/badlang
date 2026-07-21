@@ -1,0 +1,7 @@
+do main
+  let value = match 1
+    case 1 => 10
+    case _ => "wrong"
+  end
+  print value
+end

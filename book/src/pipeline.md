@@ -1,8 +1,8 @@
 # The Compilation Pipeline
 
-Stele compiles source code to standalone executables through two backends:
-a portable **C backend** and a native **AArch64 backend** (Apple Silicon).
-Both share a common front end and intermediate representation.
+Stele compiles source code to standalone executables through a portable
+**C backend** and native assembly backends for **AArch64** and **x86-64** on
+macOS and Linux. They share a common front end and intermediate representation.
 
 ```
 Source (.stele) → PEG Parse → AST → Type Check → IR → Backend → cc → Binary
@@ -13,8 +13,8 @@ Source (.stele) → PEG Parse → AST → Type Check → IR → Backend → cc �
 ```
 
 In the Haskell bootstrap compiler (under `bootstrap/haskell/`), each stage is
-implemented as a separate module. The self-hosted compiler (`compiler.stele`)
-implements the same pipeline in a single file.
+implemented as a separate module. The modular self-hosted compiler begins at
+`compiler/main.stele` and implements the same pipeline in Stele.
 
 ## Stage 1: PEG Parsing
 
